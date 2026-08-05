@@ -6,8 +6,9 @@ Software des virtuellen ASPICE-Teams. Wird ab Sprint 1 (Orchestrator-MVP) bzw. S
 
 | Pfad | Inhalt | Ab Sprint |
 |---|---|---|
-| `orchestrator/` | Tick-Loop auf Claude Agent SDK: Board lesen → Skript-Route prüfen → delegieren → Ergebnis zurückschreiben; Guardrails | 1 |
-| `orchestrator/config/guardrails.yaml` | Kosten-Limits, Rechte, gesperrte Aktionen | 1 |
+| `orchestrator/` | Tick-Loop auf Claude Agent SDK: Board lesen → Skript-Route prüfen → über LLM-Gateway delegieren → Ergebnis zurückschreiben; Guardrails | 1 |
+| `orchestrator/config/guardrails.yaml` | Kosten-Limits, Provider-Routing, Rechte, gesperrte Aktionen | 1 |
+| `gateway/` | LLM-Gateway: einheitliche Executor-Schnittstelle `execute(rolle, aufgabe, kontext)` mit drei Plugins — `claude` (Agent SDK, Sprint 1), `copilot` (GitHub Copilot CLI auf Team-Nodes, PoC Sprint 6), `ollama` (lokales LLM auf Team-Nodes, PoC Sprint 6) | 1/6 |
 | `scripts/` | Deterministische Skripte (Traceability-Generator, Template-/Label-Sync, Feedback-Routing, Baseline-Manifest, KPI-Erhebung) | 1–5 |
 | `backend/` | FastAPI: GitLab-Aggregation, HITL-Queue, Aufgaben-Queue mit Lease (Team-Nodes), Run-Registry, Traceability-API, Geräteregister, KPI-Service | 3 |
 | `frontend/` | PWA „Mission Control": Live-Board, Decision-Inbox, Requirements, Traceability, Baselines, Produktkatalog, KPIs | 3 |

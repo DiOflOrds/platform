@@ -7,10 +7,31 @@ budget:
   on_limit: stop_and_notify   # Abschaltung + E-Mail an Mensch
   review: sprint-2            # Budget-Review mit Ist-Daten (Decision Request an Mensch)
 
-models:
-  strong: claude-opus-latest      # PL-Planung, ARCH, QM-Bewertung, schwierige DEV-Aufgaben
-  standard: claude-sonnet-latest  # Routine-Rollenarbeit
-  cheap: claude-haiku-latest      # mechanische Textaufgaben; wo möglich: Skript statt LLM
+providers:                        # LLM-Gateway: drei Executor (Masterplan Kap. 5.8)
+  claude:
+    type: api                     # Anthropic API / Claude Agent SDK — zählt aufs Budget oben
+    capability: agentic-full
+    models:
+      strong: claude-opus-latest      # PL-Planung, ARCH, QM-Bewertung, schwierige DEV-Aufgaben
+      standard: claude-sonnet-latest  # Routine-Rollenarbeit
+      cheap: claude-haiku-latest      # mechanische Textaufgaben
+  copilot:
+    type: subscription            # GitHub Copilot CLI — Flatrate, zählt NICHT aufs API-Budget
+    capability: agentic-repo
+    requires: node_with_gh_auth   # läuft nur auf Team-Nodes mit eingeloggter Copilot CLI
+    status: planned               # Executor-PoC in Sprint 6 (F13 klären)
+  ollama:
+    type: local                   # lokales LLM auf Team-Node — kostenlos, offline-fähig
+    capability: text-only
+    requires: node_with_ollama
+    status: planned               # Executor-PoC in Sprint 6 (F13: Hardware/Modelle klären)
+
+routing:                          # Präferenzketten je Fähigkeitsklasse; Feinsteuerung in roles/registry.yaml
+  text-only: [script, ollama, claude.cheap]
+  agentic-repo: [script, copilot, claude.standard]
+  agentic-full: [claude.standard, claude.strong]
+  gate_relevant: [claude.strong]  # QM-Bewertungen, DR-Qualifizierung, Baseline-Checks: nur Claude
+  on_unavailable: next_in_chain   # Provider offline/Budget erschöpft -> nächste Stufe; keine passende Stufe -> blocked mit Grund
 
 permissions:
   write_scope_per_role: true      # jede Rolle nur eigene Repos/Pfade
