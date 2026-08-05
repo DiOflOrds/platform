@@ -1,0 +1,25 @@
+# Guardrails v0 (Sprint 0) — gelten ab dem ersten autonomen Tick. Änderungen nur per CR + Mensch-Freigabe.
+
+budget:
+  phase: testphase            # Entscheidung E7/D003: erst messen, dann festlegen
+  limit_month_eur: 20         # hartes Limit Testphase (Sprint 0-1)
+  limit_tick_eur: 1.0         # ein Tick darf max. ~1 € kosten, sonst Abbruch + Meldung
+  on_limit: stop_and_notify   # Abschaltung + E-Mail an Mensch
+  review: sprint-2            # Budget-Review mit Ist-Daten (Decision Request an Mensch)
+
+models:
+  strong: claude-opus-latest      # PL-Planung, ARCH, QM-Bewertung, schwierige DEV-Aufgaben
+  standard: claude-sonnet-latest  # Routine-Rollenarbeit
+  cheap: claude-haiku-latest      # mechanische Textaufgaben; wo möglich: Skript statt LLM
+
+permissions:
+  write_scope_per_role: true      # jede Rolle nur eigene Repos/Pfade
+  forbidden_actions:
+    - force_push
+    - delete_tag
+    - delete_baseline
+    - external_communication      # einzige Mensch-Kanäle: Decision-Inbox, E-Mail-Report
+  device_onboarding: human_gate   # kein neues Gerät ohne Mensch-Freigabe
+
+logging:
+  run_registry: required          # jede Aktion: wer (Rolle), was, wann, wo (Gerät), Kosten, Ausführungsweg
