@@ -22,12 +22,18 @@ providers:                        # LLM-Gateway: drei Executor (Masterplan Kap. 
     status: planned               # Executor-PoC in Sprint 6 (F13 klären)
   ollama:
     type: local                   # lokales LLM auf Team-Node — kostenlos, offline-fähig
-    capability: text-only
+    capability: text-only         # Dateien via Datei-Block-Konvention (gateway/dateiblock.py)
     requires: node_with_ollama
-    status: planned               # Executor-PoC in Sprint 6 (F13: Hardware/Modelle klären)
+    model: llama3.1:8b            # Default; per OLLAMA_MODEL übersteuerbar (F13: Hardware/Modelle)
+    status: active                # v1 vorgezogen (T-0011): Executor über lokale HTTP-API
+  session:
+    type: manual                  # Prompt-Austausch mit Cowork-/Claude-Session via Markdown (T-0012)
+    capability: text-only         # Dateien via Datei-Block-Konvention; 2-phasig (prompt/antwort)
+    cost: session-abo             # zählt NICHT aufs API-Budget
+    status: active                # Übergangslösung, bis Anthropic-API (T-0008) da ist
 
 routing:                          # Präferenzketten je Fähigkeitsklasse; Feinsteuerung in roles/registry.yaml
-  text-only: [script, ollama, claude.cheap]
+  text-only: [script, ollama, session, claude.cheap]
   agentic-repo: [script, copilot, claude.standard]
   agentic-full: [claude.standard, claude.strong]
   gate_relevant: [claude.strong]  # QM-Bewertungen, DR-Qualifizierung, Baseline-Checks: nur Claude
