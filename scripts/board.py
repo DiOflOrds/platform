@@ -30,6 +30,8 @@ PRIOS = ["kritisch", "hoch", "mittel", "niedrig"]
 PRIO_RANG = {p: i for i, p in enumerate(PRIOS)}
 ID_MUSTER = re.compile(r"^T-\d{4}$")
 DATUM_MUSTER = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# T-0051: Bestands-DRs vor Sprint 5 (Freitext-Optionen) — neue DRs brauchen `optionen`.
+DR_BESTAND = {"T-0022", "T-0035", "T-0041"}
 
 # Erlaubte Status-Übergänge (Playbook Kap. 5). Gleicher Status ist immer erlaubt.
 UEBERGAENGE = {
@@ -147,6 +149,9 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
             for tok in parse_optionstoken(t["default"]):
                 if tok not in opts:
                     fehler.append(f"default-Token '{tok}' nicht in optionen")
+        if not opts and tid not in DR_BESTAND:
+            fehler.append("decision-request ohne optionen-Frontmatter "
+                          "(T-0051; Bestands-DRs ausgenommen)")
     # Status-Übergang gegen HEAD (Mensch-Tickets sind Gates: Übergänge frei)
     if git_pruefen and repo and t.get("_datei") and t.get("status") in STATUS \
             and t.get("rolle") != "mensch":

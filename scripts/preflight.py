@@ -24,6 +24,21 @@ import sys
 REPOS = ["process", "platform", "p0"]
 
 
+def repos_im_root(root):
+    """REPOS + weitere Git-Repos im Root, z.B. Produkt-Repos (T-0050).
+
+    Bewusst ohne Lock-Altersgrenze: verwaiste Locks entstehen hier session-bedingt
+    frisch — der Git-Prozess-Check genügt als Schutz (Retro Sprint 4)."""
+    namen = list(REPOS)
+    try:
+        for d in sorted(os.listdir(root)):
+            if d not in namen and os.path.isdir(os.path.join(root, d, ".git")):
+                namen.append(d)
+    except OSError:
+        pass
+    return namen
+
+
 def git_prozess_aktiv():
     """True, wenn auf diesem Gerät gerade ein Git-Prozess läuft (plattformübergreifend)."""
     try:
@@ -94,7 +109,7 @@ def unit_tests(platform_repo):
 def preflight(root, skip_tests=False, keep_locks=False):
     """Alle Checks ausführen. Rückgabe: Anzahl Befunde (0 = startklar)."""
     befunde = 0
-    for name in REPOS:
+    for name in repos_im_root(root):
         repo = os.path.join(root, name)
         if not os.path.isdir(os.path.join(repo, ".git")):
             print(f"[{name}] FEHLT: kein Git-Repo unter {repo}")

@@ -196,11 +196,11 @@ erstellt: 2026-08-06
 Body.
 """
 
-    def _probleme(self, felder):
+    def _probleme(self, felder, tid="T-0001"):
         with tempfile.TemporaryDirectory() as repo:
             os.makedirs(os.path.join(repo, "tickets"))
-            with open(os.path.join(repo, "tickets", "T-0001.md"), "w", encoding="utf-8") as f:
-                f.write(self.DR.format(felder=felder))
+            with open(os.path.join(repo, "tickets", f"{tid}.md"), "w", encoding="utf-8") as f:
+                f.write(self.DR.replace("T-0001", tid).format(felder=felder))
             tickets, probleme = board.lade_tickets(repo)
             return probleme + board.validiere_alle(tickets, repo, git_pruefen=False)
 
@@ -216,6 +216,14 @@ Body.
         """default-Token außerhalb von optionen wird abgelehnt. Verifiziert: SWR-001."""
         self.assertTrue(any("default" in p for p in
                             self._probleme("optionen: [A1, A2]\ndefault: B9\n")))
+
+    def test_neuer_dr_ohne_optionen_abgelehnt(self):
+        """T-0051: neue decision-requests ohne optionen-Frontmatter werden abgelehnt. Verifiziert: SWR-001."""
+        self.assertTrue(any("optionen" in p for p in self._probleme("")))
+
+    def test_bestands_dr_ausgenommen(self):
+        """T-0051: Bestands-DRs (T-0035/T-0041) bleiben ohne optionen gültig. Verifiziert: SWR-001."""
+        self.assertEqual(self._probleme("", tid="T-0035"), [])
 
     def test_optionstoken_zerlegung(self):
         """Kombinationen wie 'A2, B1 + C1' werden deterministisch in Token zerlegt. Verifiziert: SWR-001."""

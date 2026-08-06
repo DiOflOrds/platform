@@ -66,5 +66,21 @@ class TestPreflightGesamt(unittest.TestCase):
             self.assertEqual(befunde, 4)
 
 
+class TestReposImRoot(unittest.TestCase):
+    """T-0050: Preflight kennt auch Produkt-Repos im Root."""
+
+    def test_produkt_repo_wird_erkannt(self):
+        """Zusaetzliche Git-Repos im Root (z.B. produkt-datakonv) werden geprueft. Verifiziert: SWR-015."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            for name in ("p0", "produkt-x"):
+                os.makedirs(os.path.join(root, name, ".git"))
+            os.makedirs(os.path.join(root, "kein-repo"))
+            namen = preflight.repos_im_root(root)
+            self.assertIn("produkt-x", namen)
+            self.assertNotIn("kein-repo", namen)
+            self.assertEqual(namen[:3], ["process", "platform", "p0"])
+
+
 if __name__ == "__main__":
     unittest.main()
