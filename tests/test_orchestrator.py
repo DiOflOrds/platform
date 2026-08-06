@@ -35,44 +35,54 @@ def ticket(tid, status="open", rolle="cm", prio="hoch", bb="", typ=""):
 
 class AuswahlTest(unittest.TestCase):
     def test_waehlt_hoechste_prio(self):
+        """Ticketwahl folgt der Prioritaet. Verifiziert: SWR-016."""
         ts = [ticket("T-0002", prio="mittel"), ticket("T-0001", prio="kritisch")]
         self.assertEqual(orch.waehle_ticket(ts, REGISTRY)["id"], "T-0001")
 
     def test_ignoriert_nicht_open(self):
+        """Nur offene Tickets werden gewaehlt. Verifiziert: SWR-016."""
         ts = [ticket("T-0001", status="done"), ticket("T-0002", status="in_review")]
         self.assertIsNone(orch.waehle_ticket(ts, REGISTRY))
 
     def test_ignoriert_blockierte(self):
+        """Blockierte Tickets werden uebersprungen. Verifiziert: SWR-016."""
         ts = [ticket("T-0001", status="open", bb="[T-0002]"), ticket("T-0002", status="in_progress")]
         self.assertIsNone(orch.waehle_ticket(ts, REGISTRY))
 
     def test_blocker_done_gibt_frei(self):
+        """Erledigte Blocker geben das Ticket frei. Verifiziert: SWR-016."""
         ts = [ticket("T-0001", bb="[T-0002]"), ticket("T-0002", status="done")]
         self.assertEqual(orch.waehle_ticket(ts, REGISTRY)["id"], "T-0001")
 
     def test_ignoriert_inaktive_und_mensch_rollen(self):
+        """Inaktive und Mensch-Rollen werden nicht gezogen. Verifiziert: SWR-016."""
         ts = [ticket("T-0001", rolle="dev"), ticket("T-0002", rolle="mensch")]
         self.assertIsNone(orch.waehle_ticket(ts, REGISTRY))
 
     def test_nur_ticket_filter(self):
+        """--ticket beschraenkt die Auswahl (kontrollierter Lauf). Verifiziert: SWR-018."""
         ts = [ticket("T-0001", prio="kritisch"), ticket("T-0002")]
         self.assertEqual(orch.waehle_ticket(ts, REGISTRY, nur_ticket="T-0002")["id"], "T-0002")
 
 
 class RoutingTest(unittest.TestCase):
     def test_script_route(self):
+        """Skript-Route wird vor jedem LLM-Aufruf geprueft. Verifiziert: SWR-016."""
         route, typ, _ = orch.aufloese_route(ticket("T-0001", typ="baseline-manifest"), REGISTRY["CM"])
         self.assertEqual((route, typ), ("script", "baseline-manifest"))
 
     def test_aufgaben_typ_kette(self):
+        """Aufgaben-Typ-Kette ueberschreibt die Rollen-Default-Kette. Verifiziert: SWR-007."""
         route, kette, stufe = orch.aufloese_route(ticket("T-0001", typ="cm-strategie"), REGISTRY["CM"])
         self.assertEqual((route, kette, stufe), ("llm", ["claude"], "standard"))
 
     def test_default_kette(self):
+        """Ohne Typ-Eintrag gilt die Default-Kette der Rolle. Verifiziert: SWR-007."""
         route, kette, stufe = orch.aufloese_route(ticket("T-0001"), REGISTRY["CM"])
         self.assertEqual((route, kette, stufe), ("llm", ["claude"], "standard"))
 
     def test_gate_relevanter_typ(self):
+        """Gate-relevanter Typ erzwingt die starke Claude-Stufe. Verifiziert: SWR-010."""
         route, kette, stufe = orch.aufloese_route(
             ticket("T-0001", rolle="pl", typ="dr-qualifizierung"), REGISTRY["PL"])
         self.assertEqual(stufe, "strong")
@@ -80,6 +90,7 @@ class RoutingTest(unittest.TestCase):
 
 class StatusTest(unittest.TestCase):
     def test_setze_status_und_board(self):
+        """Statuswechsel schreibt Ticket und regeneriert BOARD.md. Verifiziert: SWR-017."""
         with tempfile.TemporaryDirectory() as repo:
             os.makedirs(os.path.join(repo, "tickets"))
             open(os.path.join(repo, "tickets", "T-0001.md"), "w", encoding="utf-8").write(
@@ -93,6 +104,7 @@ class StatusTest(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(repo, "BOARD.md")))
 
     def test_setze_status_invalide_wirft(self):
+        """Invalider Statuswechsel wirft und aendert nichts. Verifiziert: SWR-017."""
         with tempfile.TemporaryDirectory() as repo:
             os.makedirs(os.path.join(repo, "tickets"))
             open(os.path.join(repo, "tickets", "T-0001.md"), "w", encoding="utf-8").write(
@@ -104,6 +116,7 @@ class StatusTest(unittest.TestCase):
 
 class SlugTest(unittest.TestCase):
     def test_slug(self):
+        """Branch-Slug ist deterministisch und dateisystemsicher. Verifiziert: SWR-017."""
         self.assertEqual(orch.slug("CM-Strategie v1 erstellen!"), "cm-strategie-v1-erstellen")
 
 
@@ -132,13 +145,16 @@ class ArbeitskopieTest(unittest.TestCase):
             self.tmp.cleanup()
 
     def test_sauber(self):
+        """Saubere Arbeitskopie erlaubt den Tick. Verifiziert: SWR-015."""
         self.assertTrue(orch.arbeitskopie_sauber(self.repo))
 
     def test_unsauber(self):
+        """Unsaubere Arbeitskopie bricht den Tick ab. Verifiziert: SWR-015."""
         open(os.path.join(self.repo, "b.txt"), "w").write("b")
         self.assertFalse(orch.arbeitskopie_sauber(self.repo))
 
     def test_ausnahme_praefix(self):
+        """Ausnahme-Praefix erlaubt erwartete Aenderungen. Verifiziert: SWR-015."""
         d = os.path.join(self.repo, "management", "runs", "session-austausch")
         os.makedirs(d)
         open(os.path.join(d, "T-0010-antwort.md"), "w").write("x")
@@ -146,6 +162,7 @@ class ArbeitskopieTest(unittest.TestCase):
         self.assertFalse(orch.arbeitskopie_sauber(self.repo))
 
     def test_auftrag_enthaelt_repo_hinweis(self):
+        """Auftragstext nennt das Ziel-Repo (Pfadschutz-Kontext). Verifiziert: SWR-009."""
         text = orch.baue_auftrag(ticket("T-0010"), "process")
         self.assertIn("OHNE 'process/'", text)
 

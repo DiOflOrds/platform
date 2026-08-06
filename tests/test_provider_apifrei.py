@@ -35,21 +35,25 @@ Notiz.
 
 class DateiblockTest(unittest.TestCase):
     def test_parse_zwei_bloecke(self):
+        """Zwei Dateibloecke werden korrekt geparst. Verifiziert: SWR-009."""
         bloecke = dateiblock.parse_dateibloecke(ANTWORT)
         self.assertEqual([p for p, _ in bloecke], ["cm/cm-strategie.md", "cm/unterordner/notiz.md"])
         self.assertIn("Inhalt Zeile 2.", bloecke[0][1])
 
     def test_parse_crlf(self):
+        """Dateibloecke mit CRLF werden geparst. Verifiziert: SWR-009."""
         bloecke = dateiblock.parse_dateibloecke(ANTWORT.replace("\n", "\r\n"))
         self.assertEqual(len(bloecke), 2)
 
     def test_pfad_traversal_verboten(self):
+        """Pfad-Traversal ausserhalb des Repos wird abgelehnt. Verifiziert: SWR-009."""
         for pfad in ("../boese.md", "/etc/boese", "C:/boese.md"):
             text = f"===DATEI: {pfad}===\nx\n===ENDE==="
             with self.assertRaises(ValueError):
                 dateiblock.parse_dateibloecke(text)
 
     def test_schreiben(self):
+        """Dateibloecke werden repo-relativ geschrieben. Verifiziert: SWR-009."""
         with tempfile.TemporaryDirectory() as d:
             dateien = dateiblock.schreibe_dateibloecke(ANTWORT, d)
             self.assertEqual(dateien, ["cm/cm-strategie.md", "cm/unterordner/notiz.md"])
@@ -57,9 +61,11 @@ class DateiblockTest(unittest.TestCase):
             self.assertTrue(inhalt.startswith("# CM-Strategie"))
 
     def test_keine_bloecke(self):
+        """Antwort ohne Bloecke liefert keine Artefakte. Verifiziert: SWR-009."""
         self.assertEqual(dateiblock.parse_dateibloecke("nur Prosa"), [])
 
     def test_repo_praefix_wird_entfernt(self):
+        """Bekannte Repo-Praefixe werden entfernt (Lesson T-0013). Verifiziert: SWR-009."""
         # T-0013: Modell übernimmt 'process/cm/...' wörtlich, obwohl das
         # Arbeitsverzeichnis bereits die Repo-Wurzel 'process' ist.
         text = "===DATEI: process/cm/cm-strategie.md===\n# Strategie\n===ENDE==="
@@ -72,6 +78,7 @@ class DateiblockTest(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(wurzel, "process")))
 
     def test_repo_praefix_nur_bei_treffer(self):
+        """Praefix-Strip nur bei exaktem Treffer. Verifiziert: SWR-009."""
         text = "===DATEI: anderes/x.md===\nx\n===ENDE==="
         with tempfile.TemporaryDirectory() as d:
             wurzel = os.path.join(d, "process")
@@ -95,6 +102,7 @@ class SessionExecutorTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_phase1_erzeugt_prompt_und_wartet(self):
+        """Session-Phase 1 erzeugt Prompt-Datei und wartet. Verifiziert: SWR-008."""
         e = core.execute("cm", "Erstelle die CM-Strategie.", dict(self.kontext))
         self.assertEqual(e.status, "wartet")
         self.assertEqual(e.provider, "session")
@@ -106,6 +114,7 @@ class SessionExecutorTest(unittest.TestCase):
         self.assertIn("T-0010-antwort.md", text)  # Zielname genannt
 
     def test_phase2_liest_antwort_ein(self):
+        """Session-Phase 2 liest die Antwort ein. Verifiziert: SWR-008."""
         core.execute("cm", "x", dict(self.kontext))  # Phase 1
         antwort = os.path.join(self.tmp.name, "runs", "session-austausch", "T-0010-antwort.md")
         open(antwort, "w", encoding="utf-8").write(ANTWORT)
@@ -115,6 +124,7 @@ class SessionExecutorTest(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.arbeit, "cm", "cm-strategie.md")))
 
     def test_antwort_ohne_bloecke_kein_erfolg(self):
+        """Antwort ohne Dateibloecke ist kein Erfolg. Verifiziert: SWR-008."""
         os.makedirs(os.path.join(self.tmp.name, "runs", "session-austausch"))
         antwort = os.path.join(self.tmp.name, "runs", "session-austausch", "T-0010-antwort.md")
         open(antwort, "w", encoding="utf-8").write("nur Prosa, keine Blöcke")
@@ -122,6 +132,7 @@ class SessionExecutorTest(unittest.TestCase):
         self.assertIn("keine Datei-Blöcke", roh["log"])
 
     def test_wartet_wird_protokolliert(self):
+        """Wartezustand wird protokolliert. Verifiziert: SWR-008."""
         core.execute("cm", "x", dict(self.kontext))
         import json
         with open(self.registry, encoding="utf-8") as f:
@@ -132,6 +143,7 @@ class SessionExecutorTest(unittest.TestCase):
 
 class OllamaExecutorTest(unittest.TestCase):
     def test_nicht_erreichbar_faellt_in_kette_zurueck(self):
+        """Nicht erreichbares Ollama faellt in die Kette zurueck. Verifiziert: SWR-007."""
         alt = os.environ.get("OLLAMA_HOST")
         os.environ["OLLAMA_HOST"] = "http://127.0.0.1:9"  # Port 9 (discard): nie erreichbar
         try:
@@ -153,6 +165,7 @@ class OllamaExecutorTest(unittest.TestCase):
                 os.environ["OLLAMA_HOST"] = alt
 
     def test_modellwahl(self):
+        """Ollama-Modellwahl folgt Umgebung/Guardrails. Verifiziert: SWR-008."""
         from gateway.executors import ollama_executor
         import yaml as _y
         cfg = _y.safe_load(GUARDRAILS)

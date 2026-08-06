@@ -1,4 +1,4 @@
-"""Tests Preflight-Skript (T-0024). Verifiziert: SWR-005 (Skript vor LLM / Skript-Routen)."""
+"""Tests Preflight-Skript (T-0024). Bezug: CR T-0024 (Prozess-Tooling, kein SWR)."""
 import os
 import sys
 import tempfile
@@ -20,7 +20,7 @@ def _fake_git(root, *artefakte):
 
 
 class TestLockArtefakte(unittest.TestCase):
-    """Lock-Erkennung findet alle bekannten Artefakt-Klassen. Verifiziert: SWR-005."""
+    """Lock-Erkennung findet alle bekannten Artefakt-Klassen. Bezug: CR T-0024."""
 
     def test_findet_bekannte_artefakte(self):
         """index.lock, HEAD.lock, maintenance.lock, tmp_obj_*, refs-Locks werden erkannt."""
@@ -57,7 +57,7 @@ class TestLockArtefakte(unittest.TestCase):
 
 
 class TestPreflightGesamt(unittest.TestCase):
-    """Gesamtlauf meldet fehlende Repos als Befund. Verifiziert: SWR-005."""
+    """Gesamtlauf meldet fehlende Repos als Befund. Bezug: CR T-0024."""
 
     def test_fehlende_repos_sind_befunde(self):
         """Leere Wurzel: 3 fehlende Repos + board-check-Fehler = 4 Befunde."""

@@ -45,10 +45,12 @@ class TestBoard(unittest.TestCase):
         return probleme + board.validiere_alle(tickets, self.repo, git_pruefen=False)
 
     def test_gutfall(self):
+        """Valides Ticket passiert die Schemapruefung. Verifiziert: SWR-001."""
         schreibe(self.repo, "T-0001")
         self.assertEqual(self.probleme(), [])
 
     def test_pflichtfeld_fehlt(self):
+        """Fehlendes Pflichtfeld wird als Fehler gemeldet. Verifiziert: SWR-001."""
         schreibe(self.repo, "T-0001")
         pfad = os.path.join(self.repo, "tickets", "T-0001.md")
         text = open(pfad, encoding="utf-8").read().replace("prio: hoch\n", "")
@@ -56,40 +58,49 @@ class TestBoard(unittest.TestCase):
         self.assertTrue(any("prio" in p for p in self.probleme()))
 
     def test_ungueltiger_status(self):
+        """Unbekannter Statuswert wird abgelehnt. Verifiziert: SWR-001."""
         schreibe(self.repo, "T-0001", status="fertig")
         self.assertTrue(any("ungültiger status" in p for p in self.probleme()))
 
     def test_id_dateiname_mismatch(self):
+        """ID/Dateiname-Abweichung wird abgelehnt. Verifiziert: SWR-001."""
         schreibe(self.repo, "T-0001")
         os.rename(os.path.join(self.repo, "tickets", "T-0001.md"),
                   os.path.join(self.repo, "tickets", "T-0002.md"))
         self.assertTrue(any("passt nicht zum Dateinamen" in p for p in self.probleme()))
 
     def test_blocked_by_unbekannt(self):
+        """Haengender blocked_by-Verweis wird abgelehnt. Verifiziert: SWR-003."""
         schreibe(self.repo, "T-0001", bb="[T-9999]")
         self.assertTrue(any("unbekanntes Ticket" in p for p in self.probleme()))
 
     def test_blocked_by_selbstverweis(self):
+        """Selbstverweis in blocked_by wird abgelehnt. Verifiziert: SWR-003."""
         schreibe(self.repo, "T-0001", bb="[T-0001]")
         self.assertTrue(any("sich selbst" in p for p in self.probleme()))
 
     def test_blocked_ohne_blocker(self):
+        """Status blocked ohne Blocker-Verweis wird abgelehnt. Verifiziert: SWR-001."""
         schreibe(self.repo, "T-0001", status="blocked")
         self.assertTrue(any("blocked erfordert" in p for p in self.probleme()))
 
     def test_in_review_ohne_reviewer(self):
+        """in_review ohne Reviewer wird abgelehnt. Verifiziert: SWR-001."""
         schreibe(self.repo, "T-0001", status="in_review")
         self.assertTrue(any("erfordert Feld reviewer" in p for p in self.probleme()))
 
     def test_in_review_reviewer_ist_autor(self):
+        """Reviewer == Autor wird abgelehnt. Verifiziert: SWR-001."""
         schreibe(self.repo, "T-0001", status="in_review", extra="reviewer: cm\n")
         self.assertTrue(any("nicht der Autor" in p for p in self.probleme()))
 
     def test_in_review_mit_reviewer_ok(self):
+        """in_review mit fremdem Reviewer ist gueltig. Verifiziert: SWR-001."""
         schreibe(self.repo, "T-0001", status="in_review", extra="reviewer: pl\n")
         self.assertEqual(self.probleme(), [])
 
     def test_crlf_toleranz(self):
+        """CRLF-Zeilenenden werden toleriert. Verifiziert: SWR-001."""
         schreibe(self.repo, "T-0001")
         pfad = os.path.join(self.repo, "tickets", "T-0001.md")
         inhalt = open(pfad, encoding="utf-8").read().replace("\n", "\r\n")
@@ -97,10 +108,12 @@ class TestBoard(unittest.TestCase):
         self.assertEqual(self.probleme(), [])
 
     def test_uebergangsmatrix(self):
+        """Nur Playbook-konforme Statusuebergaenge sind erlaubt. Verifiziert: SWR-002."""
         self.assertIn("in_review", board.UEBERGAENGE["in_progress"])
         self.assertNotIn("done", board.UEBERGAENGE["open"])
 
     def test_mensch_tickets_ohne_uebergangspruefung(self):
+        """Mensch-Tickets sind von der Uebergangspruefung ausgenommen. Verifiziert: SWR-002."""
         # Validierung mit git_pruefen=True darf für rolle=mensch nicht an
         # status_in_head scheitern (Gates dürfen z.B. open -> done springen).
         schreibe(self.repo, "T-0001")
@@ -112,6 +125,7 @@ class TestBoard(unittest.TestCase):
         self.assertEqual(board.validiere_alle(tickets, self.repo, git_pruefen=True), [])
 
     def test_board_deterministisch(self):
+        """Doppelter Lauf erzeugt byte-identisches BOARD.md. Verifiziert: SWR-004."""
         schreibe(self.repo, "T-0001", status="open")
         schreibe(self.repo, "T-0002", status="done")
         tickets, _ = board.lade_tickets(self.repo)
@@ -122,6 +136,7 @@ class TestBoard(unittest.TestCase):
         self.assertIn("## done (1)", b1)
 
     def test_prio_sortierung(self):
+        """Sortierung nach Status, Prio, ID ist stabil. Verifiziert: SWR-004."""
         schreibe(self.repo, "T-0001")
         schreibe(self.repo, "T-0002")
         pfad = os.path.join(self.repo, "tickets", "T-0002.md")
@@ -132,6 +147,7 @@ class TestBoard(unittest.TestCase):
         self.assertLess(b.index("T-0002"), b.index("T-0001"))
 
     def test_offene_blocker(self):
+        """Offene Blocker werden im Board ausgewiesen. Verifiziert: SWR-004."""
         schreibe(self.repo, "T-0001", status="done")
         schreibe(self.repo, "T-0002", bb="[T-0001]")
         schreibe(self.repo, "T-0003", bb="[T-0002]")
@@ -141,18 +157,21 @@ class TestBoard(unittest.TestCase):
         self.assertEqual(board.offene_blocker(nach_id["T-0003"], nach_id), ["T-0002"])
 
     def test_main_check_modus(self):
+        """--check validiert ohne BOARD.md zu schreiben (CI-Gate). Verifiziert: SWR-005."""
         schreibe(self.repo, "T-0001")
         rc = board.main([self.repo, "--check", "--no-git"])
         self.assertEqual(rc, 0)
         self.assertFalse(os.path.exists(os.path.join(self.repo, "BOARD.md")))
 
     def test_main_schreibt_board(self):
+        """Normalmodus schreibt BOARD.md. Verifiziert: SWR-004."""
         schreibe(self.repo, "T-0001")
         rc = board.main([self.repo, "--no-git"])
         self.assertEqual(rc, 0)
         self.assertTrue(os.path.exists(os.path.join(self.repo, "BOARD.md")))
 
     def test_main_fehlerfall(self):
+        """Validierungsfehler liefert Exit-Code != 0. Verifiziert: SWR-005."""
         schreibe(self.repo, "T-0001", status="quatsch")
         rc = board.main([self.repo, "--no-git"])
         self.assertEqual(rc, 1)
