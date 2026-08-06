@@ -1,0 +1,10 @@
+{
+  "name": "Mission Control — P0 Genesis",
+  "short_name": "MissionCtrl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f8fa",
+  "theme_color": "#1a2b3c",
+  "description": "Board, Reports, KPIs und Decision-Inbox des virtuellen ASPICE-Teams (T-0033, SWR-021).",
+  "icons": []
+}

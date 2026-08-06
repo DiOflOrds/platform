@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<!-- FRT-PWA (T-0033, SWR-021; ADR-002): Mission Control v1 — lesend + Decision-Inbox. -->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1a2b3c">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Mission Control — P0 Genesis</title>
+<style>
+  :root { --haupt:#1a2b3c; --akzent:#2f81f7; --ok:#2da44e; --warn:#d4a72c; --rot:#cf222e;
+          --grau:#57606a; --rand:#d0d7de; --fond:#f6f8fa; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--fond); color:#1f2328; }
+  header { background:var(--haupt); color:#fff; padding:.7rem 1rem; display:flex; align-items:baseline; gap:.8rem; flex-wrap:wrap; }
+  header h1 { font-size:1.05rem; margin:0; }
+  header small { opacity:.7 }
+  nav { display:flex; gap:.25rem; background:var(--haupt); padding:0 .6rem .6rem; flex-wrap:wrap; }
+  nav button { border:0; border-radius:.5rem .5rem 0 0; padding:.45rem .9rem; cursor:pointer;
+               background:#2c3e50; color:#cfd8e3; font-size:.9rem; }
+  nav button.aktiv { background:var(--fond); color:var(--haupt); font-weight:600; }
+  main { padding:1rem; max-width:62rem; margin:0 auto; }
+  .karte { background:#fff; border:1px solid var(--rand); border-radius:.5rem; padding: .8rem 1rem; margin-bottom:.8rem; }
+  .karte h3 { margin:.1rem 0 .4rem; font-size:1rem; }
+  .zeile { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.15rem 0; font-size:.9rem; }
+  .pille { border-radius:1rem; padding:.05rem .6rem; font-size:.75rem; color:#fff; background:var(--grau); white-space:nowrap; }
+  .pille.done { background:var(--ok);} .pille.open { background:var(--akzent);}
+  .pille.in_progress { background:var(--warn); color:#1f2328;} .pille.in_review { background:#8250df;}
+  .pille.blocked,.pille.rejected { background:var(--rot);}
+  .kpiraster { display:grid; grid-template-columns:repeat(auto-fit,minmax(9rem,1fr)); gap:.8rem; }
+  .kpi { text-align:center; } .kpi b { display:block; font-size:1.5rem; }
+  pre { white-space:pre-wrap; font-size:.82rem; background:var(--fond); padding:.6rem; border-radius:.4rem; max-height:22rem; overflow:auto; }
+  textarea,input,select { width:100%; padding:.45rem; border:1px solid var(--rand); border-radius:.4rem; font:inherit; margin:.2rem 0 .5rem; }
+  .knopf { background:var(--akzent); color:#fff; border:0; border-radius:.4rem; padding:.5rem 1rem; cursor:pointer; font:inherit; }
+  .knopf:disabled { opacity:.5; cursor:default; }
+  .meldung { padding:.5rem .8rem; border-radius:.4rem; margin:.4rem 0; font-size:.9rem; }
+  .meldung.ok { background:#dafbe1; } .meldung.fehler { background:#ffebe9; }
+  .leer { color:var(--grau); font-style:italic; }
+</style>
+</head>
+<body>
+<header><h1>Mission Control — P0 „Genesis"</h1><small id="stand"></small></header>
+<nav id="tabs"></nav>
+<main id="inhalt"><p class="leer">Lade …</p></main>
+<script src="app.js"></script>
+</body>
+</html>
