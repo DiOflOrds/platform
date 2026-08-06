@@ -1,0 +1,54 @@
+# Software-Architektur Plattform P0 — Backend/Frontend-MVP (v1, Sprint 3, T-0031)
+
+*Rolle ARCH (SWE.2). Basis: SWR-020–024 (reviewed, T-0030). Leitplanke (P0 Kap. 5): verteilungsfähig — API-first, kein Zustand außerhalb von Git/Hub. Entscheidungen: siehe `adr/`.*
+
+## 1. Kontext
+
+Der Mensch steuert das Team heute über Git-Rohartefakte (BOARD.md, Reports, Decision Log). Der MVP („Mission Control v1") stellt dieselben Informationen als HTTP-API + PWA bereit und macht Entscheidungen (DRs) ohne Git-Zugriff möglich. Datenquelle bleibt ausschließlich die Git-Arbeitskopie der drei Repos (process, platform, p0) auf dem Betriebsgerät (Team-Node, später Hub-VM).
+
+## 2. Komponenten
+
+| Komponente | Ort | Verantwortung | SWR |
+|---|---|---|---|
+| **BCK-Server** | `platform/backend/server.py` | HTTP-Endpunkte (JSON-API + statisches Frontend); kein eigener Zustand | SWR-020, 022, 024 |
+| **BCK-Aggregation** | `platform/backend/aggregation.py` | Lesen/Parsen: Tickets/BOARD, Sprint-Reports, Run-Registry (Kosten/KPI) | SWR-022 |
+| **BCK-Inbox** | `platform/backend/inbox.py` | Offene DRs listen; Entscheidung annehmen → Decision-Log-Zeile + Ticket-Notiz + Git-Commit | SWR-020, 024 |
+| **BCK-Mailer** | `platform/backend/mailer.py` | E-Mail-Benachrichtigung via SMTP (env-Konfiguration); ausfalltolerant | SWR-023 |
+| **FRT-PWA** | `platform/backend/static/` | No-build-Frontend (Board, Reports, KPI, Inbox); nur API-Aufrufe | SWR-021 |
+
+Bestand unverändert: board.py (BRD), Gateway (GW), Guardrails (GRD), Orchestrator (ORC), trace_matrix (CI-Vorstufe).
+
+## 3. Schnittstellen (API v1)
+
+| Endpunkt | Methode | Inhalt |
+|---|---|---|
+| `/api/board` | GET | Tickets + Statusgruppen (Quelle: `p0/tickets/*.md`) |
+| `/api/reports` | GET | Sprint-Reports (Quelle: `p0/management/sprint-*/report.md`) |
+| `/api/kpi` | GET | Kosten je Monat/Tick, Provider-Verteilung (Quelle: Run-Registry JSONL) |
+| `/api/inbox` | GET | Offene DRs (typ `decision-request`, nicht final) mit Optionen/Frist/Default |
+| `/api/inbox/<ticket-id>/decision` | POST | `{option, begruendung}` → Decision Log + Ticket + Commit |
+| `/` u. statisch | GET | PWA (index.html, manifest) |
+
+Fehlerfälle: 404 unbekanntes Ticket, 400 invalide Entscheidung, 503 Schreiben fehlgeschlagen; SMTP-Fehler beeinflussen den API-Status nie (SWR-023).
+
+## 4. Dynamik: Entscheidung über die Inbox
+
+1. GET `/api/inbox` liest DR-Tickets direkt aus der Arbeitskopie (kein Cache — SWR-024).
+2. POST validiert Option gegen das Ticket, hängt eine Zeile ans Decision Log (append-only), schreibt die Entscheidung als Notiz ans Ticket, regeneriert BOARD.md und committet die drei Dateien (Identität „Mensch via Inbox").
+3. Mailer meldet neue DRs bzw. bestätigt Entscheidungen an die E-Mail aus D004 (best effort).
+
+Konsequenz für Ticks: Arbeitskopie bleibt nach jedem Inbox-Schreiben sauber (Commit gehört zur Operation) — verträglich mit SWR-015.
+
+## 5. Verteilung und Deployment
+
+Backend läuft dort, wo die Arbeitskopie liegt: Team-Node (heute) oder Hub-VM (T-0035). API-first: FRT und künftige Team-Nodes sprechen ausschließlich HTTP. Deployment als Infra-as-Code: `platform/infra/docker-compose.yml` (ein Service, Volume = Repo-Wurzel; identisch auf VM und Node). Kein Zustand im Container (SWR-024) — Neustart/Umzug verlustfrei.
+
+## 6. Traceability SWR ↔ Komponente
+
+SWR-020 → BCK-Server + BCK-Inbox · SWR-021 → FRT-PWA · SWR-022 → BCK-Aggregation (+ Server) · SWR-023 → BCK-Mailer · SWR-024 → BCK-Server/Inbox (Architektur-Invariante, per Review + Neustart-Test). Alle Ziel-SWR zugeordnet; keine Komponente ohne SWR.
+
+## 7. Entscheidungen (ADR-Verzeichnis)
+
+- ADR-001: HTTP-Stack — Python-Standardbibliothek statt FastAPI (MVP)
+- ADR-002: Frontend — No-build-Vanilla-PWA, vom Backend ausgeliefert
+- ADR-003: Inbox-Schreibpfad — Datei + sofortiger Git-Commit
