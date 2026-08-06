@@ -21,24 +21,26 @@ from datetime import date
 SWR_RE = re.compile(r"SWR-\d{3}")
 
 
-def _ids(node):
-    return set(SWR_RE.findall(ast.get_docstring(node) or ""))
+def _ids(node, muster=SWR_RE):
+    return set(muster.findall(ast.get_docstring(node) or ""))
 
 
-def tests_scannen(tests_dir):
-    """(abdeckung: swr -> [test-id], ohne_bezug: [test-id]) aus allen test_*.py."""
+def tests_scannen(tests_dir, muster=SWR_RE):
+    """(abdeckung: swr -> [test-id], ohne_bezug: [test-id]) aus allen test_*.py.
+
+    muster: Anforderungs-ID-Regex (T-0048 — Produkt-Repos mit eigenem Schema)."""
     abdeckung, ohne_bezug = {}, []
     for datei in sorted(os.listdir(tests_dir)):
         if not (datei.startswith("test_") and datei.endswith(".py")):
             continue
         baum = ast.parse(open(os.path.join(tests_dir, datei), encoding="utf-8").read())
-        modul_ids = _ids(baum)
+        modul_ids = _ids(baum, muster)
         for kl in [n for n in baum.body if isinstance(n, ast.ClassDef)]:
-            klassen_ids = _ids(kl) or modul_ids
+            klassen_ids = _ids(kl, muster) or modul_ids
             for fn in [n for n in kl.body
                        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
                        and n.name.startswith("test_")]:
-                ids = _ids(fn) or klassen_ids
+                ids = _ids(fn, muster) or klassen_ids
                 test_id = f"{datei}::{kl.name}::{fn.name}"
                 if ids:
                     for i in sorted(ids):
@@ -48,11 +50,11 @@ def tests_scannen(tests_dir):
     return abdeckung, ohne_bezug
 
 
-def swr_lesen(pfad):
+def swr_lesen(pfad, muster=SWR_RE):
     """SWR-Tabellenzeilen parsen: id -> {requirement, verification, status}."""
     eintraege = {}
     for zeile in open(pfad, encoding="utf-8"):
-        m = re.match(r"\|\s*(SWR-\d{3})\s*\|", zeile)
+        m = re.match(rf"\|\s*({muster.pattern})\s*\|", zeile)
         if m:
             teile = [t.strip() for t in zeile.strip().strip("|").split("|")]
             if len(teile) >= 6:
@@ -98,16 +100,26 @@ def generiere(swrs, abdeckung, ohne_bezug):
 
 
 def main():
-    p = argparse.ArgumentParser(description="SWR↔Test-Matrix generieren (T-0026)")
+    p = argparse.ArgumentParser(description="SWR↔Test-Matrix generieren (T-0026, T-0048)")
     p.add_argument("--repos", default=".", help="Wurzel mit platform/ und p0/")
     p.add_argument("--check", action="store_true", help="Exit 1 bei Lücken (CI-Gate)")
+    p.add_argument("--tests", help="Tests-Verzeichnis (Default: <repos>/platform/tests)")
+    p.add_argument("--swr", help="SWR-Markdown (Default: <repos>/p0/requirements/"
+                                 "software/software-requirements.md)")
+    p.add_argument("--ziel", help="Ziel-Matrix (Default: <repos>/p0/verification/"
+                                  "reports/swr-test-matrix.md)")
+    p.add_argument("--id-muster", default=SWR_RE.pattern,
+                   help="Regex für Anforderungs-IDs (T-0048, z.B. 'SWR-D\\d{2}')")
     a = p.parse_args()
     wurzel = os.path.abspath(a.repos)
-    abdeckung, ohne = tests_scannen(os.path.join(wurzel, "platform", "tests"))
-    swrs = swr_lesen(os.path.join(wurzel, "p0", "requirements", "software",
-                                  "software-requirements.md"))
+    muster = re.compile(a.id_muster)
+    abdeckung, ohne = tests_scannen(
+        a.tests or os.path.join(wurzel, "platform", "tests"), muster)
+    swrs = swr_lesen(a.swr or os.path.join(wurzel, "p0", "requirements", "software",
+                                           "software-requirements.md"), muster)
     text, luecken = generiere(swrs, abdeckung, ohne)
-    ziel = os.path.join(wurzel, "p0", "verification", "reports", "swr-test-matrix.md")
+    ziel = a.ziel or os.path.join(wurzel, "p0", "verification", "reports",
+                                  "swr-test-matrix.md")
     os.makedirs(os.path.dirname(ziel), exist_ok=True)
     open(ziel, "w", encoding="utf-8", newline="\n").write(text)
     print(f"Matrix geschrieben: {os.path.relpath(ziel, wurzel)} — "

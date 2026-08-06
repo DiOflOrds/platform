@@ -87,5 +87,37 @@ class TestMatrix(unittest.TestCase):
         self.assertEqual(luecken, ["SWR-999"])
 
 
+class TestIdMuster(unittest.TestCase):
+    """T-0048: generalisiertes ID-Muster für Produkt-Repos (Default unverändert)."""
+
+    def test_produkt_muster_wird_erkannt(self):
+        """Mit --id-muster-Regex werden Produkt-IDs (SWR-Dxx) in Tests und SWR-Datei erkannt."""
+        import re
+        muster = re.compile(r"SWR-D\d{2}")
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "test_p.py"), "w", encoding="utf-8").write(
+                'class T:\n    def test_a(self):\n        """X. Verifiziert: SWR-D01."""\n')
+            abdeckung, ohne = trace_matrix.tests_scannen(d, muster)
+            pfad = os.path.join(d, "swr.md")
+            open(pfad, "w", encoding="utf-8").write(
+                "| ID | Requirement | Trace | Verification | Prio | Status |\n"
+                "|---|---|---|---|---|---|\n"
+                "| SWR-D01 | A | STK-D01 | Unit tests | high | reviewed |\n")
+            swrs = trace_matrix.swr_lesen(pfad, muster)
+        self.assertEqual(list(abdeckung), ["SWR-D01"])
+        self.assertEqual(ohne, [])
+        _, luecken = trace_matrix.generiere(swrs, abdeckung, ohne)
+        self.assertEqual(luecken, [])
+
+    def test_default_verhalten_unveraendert(self):
+        """Ohne Muster-Angabe gilt weiterhin SWR-\\d{3} (Rückwärtskompatibilität)."""
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "test_p.py"), "w", encoding="utf-8").write(
+                'class T:\n    def test_a(self):\n        """X. Verifiziert: SWR-D01."""\n')
+            abdeckung, ohne = trace_matrix.tests_scannen(d)
+        self.assertEqual(abdeckung, {})
+        self.assertEqual(ohne, ["test_p.py::T::test_a"])
+
+
 if __name__ == "__main__":
     unittest.main()
