@@ -20,4 +20,4 @@ Trace vollständig: SWR-020–024 ↔ Komponenten (Kap. 6 Architekturdokument). 
 
 Freigabe der Architektur inkl. ADR-001-Abweichung. Bei Ablehnung von ADR-001: Umstieg auf FastAPI kostet ca. ein Ticket (Komponenten sind framework-frei gekapselt), plus Abhängigkeits-Setup auf allen Geräten.
 
-**Entscheidung Mensch:** ☐ freigeben · ☐ mit Auflagen · ☐ zurückweisen — im Sprint-3-Review (G4) oder vorab per Decision-Inbox/E-Mail.
+**Entscheidung Mensch:** ☑ **freigegeben inkl. ADR-001-Abweichung** (2026-08-06, D015).
