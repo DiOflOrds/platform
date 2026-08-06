@@ -90,6 +90,22 @@ def waehle_ticket(tickets, registry, nur_ticket=None):
     return kandidaten[0] if kandidaten else None
 
 
+def warte_lauf_phase1(t, route, kette, projekt_repo):
+    """T-0038: Phase-1-Erkennung VOR dem Statuswechsel.
+
+    Ein Session-Lauf, der auf die Antwortdatei warten wird (session in der Kette,
+    Antwortdatei fehlt), soll das Ticket nicht open->in_progress->open zyklieren
+    (Erwartungswert: 0 Statuswechsel-Commits je Warte-Lauf; SWR-017).
+    Falls ein früherer Ketten-Provider (z.B. ollama) doch antwortet, entfällt nur
+    der in_progress-Zwischenstand — der Ergebnis-Status wird normal gesetzt.
+    """
+    if route != "llm" or "session" not in (kette if isinstance(kette, (list, tuple)) else []):
+        return False
+    antwort = os.path.join(projekt_repo, "management", "runs", "session-austausch",
+                           f"{t['id']}-antwort.md")
+    return not os.path.exists(antwort)
+
+
 def aufloese_route(t, rollen_eintrag):
     """Registry-Auflösung: script | (chain, tier). Siehe registry.yaml-Kopf."""
     typ = t.get("aufgaben_typ", "")
@@ -215,9 +231,12 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
                   f"Erst committen/stashen (z.B. sprint1-abschluss.cmd), dann Tick erneut starten.")
             return 1
 
-    setze_status(projekt_repo, t["id"], "in_progress")
-    git(projekt_repo, "add", "-A")
-    git(projekt_repo, "commit", "-m", f"{t['id']}: Status in_progress (Orchestrator-Tick)")
+    # T-0038: Warte-Läufe (Session-Phase 1) lösen keinen Statuswechsel aus.
+    phase1 = warte_lauf_phase1(t, route, kette_oder_typ, projekt_repo)
+    if not phase1:
+        setze_status(projekt_repo, t["id"], "in_progress")
+        git(projekt_repo, "add", "-A")
+        git(projekt_repo, "commit", "-m", f"{t['id']}: Status in_progress (Orchestrator-Tick)")
 
     try:
         git(ziel_repo, "checkout", "-b", branch)
@@ -253,8 +272,12 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
                      notiz=f"**Orchestrator {erg.provider}:** Branch `{branch}` in `{t.get('repo', projekt)}`, "
                            f"Artefakte: {', '.join(erg.artefakte)}, Kosten {erg.kosten_eur:.2f} €.")
     elif erg.status == "wartet":
-        setze_status(projekt_repo, t["id"], "open",
-                     notiz=f"**Session-Austausch:** {erg.meldung}")
+        if not phase1:
+            # Sicherheitsnetz: falls in_progress gesetzt wurde, zurück auf open (wie bisher).
+            setze_status(projekt_repo, t["id"], "open",
+                         notiz=f"**Session-Austausch:** {erg.meldung}")
+        # T-0038: im Phase-1-Fall bleibt das Ticket unangetastet (Status open);
+        # Evidenz sind Prompt-Datei + Run-Registry.
         print(f"WARTET: {erg.meldung}")
         print("Antwortdatei erstellen (z.B. durch die Cowork-Session), dann Tick erneut starten.")
     else:
@@ -267,7 +290,11 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
             print(f"GUARDRAIL: {meldung} — Meldung in {notfall}, keine weiteren Ticks starten!")
 
     git(projekt_repo, "add", "-A")
-    git(projekt_repo, "commit", "-m", f"{t['id']}: Tick-Ergebnis (Status, Board, Run-Registry)")
+    if erg.status == "wartet" and phase1:
+        git(projekt_repo, "commit", "-m",
+            f"{t['id']}: Warte-Lauf Phase 1 — Prompt + Run-Registry, kein Statuswechsel (T-0038)")
+    else:
+        git(projekt_repo, "commit", "-m", f"{t['id']}: Tick-Ergebnis (Status, Board, Run-Registry)")
     print("Tick abgeschlossen. Review/PR: Branch", branch)
     return 0
 

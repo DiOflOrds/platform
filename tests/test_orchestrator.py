@@ -167,5 +167,30 @@ class ArbeitskopieTest(unittest.TestCase):
         self.assertIn("OHNE 'process/'", text)
 
 
+class WarteLaufTest(unittest.TestCase):
+    """T-0038: Phase-1-Erkennung — Warte-Lauf ohne Statuswechsel-Commits."""
+
+    def test_phase1_ohne_antwortdatei(self):
+        """Session in der Kette + fehlende Antwortdatei = Phase 1 (kein Statuswechsel). Verifiziert: SWR-017."""
+        with tempfile.TemporaryDirectory() as repo:
+            self.assertTrue(orch.warte_lauf_phase1(
+                ticket("T-0010"), "llm", ["ollama", "session", "claude"], repo))
+
+    def test_keine_phase1_mit_antwortdatei(self):
+        """Vorhandene Antwortdatei = Phase 2, normaler Ablauf. Verifiziert: SWR-017."""
+        with tempfile.TemporaryDirectory() as repo:
+            d = os.path.join(repo, "management", "runs", "session-austausch")
+            os.makedirs(d)
+            open(os.path.join(d, "T-0010-antwort.md"), "w").write("x")
+            self.assertFalse(orch.warte_lauf_phase1(ticket("T-0010"), "llm", ["session"], repo))
+
+    def test_keine_phase1_ohne_session_oder_bei_script(self):
+        """Ohne session-Provider bzw. auf der Skript-Route greift die Erkennung nicht. Verifiziert: SWR-017."""
+        with tempfile.TemporaryDirectory() as repo:
+            self.assertFalse(orch.warte_lauf_phase1(ticket("T-0010"), "llm", ["claude"], repo))
+            self.assertFalse(orch.warte_lauf_phase1(
+                ticket("T-0010"), "script", "board-generierung", repo))
+
+
 if __name__ == "__main__":
     unittest.main()
