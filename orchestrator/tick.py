@@ -22,6 +22,7 @@ sys.path.insert(0, _PLATFORM)
 sys.path.insert(0, os.path.join(_PLATFORM, "scripts"))
 
 import board  # noqa: E402
+import preflight as preflight_mod  # noqa: E402  (T-0024: Precondition je Tick)
 from gateway import core as gateway  # noqa: E402
 
 try:
@@ -279,8 +280,17 @@ def main():
     p.add_argument("--ticket", help="nur dieses Ticket betrachten")
     p.add_argument("--provider", choices=["claude", "copilot", "ollama", "session"],
                    help="Provider-Kette übersteuern (z.B. session für Prompt-Austausch)")
+    p.add_argument("--no-preflight", action="store_true",
+                   help="Preflight (T-0024) überspringen — nur für Diagnosezwecke")
     a = p.parse_args()
-    sys.exit(tick(os.path.abspath(a.repos), a.projekt, a.dry_run, a.ticket, a.provider))
+    wurzel = os.path.abspath(a.repos)
+    if not a.no_preflight:
+        # T-0024: Precondition je Tick — Locks/Status/Board; Tests laufen in CI.
+        if preflight_mod.preflight(wurzel, skip_tests=True) and not a.dry_run:
+            print("Tick abgebrochen: Preflight hat Befunde (T-0024). "
+                  "--no-preflight nur für Diagnose.")
+            sys.exit(1)
+    sys.exit(tick(wurzel, a.projekt, a.dry_run, a.ticket, a.provider))
 
 
 if __name__ == "__main__":
