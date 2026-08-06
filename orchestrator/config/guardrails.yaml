@@ -5,7 +5,7 @@ budget:
   limit_month_eur: 20         # hartes Limit Testphase (Sprint 0-1)
   limit_tick_eur: 1.0         # ein Tick darf max. ~1 € kosten, sonst Abbruch + Meldung
   on_limit: stop_and_notify   # Abschaltung + E-Mail an Mensch
-  review: sprint-2            # Budget-Review mit Ist-Daten (Decision Request an Mensch)
+  review: sprint-4              # D012 (2026-08-06): Testphase bestätigt (0 EUR Ist); nächstes Review nach ersten Claude-Ticks
 
 providers:                        # LLM-Gateway: drei Executor (Masterplan Kap. 5.8)
   claude:
