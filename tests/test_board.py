@@ -177,5 +177,51 @@ class TestBoard(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+class DecisionRequestFelderTest(unittest.TestCase):
+    """T-0039: maschinenlesbare DR-Felder (optionen/frist/default) in board.py."""
+
+    DR = """---
+id: T-0001
+titel: "DR"
+typ: decision-request
+prozess: man3
+rolle: pl
+sprint: 4
+status: open
+prio: hoch
+blocked_by: []
+erstellt: 2026-08-06
+{felder}---
+
+Body.
+"""
+
+    def _probleme(self, felder):
+        with tempfile.TemporaryDirectory() as repo:
+            os.makedirs(os.path.join(repo, "tickets"))
+            with open(os.path.join(repo, "tickets", "T-0001.md"), "w", encoding="utf-8") as f:
+                f.write(self.DR.format(felder=felder))
+            tickets, probleme = board.lade_tickets(repo)
+            return probleme + board.validiere_alle(tickets, repo, git_pruefen=False)
+
+    def test_gueltige_felder(self):
+        """Optionen, gültige Frist und default aus optionen passieren die Prüfung. Verifiziert: SWR-001."""
+        self.assertEqual(self._probleme("optionen: [A1, A2, B1]\nfrist: 2026-08-31\ndefault: A1, B1\n"), [])
+
+    def test_ungueltige_frist(self):
+        """frist ohne Datumsformat wird abgelehnt. Verifiziert: SWR-001."""
+        self.assertTrue(any("frist" in p for p in self._probleme("frist: morgen\n")))
+
+    def test_default_nicht_in_optionen(self):
+        """default-Token außerhalb von optionen wird abgelehnt. Verifiziert: SWR-001."""
+        self.assertTrue(any("default" in p for p in
+                            self._probleme("optionen: [A1, A2]\ndefault: B9\n")))
+
+    def test_optionstoken_zerlegung(self):
+        """Kombinationen wie 'A2, B1 + C1' werden deterministisch in Token zerlegt. Verifiziert: SWR-001."""
+        self.assertEqual(board.parse_optionstoken("A2, B1 + C1"), ["A2", "B1", "C1"])
+        self.assertEqual(board.parse_optionstoken(""), [])
+
+
 if __name__ == "__main__":
     unittest.main()

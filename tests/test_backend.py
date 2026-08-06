@@ -135,6 +135,27 @@ class InboxTest(unittest.TestCase):
                 inbox.entscheide(self.wurzel, tid, opt)
             self.assertEqual(kontext.exception.code, code)
 
+    def test_optionen_validierung(self):
+        """T-0039: ungültige Option → 400 ohne Log-Eintrag; gültige Kombination wird angenommen. Verifiziert: SWR-020."""
+        open(os.path.join(self.p0, "tickets", "T-0097.md"), "w", encoding="utf-8").write(
+            TICKET_DR.replace("T-0099", "T-0097").replace(
+                "---\n\nOptionen",
+                "optionen: [A1, A2, B1]\nfrist: 2026-08-31\ndefault: A1, B1\n---\n\nOptionen"))
+        log_pfad = os.path.join(self.p0, "management", "decisions", "decision-log.md")
+        vorher = open(log_pfad, encoding="utf-8").read()
+        with self.assertRaises(inbox.InboxFehler) as kontext:
+            inbox.entscheide(self.wurzel, "T-0097", "C9")
+        self.assertEqual(kontext.exception.code, 400)
+        self.assertEqual(open(log_pfad, encoding="utf-8").read(), vorher,
+                         "ungültige Option darf keinen Decision-Log-Eintrag erzeugen")
+        e = inbox.entscheide(self.wurzel, "T-0097", "A2, B1")
+        self.assertEqual(e["option"], "A2, B1")
+
+    def test_freitext_ohne_optionen_feld_bleibt_gueltig(self):
+        """T-0039: Alt-DRs ohne optionen-Feld akzeptieren weiter Freitext. Verifiziert: SWR-020."""
+        e = inbox.entscheide(self.wurzel, "T-0099", "A")
+        self.assertEqual(e["option"], "A")
+
 
 class MailerTest(unittest.TestCase):
     """Ausfalltoleranz Mailer. Verifiziert: SWR-023."""

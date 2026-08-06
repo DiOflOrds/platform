@@ -63,6 +63,11 @@ def parse_liste(wert):
     return [r.strip() for r in (wert or "").strip("[]").split(",") if r.strip()]
 
 
+def parse_optionstoken(wert):
+    """T-0039: gewählte Option(en) in Token zerlegen ('A2, B1, C1' / 'A1 + B1' -> Token)."""
+    return [x for x in re.split(r"[\s,+/]+", (wert or "").strip()) if x]
+
+
 def lade_tickets(repo):
     """Alle Tickets aus <repo>/tickets/ laden. Gibt (tickets, probleme) zurück."""
     tdir = os.path.join(repo, "tickets")
@@ -133,6 +138,15 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
             fehler.append("reviewer darf nicht der Autor (rolle) sein")
     if t.get("status") == "blocked" and not bb:
         fehler.append("blocked erfordert blocked_by-Verweis")
+    # T-0039: decision-request — maschinenlesbare Optionen/Frist/Default
+    if t.get("typ") == "decision-request":
+        opts = parse_liste(t.get("optionen"))
+        if t.get("frist") and not DATUM_MUSTER.match(t["frist"]):
+            fehler.append(f"ungültiges Datum frist: {t['frist']}")
+        if opts and t.get("default"):
+            for tok in parse_optionstoken(t["default"]):
+                if tok not in opts:
+                    fehler.append(f"default-Token '{tok}' nicht in optionen")
     # Status-Übergang gegen HEAD (Mensch-Tickets sind Gates: Übergänge frei)
     if git_pruefen and repo and t.get("_datei") and t.get("status") in STATUS \
             and t.get("rolle") != "mensch":

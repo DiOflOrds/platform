@@ -56,9 +56,19 @@ def entscheide(root, ticket_id, option, begruendung=""):
     ticket_pfad = os.path.join(p0, "tickets", f"{ticket_id}.md")
     if not re.fullmatch(r"T-\d{4}", ticket_id or "") or not os.path.exists(ticket_pfad):
         raise InboxFehler(404, f"unbekanntes Ticket: {ticket_id}")
-    offene = {t["id"] for t in _dr_tickets(p0)}
+    offene = {t["id"]: t for t in _dr_tickets(p0)}
     if ticket_id not in offene:
         raise InboxFehler(400, f"{ticket_id} ist kein offener Decision Request")
+    # T-0039: gewählte Option gegen die Ticket-Optionen validieren (statt Freitext).
+    # Ungültige Option -> 400, KEIN Decision-Log-Eintrag. Ohne optionen-Feld
+    # (Alt-DRs) bleibt Freitext zulässig.
+    zulaessig = board.parse_liste(offene[ticket_id].get("optionen"))
+    if zulaessig:
+        token = board.parse_optionstoken(option)
+        unbekannt = [x for x in token if x not in zulaessig]
+        if not token or unbekannt:
+            raise InboxFehler(400, f"ungültige Option '{option.strip()}' — zulässig: "
+                                   f"{', '.join(zulaessig)} (T-0039)")
     heute = date.today().isoformat()
     log_pfad = os.path.join(p0, "management", "decisions", "decision-log.md")
     d_id = _naechste_d_id(log_pfad)
