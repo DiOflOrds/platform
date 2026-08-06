@@ -77,6 +77,8 @@ def generiere(swrs, abdeckung, ohne_bezug):
             deckung = f"{len(tests)} Test(s)"
         elif e["status"] == "reviewed" and re.search(r"workflow|CI-Lauf", e["verification"], re.I):
             deckung = "über CI-Workflow verifiziert (kein Unit-Test)"
+        elif e["status"] == "reviewed" and re.search(r"checklist|Checkliste", e["verification"]):
+            deckung = "manuelle Abnahme dokumentiert (p0/verification/reports/) — kein Unit-Test"
         elif e["status"] == "reviewed":
             deckung = "**LÜCKE**"
             luecken.append(swr)

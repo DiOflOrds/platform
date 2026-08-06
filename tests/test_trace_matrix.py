@@ -34,6 +34,7 @@ ANFORDERUNGEN = textwrap.dedent('''
     | SWR-104 | B | STK-001 | Unit tests | high | reviewed |
     | SWR-105 | C | STK-001 | CI workflow run | high | reviewed |
     | SWR-106 | D | STK-001 | API tests | medium | draft |
+    | SWR-107 | E | STK-001 | UI acceptance checklist | medium | reviewed |
 ''')
 
 
@@ -73,6 +74,7 @@ class TestMatrix(unittest.TestCase):
         self.assertEqual(luecken, ["SWR-104"])
         self.assertIn("über CI-Workflow verifiziert", text)
         self.assertIn("offen (Status draft)", text)
+        self.assertIn("manuelle Abnahme dokumentiert", text)  # Checklisten-Nachweis (T-0034)
 
     def test_unbekannte_swr_in_tests_ist_luecke(self):
         """Eine in Tests referenzierte, im Anforderungsdokument fehlende SWR wird gemeldet."""
