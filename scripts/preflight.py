@@ -139,10 +139,14 @@ def preflight(root, skip_tests=False, keep_locks=False):
             print(f"[{name}] Arbeitskopie nicht sauber ({len(dirty)} Datei(en)) — {tracking}")
         else:
             print(f"[{name}] sauber — {tracking}")
-    ok, meldung = board_check(os.path.join(root, "p0"))
-    print(f"[p0] board-check: {'OK' if ok else 'FEHLER — ' + meldung}")
-    if not ok:
-        befunde += 1
+    # SWR-029: board-check über ALLE Projekt-Repos (Discovery-Konvention, ADR-004).
+    projekt_namen = [n for n in repos_im_root(root)
+                     if os.path.isdir(os.path.join(root, n, "tickets"))] or ["p0"]
+    for name in projekt_namen:
+        ok, meldung = board_check(os.path.join(root, name))
+        print(f"[{name}] board-check: {'OK' if ok else 'FEHLER — ' + meldung}")
+        if not ok:
+            befunde += 1
     if skip_tests:
         print("[platform] Unit-Tests übersprungen (--skip-tests)")
     else:

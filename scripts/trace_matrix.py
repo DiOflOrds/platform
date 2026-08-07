@@ -123,8 +123,9 @@ def main():
     p.add_argument("--repos", default=".", help="Wurzel mit platform/ und p0/")
     p.add_argument("--check", action="store_true", help="Exit 1 bei Lücken (CI-Gate)")
     p.add_argument("--tests", help="Tests-Verzeichnis (Default: <repos>/platform/tests)")
-    p.add_argument("--swr", help="SWR-Markdown (Default: <repos>/p0/requirements/"
-                                 "software/software-requirements.md)")
+    p.add_argument("--swr", action="append",
+                   help="SWR-Markdown, mehrfach möglich — Quellen werden zu EINER "
+                        "Matrix zusammengeführt (SWR-029; Default: p0-Dokument)")
     p.add_argument("--ziel", help="Ziel-Matrix (Default: <repos>/p0/verification/"
                                   "reports/swr-test-matrix.md)")
     p.add_argument("--id-muster", default=SWR_RE.pattern,
@@ -135,13 +136,16 @@ def main():
     wurzel = os.path.abspath(a.repos)
     if a.produkt:
         cfg = lade_produkt_cfg(a.produkt, wurzel)
-        a.tests, a.swr, a.ziel, a.id_muster = (cfg["tests"], cfg["swr"],
+        a.tests, a.swr, a.ziel, a.id_muster = (cfg["tests"], [cfg["swr"]],
                                                cfg["ziel"], cfg["id_muster"])
     muster = re.compile(a.id_muster)
     abdeckung, ohne = tests_scannen(
         a.tests or os.path.join(wurzel, "platform", "tests"), muster)
-    swrs = swr_lesen(a.swr or os.path.join(wurzel, "p0", "requirements", "software",
-                                           "software-requirements.md"), muster)
+    swr_dateien = a.swr or [os.path.join(wurzel, "p0", "requirements", "software",
+                                         "software-requirements.md")]
+    swrs = {}
+    for pfad in swr_dateien:  # SWR-029: mehrere Anforderungsquellen, eine Matrix
+        swrs.update(swr_lesen(pfad, muster))
     text, luecken = generiere(swrs, abdeckung, ohne)
     ziel = a.ziel or os.path.join(wurzel, "p0", "verification", "reports",
                                   "swr-test-matrix.md")

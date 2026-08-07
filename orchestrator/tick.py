@@ -181,6 +181,11 @@ def setze_status(projekt_repo, ticket_id, neu, extra_felder=None, notiz=None):
 def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
     prozess_repo = os.path.join(repos, "process")
     projekt_repo = os.path.join(repos, projekt)
+    # SWR-028/ADR-004: Projekt gegen die Discovery-Konvention validieren.
+    if not os.path.isdir(os.path.join(projekt_repo, "tickets")):
+        print(f"ABBRUCH — unbekanntes Projekt '{projekt}': {projekt_repo} hat kein "
+              f"tickets/-Verzeichnis (Discovery-Konvention, ADR-004).")
+        return 1
     registry = lade_registry(prozess_repo)
     guardrails_pfad = os.path.join(repos, "platform", "orchestrator", "config", "guardrails.yaml")
     registry_pfad = os.path.join(projekt_repo, "management", "runs", "run-registry.jsonl")
