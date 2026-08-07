@@ -10,6 +10,7 @@ import re
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend import aggregation, inbox, mailer  # noqa: E402
@@ -52,17 +53,27 @@ class Api(BaseHTTPRequestHandler):
     # ---------- Routen ----------
     def do_GET(self):
         try:
-            if self.path == "/api/board":
-                return self._json(200, aggregation.lade_board(type(self).wurzel))
-            if self.path == "/api/reports":
-                return self._json(200, aggregation.lade_reports(type(self).wurzel))
-            if self.path == "/api/kpi":
-                return self._json(200, aggregation.lade_kpi(type(self).wurzel))
-            if self.path == "/api/inbox":
-                return self._json(200, inbox.liste(type(self).wurzel))
-            if self.path.startswith("/api/"):
+            teile = urlsplit(self.path)
+            pfad = teile.path
+            projekt = (parse_qs(teile.query).get("projekt") or ["p0"])[0]
+            wurzel = type(self).wurzel
+            if pfad == "/api/projekte":  # SWR-025
+                return self._json(200, {"projekte": aggregation.projekte(wurzel)})
+            if pfad == "/api/uebersicht":  # SWR-026
+                return self._json(200, aggregation.uebersicht(wurzel))
+            if pfad == "/api/board":
+                return self._json(200, aggregation.lade_board(wurzel, projekt))
+            if pfad == "/api/reports":
+                return self._json(200, aggregation.lade_reports(wurzel, projekt))
+            if pfad == "/api/kpi":
+                return self._json(200, aggregation.lade_kpi(wurzel, projekt))
+            if pfad == "/api/inbox":  # SWR-027: alle Projekte
+                return self._json(200, inbox.liste(wurzel))
+            if pfad.startswith("/api/"):
                 return self._json(404, {"fehler": "unbekannter Endpunkt"})
-            return self._statisch(self.path)
+            return self._statisch(pfad)
+        except ValueError as e:  # unbekanntes Projekt (SWR-025)
+            return self._json(404, {"fehler": str(e)[:400]})
         except Exception as e:  # noqa: BLE001
             return self._json(500, {"fehler": str(e)[:400]})
 
@@ -75,16 +86,19 @@ class Api(BaseHTTPRequestHandler):
             daten = json.loads(self.rfile.read(laenge).decode("utf-8") or "{}")
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"fehler": "ungültiger JSON-Body"})
+        projekt = daten.get("projekt", "p0")  # SWR-027
         try:
             ergebnis = inbox.entscheide(type(self).wurzel, m.group(1),
                                         daten.get("option", ""),
-                                        daten.get("begruendung", ""))
+                                        daten.get("begruendung", ""),
+                                        projekt=projekt)
         except inbox.InboxFehler as e:
             return self._json(e.code, {"fehler": str(e)})
         except Exception as e:  # noqa: BLE001
             return self._json(500, {"fehler": str(e)[:400]})
+        ergebnis["projekt"] = projekt
         ok, meldung = mailer.sende(
-            f"[P0] Entscheidung {ergebnis['entscheidung']} zu {ergebnis['ticket']}",
+            f"[{projekt}] Entscheidung {ergebnis['entscheidung']} zu {ergebnis['ticket']}",
             f"Option: {ergebnis['option']}\nBegründung: {daten.get('begruendung', '—')}\n")
         type(self).protokoll(f"[backend] Mail: {meldung}")
         ergebnis["mail"] = ok
