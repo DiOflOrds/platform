@@ -142,6 +142,23 @@ class MehrereSwrQuellenTest(unittest.TestCase):
             self.assertEqual(sorted(swrs), ["SWR-101", "SWR-201"])
 
 
+class AlleProjekteTest(unittest.TestCase):
+    """P1/T-0010: SWR-Quellen per Discovery statt Aufzählung."""
+
+    def test_discovery_findet_projekt_swr_dokumente(self):
+        """Nur Projekte (tickets/) mit SWR-Dokument werden als Quelle aufgenommen. Verifiziert: SWR-029."""
+        with tempfile.TemporaryDirectory() as root:
+            for name, mit_swr in (("p0", True), ("p1", True), ("produktx", False)):
+                os.makedirs(os.path.join(root, name, "tickets"))
+                if mit_swr:
+                    ziel = os.path.join(root, name, "requirements", "software")
+                    os.makedirs(ziel)
+                    open(os.path.join(ziel, "software-requirements.md"), "w").write("x")
+            quellen = trace_matrix.swr_quellen_alle_projekte(root)
+            self.assertEqual([os.path.basename(os.path.dirname(os.path.dirname(
+                os.path.dirname(q)))) for q in quellen], ["p0", "p1"])
+
+
 class ProduktCfgTest(unittest.TestCase):
     """T-0064: Produkt-Konfiguration produkte.yaml für Ein-Parameter-Matrix-Aufrufe."""
 

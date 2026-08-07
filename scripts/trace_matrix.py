@@ -23,6 +23,17 @@ PRODUKTE_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
                             "orchestrator", "config", "produkte.yaml")
 
 
+def swr_quellen_alle_projekte(wurzel):
+    """T-0010(p1): SWR-Dokumente aller Projekte per Discovery (tickets/ + requirements)."""
+    quellen = []
+    for d in sorted(os.listdir(wurzel)):
+        pfad = os.path.join(wurzel, d, "requirements", "software",
+                            "software-requirements.md")
+        if os.path.isdir(os.path.join(wurzel, d, "tickets")) and os.path.exists(pfad):
+            quellen.append(pfad)
+    return quellen
+
+
 def lade_produkt_cfg(name, wurzel, cfg_pfad=None):
     """T-0064: Matrix-Parameter eines Produkts aus produkte.yaml (Pfade absolut)."""
     try:
@@ -132,8 +143,12 @@ def main():
                    help="Regex für Anforderungs-IDs (T-0048, z.B. 'SWR-D\\d{2}')")
     p.add_argument("--produkt", help="Produktname aus config/produkte.yaml (T-0064) — "
                                      "ersetzt --tests/--swr/--ziel/--id-muster")
+    p.add_argument("--alle-projekte", action="store_true",
+                   help="T-0010(p1): SWR-Quellen per Discovery statt Aufzählung")
     a = p.parse_args()
     wurzel = os.path.abspath(a.repos)
+    if a.alle_projekte:
+        a.swr = swr_quellen_alle_projekte(wurzel)
     if a.produkt:
         cfg = lade_produkt_cfg(a.produkt, wurzel)
         a.tests, a.swr, a.ziel, a.id_muster = (cfg["tests"], [cfg["swr"]],

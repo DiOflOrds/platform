@@ -44,8 +44,5 @@ jobs:
       - name: Unit-Tests (gateway, orchestrator, board, backend)
         working-directory: platform
         run: python -m unittest discover tests -v
-      - name: SWR↔Test-Matrix (T-0037/SWR-029 — beide Anforderungsquellen, Lücken brechen die CI)
-        run: >
-          python platform/scripts/trace_matrix.py --repos . --check
-          --swr p0/requirements/software/software-requirements.md
-          --swr p1/requirements/software/software-requirements.md
+      - name: SWR↔Test-Matrix (T-0037/SWR-029/T-0010 — Quellen per Discovery, Lücken brechen die CI)
+        run: python platform/scripts/trace_matrix.py --repos . --check --alle-projekte
