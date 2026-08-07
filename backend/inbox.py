@@ -13,6 +13,8 @@ if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 import board  # noqa: E402
 
+from . import aggregation  # noqa: E402
+
 FINAL = ("done", "rejected")
 COMMIT_IDENTITAET = ["-c", "user.name=Mensch via Inbox",
                      "-c", "user.email=geraldine.john90@gmail.com"]
@@ -30,15 +32,18 @@ def _dr_tickets(p0):
             if t.get("typ") == "decision-request" and t.get("status") not in FINAL]
 
 
-def liste(root):
-    """Offene DRs mit Body (Kontext/Optionen/Frist/Default stehen im Ticket-Text)."""
-    p0 = os.path.join(root, "p0")
+def liste(root, projekt=None):
+    """Offene DRs mit Body — über ALLE Projekte (SWR-027) oder gescopt auf eines."""
+    namen = [projekt] if projekt else (aggregation.projekte(root) or ["p0"])
     eintraege = []
-    for t in _dr_tickets(p0):
-        pfad = os.path.join(p0, "tickets", f"{t['id']}.md")
-        body = re.sub(r"(?s)^---.*?---\s*", "", open(pfad, encoding="utf-8").read())
-        eintraege.append({"id": t["id"], "titel": t.get("titel"), "status": t.get("status"),
-                          "prio": t.get("prio"), "sprint": t.get("sprint"), "body": body.strip()})
+    for name in namen:
+        repo = os.path.join(root, name)
+        for t in _dr_tickets(repo):
+            pfad = os.path.join(repo, "tickets", f"{t['id']}.md")
+            body = re.sub(r"(?s)^---.*?---\s*", "", open(pfad, encoding="utf-8").read())
+            eintraege.append({"projekt": name, "id": t["id"], "titel": t.get("titel"),
+                              "status": t.get("status"), "prio": t.get("prio"),
+                              "sprint": t.get("sprint"), "body": body.strip()})
     return {"inbox": eintraege}
 
 
@@ -48,11 +53,14 @@ def _naechste_d_id(log_pfad):
     return f"D{(max(ids) + 1 if ids else 0):03d}"
 
 
-def entscheide(root, ticket_id, option, begruendung=""):
-    """Entscheidung annehmen: Log-Zeile + Ticket-Notiz + BOARD + Commit. Gibt D-ID zurück."""
+def entscheide(root, ticket_id, option, begruendung="", projekt="p0"):
+    """Entscheidung annehmen (je Projekt, SWR-027): Log + Ticket + BOARD + Commit."""
     if not option or not str(option).strip():
         raise InboxFehler(400, "option darf nicht leer sein")
-    p0 = os.path.join(root, "p0")
+    try:
+        p0 = aggregation.projekt_pfad(root, projekt)
+    except ValueError as e:
+        raise InboxFehler(404, str(e))
     ticket_pfad = os.path.join(p0, "tickets", f"{ticket_id}.md")
     if not re.fullmatch(r"T-\d{4}", ticket_id or "") or not os.path.exists(ticket_pfad):
         raise InboxFehler(404, f"unbekanntes Ticket: {ticket_id}")
