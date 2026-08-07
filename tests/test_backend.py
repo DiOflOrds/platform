@@ -67,6 +67,70 @@ def _wurzel_bauen(d):
     return d
 
 
+TICKET_DR_P1 = TICKET_DR.replace("T-0099", "T-0001").replace(
+    "sprint: 3", "sprint: 1").replace(
+    "---\n\nOptionen", "optionen: [A, B]\n---\n\nOptionen")
+
+
+def _p1_dazu(wurzel):
+    """Zweites Projekt für Multi-Projekt-Tests (SWR-025..027)."""
+    p1 = os.path.join(wurzel, "p1")
+    os.makedirs(os.path.join(p1, "tickets"))
+    os.makedirs(os.path.join(p1, "management", "decisions"))
+    open(os.path.join(p1, "tickets", "T-0001.md"), "w", encoding="utf-8").write(TICKET_DR_P1)
+    open(os.path.join(p1, "management", "decisions", "decision-log.md"), "w",
+         encoding="utf-8").write(LOG_KOPF)
+    for args in (["init", "-q"], ["add", "-A"],
+                 ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"]):
+        subprocess.run(["git", "-C", p1] + args, check=True, capture_output=True)
+    return p1
+
+
+class MultiProjektTest(unittest.TestCase):
+    """P1/T-0005+T-0007: Discovery, Scoping, Übersicht, projektübergreifende Inbox."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wurzel = _wurzel_bauen(self._tmp.name)
+        _p1_dazu(self.wurzel)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_discovery_und_scoping(self):
+        """Projekte werden per Konvention erkannt; Board-API ist je Projekt gescopt, unbekannte Namen werden abgelehnt. Verifiziert: SWR-025."""
+        self.assertEqual(aggregation.projekte(self.wurzel), ["p0", "p1"])
+        self.assertEqual(aggregation.lade_board(self.wurzel, "p1")["anzahl"], 1)
+        self.assertEqual(aggregation.lade_board(self.wurzel)["anzahl"], 2)  # Default p0
+        with self.assertRaises(ValueError):
+            aggregation.lade_board(self.wurzel, "gibtsnicht")
+
+    def test_uebersicht_je_projekt(self):
+        """Die Übersicht listet je Projekt offene Tickets und offene DRs. Verifiziert: SWR-026."""
+        u = aggregation.uebersicht(self.wurzel)
+        je_name = {e["projekt"]: e for e in u["projekte"]}
+        self.assertEqual(je_name["p1"]["tickets_offen"], 1)
+        self.assertEqual(je_name["p1"]["offene_drs"][0]["id"], "T-0001")
+        self.assertEqual(je_name["p0"]["offene_drs"][0]["id"], "T-0099")
+
+    def test_inbox_ueber_alle_projekte(self):
+        """Die Inbox listet DRs aller Projekte mit projekt-Feld. Verifiziert: SWR-027."""
+        eintraege = inbox.liste(self.wurzel)["inbox"]
+        self.assertEqual([(e["projekt"], e["id"]) for e in eintraege],
+                         [("p0", "T-0099"), ("p1", "T-0001")])
+
+    def test_entscheidung_im_richtigen_projekt(self):
+        """Entscheidungen landen im Log des jeweiligen Projekts; falsches Projekt → 404. Verifiziert: SWR-027."""
+        e = inbox.entscheide(self.wurzel, "T-0001", "A", "Grund", projekt="p1")
+        self.assertEqual(e["entscheidung"], "D001")
+        log = open(os.path.join(self.wurzel, "p1", "management", "decisions",
+                                "decision-log.md"), encoding="utf-8").read()
+        self.assertIn("| D001 |", log)
+        with self.assertRaises(inbox.InboxFehler) as k:
+            inbox.entscheide(self.wurzel, "T-0099", "A", projekt="p1")
+        self.assertEqual(k.exception.code, 404)
+
+
 class AggregationTest(unittest.TestCase):
     """Read-only-Aggregation aus der Arbeitskopie. Verifiziert: SWR-022."""
 
@@ -220,6 +284,32 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(antwort["entscheidung"], "D001")
         self.assertFalse(antwort["mail"])  # SMTP unkonfiguriert, API funktioniert trotzdem
         self.assertEqual(self._get("/api/inbox")["inbox"][0]["id"], "T-0099")
+
+    def test_multi_projekt_endpunkte(self):
+        """/api/projekte, /api/uebersicht und ?projekt= scopen korrekt; POST trägt das Projekt. Verifiziert: SWR-025, SWR-026, SWR-027."""
+        _p1_dazu(self.wurzel)
+        self.assertEqual(self._get("/api/projekte")["projekte"], ["p0", "p1"])
+        self.assertEqual(len(self._get("/api/uebersicht")["projekte"]), 2)
+        self.assertEqual(self._get("/api/board?projekt=p1")["anzahl"], 1)
+        self.assertEqual(len(self._get("/api/inbox")["inbox"]), 2)
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/inbox/T-0001/decision",
+            data=json.dumps({"option": "A", "projekt": "p1"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as r:
+            antwort = json.loads(r.read().decode("utf-8"))
+        self.assertEqual(antwort["projekt"], "p1")
+        log = open(os.path.join(self.wurzel, "p1", "management", "decisions",
+                                "decision-log.md"), encoding="utf-8").read()
+        self.assertIn("| D001 |", log)
+
+    def test_unbekanntes_projekt_404(self):
+        """Unbekannte Projektnamen liefern 404 statt Serverfehler. Verifiziert: SWR-025."""
+        try:
+            self._get("/api/board?projekt=nix")
+            self.fail("404 erwartet")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 404)
 
 
 if __name__ == "__main__":

@@ -119,6 +119,29 @@ class TestIdMuster(unittest.TestCase):
         self.assertEqual(ohne, ["test_p.py::T::test_a"])
 
 
+class MehrereSwrQuellenTest(unittest.TestCase):
+    """P1/T-0008: mehrere Anforderungsdokumente werden zu EINER Matrix zusammengeführt."""
+
+    def test_merge_zweier_quellen_ohne_luecken(self):
+        """SWRs aus p0- und p1-Dokument decken gemeinsam alle Test-Referenzen ab. Verifiziert: SWR-029."""
+        with tempfile.TemporaryDirectory() as d:
+            a = os.path.join(d, "a.md")
+            b = os.path.join(d, "b.md")
+            kopf = ("| ID | Requirement | Trace | Verification | Prio | Status |\n"
+                    "|---|---|---|---|---|---|\n")
+            open(a, "w", encoding="utf-8").write(
+                kopf + "| SWR-101 | A | STK-001 | Unit tests | high | reviewed |\n")
+            open(b, "w", encoding="utf-8").write(
+                kopf + "| SWR-201 | B | STK-013 | Unit tests | high | reviewed |\n")
+            swrs = {}
+            for pfad in (a, b):
+                swrs.update(trace_matrix.swr_lesen(pfad))
+            _, luecken = trace_matrix.generiere(
+                swrs, {"SWR-101": ["t1"], "SWR-201": ["t2"]}, [])
+            self.assertEqual(luecken, [])
+            self.assertEqual(sorted(swrs), ["SWR-101", "SWR-201"])
+
+
 class ProduktCfgTest(unittest.TestCase):
     """T-0064: Produkt-Konfiguration produkte.yaml für Ein-Parameter-Matrix-Aufrufe."""
 

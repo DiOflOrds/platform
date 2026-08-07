@@ -82,5 +82,23 @@ class TestReposImRoot(unittest.TestCase):
             self.assertEqual(namen[:3], ["process", "platform", "p0"])
 
 
+class MultiProjektBoardCheckTest(unittest.TestCase):
+    """P1/T-0008: Preflight prüft die Boards ALLER Projekt-Repos in einem Lauf."""
+
+    def test_invalides_zweitprojekt_ist_befund(self):
+        """Ein kaputtes Ticket im Zweitprojekt erzeugt einen Befund. Verifiziert: SWR-029."""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            for name, ticket in (("p0", None), ("p1", "---\nid: T-0001\n---\n\nkaputt\n")):
+                repo = os.path.join(root, name)
+                os.makedirs(os.path.join(repo, "tickets"))
+                if ticket:
+                    open(os.path.join(repo, "tickets", "T-0001.md"), "w",
+                         encoding="utf-8").write(ticket)
+                subprocess.run(["git", "-C", repo, "init", "-q"], check=True)
+            self.assertGreaterEqual(preflight.preflight(root, skip_tests=True), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

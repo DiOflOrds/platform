@@ -167,6 +167,15 @@ class ArbeitskopieTest(unittest.TestCase):
         self.assertIn("OHNE 'process/'", text)
 
 
+class ProjektValidierungTest(unittest.TestCase):
+    """P1/T-0008: Tick validiert --projekt gegen die Discovery-Konvention (ADR-004)."""
+
+    def test_unbekanntes_projekt_bricht_ab(self):
+        """Ein Projekt ohne tickets/-Verzeichnis wird mit klarer Meldung abgelehnt. Verifiziert: SWR-028."""
+        with tempfile.TemporaryDirectory() as repos:
+            self.assertEqual(orch.tick(repos, projekt="gibtsnicht"), 1)
+
+
 class WarteLaufTest(unittest.TestCase):
     """T-0038: Phase-1-Erkennung — Warte-Lauf ohne Statuswechsel-Commits."""
 
