@@ -1,10 +1,14 @@
-// FRT-PWA (T-0033, SWR-021; ADR-002): vier Ansichten + Inbox-Formular, reine API-Aufrufe.
+// FRT-PWA (T-0033, SWR-021; ADR-002): Ansichten + Inbox-Formular, reine API-Aufrufe.
 // T-0040: abwärtskompatibel (kein replaceChildren, kein optional chaining) + sichtbare JS-Fehler.
+// P1/T-0006 (SWR-026): Projektwahl + projektübergreifende Übersicht.
 "use strict";
-var TABS = [["board", "Board"], ["inbox", "Inbox"], ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
+var TABS = [["uebersicht", "Übersicht"], ["board", "Board"], ["inbox", "Inbox"],
+            ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
 var inhalt = document.getElementById("inhalt");
 var tabsEl = document.getElementById("tabs");
-var aktiv = location.hash.replace("#", "") || "board";
+var projektEl = document.getElementById("projekt");
+var aktiv = location.hash.replace("#", "") || "uebersicht";
+var projekt = "p0";
 
 window.onerror = function (meldung, quelle, zeile) {
   var kasten = document.createElement("div");
@@ -54,8 +58,33 @@ function zeige(elemente) {
   elemente.forEach(function (e) { inhalt.appendChild(e); });
 }
 
+function ladeUebersicht() {
+  return api("/api/uebersicht").then(function (u) {
+    document.getElementById("stand").textContent = u.projekte.length + " Projekt(e)";
+    zeige(u.projekte.map(function (p) {
+      var karte = el("div", { "class": "karte" },
+        el("h3", {}, p.projekt),
+        el("div", { "class": "zeile" },
+          el("span", { "class": "pille open" }, p.tickets_offen + " offen"),
+          el("span", { "class": "pille" }, p.tickets_gesamt + " gesamt")));
+      if (p.offene_drs.length) {
+        karte.appendChild(el("div", { "class": "zeile" }, "Offene Entscheidungen:"));
+        p.offene_drs.forEach(function (dr) {
+          karte.appendChild(el("div", { "class": "zeile" },
+            el("span", { "class": "pille in_review" }, dr.id), " " + dr.titel));
+        });
+      }
+      karte.appendChild(el("button", { "class": "knopf", onclick: function () {
+        projekt = p.projekt; projektEl.value = projekt; aktiv = "board";
+        location.hash = "board"; lade();
+      } }, "Zum Board"));
+      return karte;
+    }));
+  });
+}
+
 function ladeBoard() {
-  return api("/api/board").then(function (b) {
+  return api("/api/board?projekt=" + encodeURIComponent(projekt)).then(function (b) {
     document.getElementById("stand").textContent = b.anzahl + " Tickets";
     var reihenfolge = ["open", "in_analysis", "in_progress", "in_review", "blocked", "done", "rejected"];
     var karten = [];
@@ -89,7 +118,8 @@ function ladeInbox() {
         knopf.disabled = true;
         api("/api/inbox/" + dr.id + "/decision", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ option: opt.value, begruendung: grund.value })
+          body: JSON.stringify({ option: opt.value, begruendung: grund.value,
+                                 projekt: dr.projekt || "p0" })
         }).then(function (e) {
           leeren(meldung);
           meldung.appendChild(el("div", { "class": "meldung ok" },
@@ -101,7 +131,7 @@ function ladeInbox() {
         });
       });
       return el("div", { "class": "karte" },
-        el("h3", {}, dr.id + " — " + dr.titel),
+        el("h3", {}, "[" + (dr.projekt || "p0") + "] " + dr.id + " — " + dr.titel),
         el("div", { "class": "zeile" }, el("span", { "class": "pille " + dr.status }, dr.status),
           el("span", { "class": "pille" }, dr.prio + " · Sprint " + dr.sprint)),
         el("pre", {}, dr.body), opt, grund, knopf, meldung);
@@ -110,7 +140,7 @@ function ladeInbox() {
 }
 
 function ladeReports() {
-  return api("/api/reports").then(function (antwort) {
+  return api("/api/reports?projekt=" + encodeURIComponent(projekt)).then(function (antwort) {
     zeige(antwort.reports.length ? antwort.reports.map(function (r) {
       return el("div", { "class": "karte" }, el("h3", {}, r.sprint), el("pre", {}, r.text));
     }) : [el("p", { "class": "leer" }, "Noch keine Sprint-Reports.")]);
@@ -118,7 +148,7 @@ function ladeReports() {
 }
 
 function ladeKpi() {
-  return api("/api/kpi").then(function (k) {
+  return api("/api/kpi?projekt=" + encodeURIComponent(projekt)).then(function (k) {
     var kacheln = el("div", { "class": "karte kpiraster" },
       el("div", { "class": "kpi" }, el("b", {}, String(k.laeufe)), "Läufe"),
       el("div", { "class": "kpi" }, el("b", {}, k.kosten_eur_gesamt.toFixed(2) + " €"), "Kosten gesamt"));
@@ -138,9 +168,20 @@ function ladeKpi() {
 function lade() {
   zeigeTabs();
   zeige([el("p", { "class": "leer" }, "Lade …")]);
-  var ansichten = { board: ladeBoard, inbox: ladeInbox, reports: ladeReports, kpi: ladeKpi };
-  ansichten[aktiv]().catch(function (fehler) {
+  var ansichten = { uebersicht: ladeUebersicht, board: ladeBoard, inbox: ladeInbox,
+                    reports: ladeReports, kpi: ladeKpi };
+  (ansichten[aktiv] || ladeUebersicht)().catch(function (fehler) {
     zeige([el("div", { "class": "meldung fehler" }, "API nicht erreichbar: " + String(fehler.message || fehler))]);
   });
 }
-lade();
+
+projektEl.addEventListener("change", function () { projekt = projektEl.value; lade(); });
+api("/api/projekte").then(function (antwort) {
+  leeren(projektEl);
+  antwort.projekte.forEach(function (name) {
+    projektEl.appendChild(el("option", { value: name }, name));
+  });
+  if (antwort.projekte.indexOf(projekt) < 0 && antwort.projekte.length) projekt = antwort.projekte[0];
+  projektEl.value = projekt;
+  lade();
+}).catch(function () { lade(); });
