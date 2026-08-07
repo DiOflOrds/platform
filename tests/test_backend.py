@@ -119,6 +119,26 @@ class MultiProjektTest(unittest.TestCase):
         self.assertEqual([(e["projekt"], e["id"]) for e in eintraege],
                          [("p0", "T-0099"), ("p1", "T-0001")])
 
+    def test_views_requirements_verifikation_baselines(self):
+        """Requirements-/Verifikations-Dateien werden je Projekt geliefert, Baselines je Repo. Verifiziert: SWR-030, SWR-031, SWR-032."""
+        p0 = os.path.join(self.wurzel, "p0")
+        os.makedirs(os.path.join(p0, "requirements", "software"))
+        open(os.path.join(p0, "requirements", "software", "software-requirements.md"),
+             "w", encoding="utf-8").write("# SWRs\n")
+        os.makedirs(os.path.join(p0, "verification", "reports"))
+        open(os.path.join(p0, "verification", "reports", "matrix.md"),
+             "w", encoding="utf-8").write("# Matrix\n")
+        subprocess.run(["git", "-C", p0, "-c", "user.name=t", "-c", "user.email=t@t",
+                        "tag", "-a", "demo-v1", "-m", "Demo-Baseline"],
+                       check=True, capture_output=True)
+        reqs = aggregation.lade_requirements(self.wurzel, "p0")
+        self.assertEqual(reqs["dateien"][0]["datei"], "software/software-requirements.md")
+        ver = aggregation.lade_verifikation(self.wurzel, "p0")
+        self.assertIn("Matrix", ver["dateien"][0]["text"])
+        bl = aggregation.lade_baselines(self.wurzel)
+        p0_tags = [r["tags"] for r in bl["repos"] if r["repo"] == "p0"][0]
+        self.assertTrue(any("demo-v1" in t for t in p0_tags))
+
     def test_entscheidung_im_richtigen_projekt(self):
         """Entscheidungen landen im Log des jeweiligen Projekts; falsches Projekt → 404. Verifiziert: SWR-027."""
         e = inbox.entscheide(self.wurzel, "T-0001", "A", "Grund", projekt="p1")
