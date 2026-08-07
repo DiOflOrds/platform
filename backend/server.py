@@ -67,6 +67,12 @@ class Api(BaseHTTPRequestHandler):
                 return self._json(200, aggregation.lade_reports(wurzel, projekt))
             if pfad == "/api/kpi":
                 return self._json(200, aggregation.lade_kpi(wurzel, projekt))
+            if pfad == "/api/requirements":  # SWR-030
+                return self._json(200, aggregation.lade_requirements(wurzel, projekt))
+            if pfad == "/api/verifikation":  # SWR-031
+                return self._json(200, aggregation.lade_verifikation(wurzel, projekt))
+            if pfad == "/api/baselines":  # SWR-032
+                return self._json(200, aggregation.lade_baselines(wurzel))
             if pfad == "/api/inbox":  # SWR-027: alle Projekte
                 return self._json(200, inbox.liste(wurzel))
             if pfad.startswith("/api/"):

@@ -70,6 +70,40 @@ def lade_reports(root, projekt="p0"):
     return {"reports": reports}
 
 
+def lade_requirements(root, projekt="p0"):
+    """SWR-030: Requirements-Markdown eines Projekts read-only (relativer Pfad + Text)."""
+    basis = os.path.join(projekt_pfad(root, projekt), "requirements")
+    dateien = []
+    for pfad in sorted(glob.glob(os.path.join(basis, "**", "*.md"), recursive=True)):
+        dateien.append({"datei": os.path.relpath(pfad, basis).replace(os.sep, "/"),
+                        "text": open(pfad, encoding="utf-8").read()})
+    return {"dateien": dateien}
+
+
+def lade_verifikation(root, projekt="p0"):
+    """SWR-031: Verifikationsreports (inkl. Traceability-Matrizen) eines Projekts."""
+    basis = os.path.join(projekt_pfad(root, projekt), "verification")
+    dateien = []
+    for pfad in sorted(glob.glob(os.path.join(basis, "**", "*.md"), recursive=True)):
+        dateien.append({"datei": os.path.relpath(pfad, basis).replace(os.sep, "/"),
+                        "text": open(pfad, encoding="utf-8").read()})
+    return {"dateien": dateien}
+
+
+def lade_baselines(root):
+    """SWR-032: annotierte Tags (Baselines/Releases) je Repo unter der Wurzel."""
+    import subprocess
+    ergebnis = []
+    for d in sorted(os.listdir(root)):
+        if not os.path.isdir(os.path.join(root, d, ".git")):
+            continue
+        out = subprocess.run(["git", "-C", os.path.join(root, d), "tag", "-n1"],
+                             capture_output=True, text=True)
+        tags = [z.strip() for z in out.stdout.splitlines() if z.strip()]
+        ergebnis.append({"repo": d, "tags": tags})
+    return {"repos": ergebnis}
+
+
 def lade_kpi(root, projekt="p0"):
     """Kosten/KPI aus der Run-Registry des Projekts (JSONL, append-only)."""
     pfad = os.path.join(projekt_pfad(root, projekt), "management", "runs", "run-registry.jsonl")

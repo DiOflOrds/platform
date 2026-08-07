@@ -3,7 +3,8 @@
 // P1/T-0006 (SWR-026): Projektwahl + projektübergreifende Übersicht.
 "use strict";
 var TABS = [["uebersicht", "Übersicht"], ["board", "Board"], ["inbox", "Inbox"],
-            ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
+            ["requirements", "Requirements"], ["trace", "Traceability"],
+            ["baselines", "Baselines"], ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
 var inhalt = document.getElementById("inhalt");
 var tabsEl = document.getElementById("tabs");
 var projektEl = document.getElementById("projekt");
@@ -165,11 +166,41 @@ function ladeKpi() {
   });
 }
 
+function dateiKarten(antwort, leerText) {
+  return antwort.dateien.length ? antwort.dateien.map(function (d) {
+    return el("div", { "class": "karte" }, el("h3", {}, d.datei), el("pre", {}, d.text));
+  }) : [el("p", { "class": "leer" }, leerText)];
+}
+
+function ladeRequirements() {  // SWR-030
+  return api("/api/requirements?projekt=" + encodeURIComponent(projekt)).then(function (a) {
+    zeige(dateiKarten(a, "Keine Requirements-Dokumente in diesem Projekt."));
+  });
+}
+
+function ladeTrace() {  // SWR-031
+  return api("/api/verifikation?projekt=" + encodeURIComponent(projekt)).then(function (a) {
+    zeige(dateiKarten(a, "Keine Verifikationsreports in diesem Projekt."));
+  });
+}
+
+function ladeBaselines() {  // SWR-032
+  return api("/api/baselines").then(function (a) {
+    zeige(a.repos.map(function (r) {
+      var karte = el("div", { "class": "karte" }, el("h3", {}, r.repo));
+      if (!r.tags.length) karte.appendChild(el("p", { "class": "leer" }, "Keine Baselines."));
+      r.tags.forEach(function (t) { karte.appendChild(el("div", { "class": "zeile" }, t)); });
+      return karte;
+    }));
+  });
+}
+
 function lade() {
   zeigeTabs();
   zeige([el("p", { "class": "leer" }, "Lade …")]);
   var ansichten = { uebersicht: ladeUebersicht, board: ladeBoard, inbox: ladeInbox,
-                    reports: ladeReports, kpi: ladeKpi };
+                    requirements: ladeRequirements, trace: ladeTrace,
+                    baselines: ladeBaselines, reports: ladeReports, kpi: ladeKpi };
   (ansichten[aktiv] || ladeUebersicht)().catch(function (fehler) {
     zeige([el("div", { "class": "meldung fehler" }, "API nicht erreichbar: " + String(fehler.message || fehler))]);
   });
