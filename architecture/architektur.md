@@ -1,6 +1,8 @@
-# Software-Architektur Plattform P0 — Backend/Frontend-MVP (v1, Sprint 3, T-0031)
+# Software-Architektur Plattform — Backend/Frontend (v1.1, P1 Sprint 1; v1 Sprint 3, T-0031)
 
-*Rolle ARCH (SWE.2). Basis: SWR-020–024 (reviewed, T-0030). Leitplanke (P0 Kap. 5): verteilungsfähig — API-first, kein Zustand außerhalb von Git/Hub. Entscheidungen: siehe `adr/`.*
+*Rolle ARCH (SWE.2). Basis: SWR-020–024 (reviewed, T-0030) + SWR-025–029 (p1-req-v1.0, T-0004). Leitplanke (P0 Kap. 5): verteilungsfähig — API-first, kein Zustand außerhalb von Git/Hub. Entscheidungen: siehe `adr/`.*
+
+> **Delta v1.1 (P1 Sprint 1, T-0004, SWR-025–029):** Mission Control ist multi-projektfähig — Projekt-Discovery per Konvention (ADR-004), `projekt`-Parameter auf allen Lese-APIs (Default p0), projektübergreifende Übersicht und Inbox; Tick/Preflight/Matrix arbeiten über alle Projekte. Unverändert: stdlib-Stack (ADR-001), No-build-PWA (ADR-002), Inbox-Schreibpfad (ADR-003).
 
 ## 1. Kontext
 
