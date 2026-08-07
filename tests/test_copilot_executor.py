@@ -10,9 +10,9 @@ from gateway.executors import copilot_executor  # noqa: E402
 
 ANTWORT = """Erledigt.
 
-```datei: docs/notiz.md
+===DATEI: docs/notiz.md===
 Inhalt aus Copilot.
-```
+===ENDE===
 """
 
 

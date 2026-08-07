@@ -90,12 +90,12 @@ class GatewayTest(unittest.TestCase):
         self.assertEqual(e.provider, "fake")
 
     def test_stub_executoren_nicht_verfuegbar(self):
-        """Copilot-Stub meldet NotImplemented bis Sprint 6. Verifiziert: SWR-008."""
-        # copilot ist Stub (Sprint 6); ollama ist seit T-0011 real und meldet
-        # ohne laufenden Server "nicht erreichbar" — beides fällt durch die Kette.
+        """Copilot ohne installierte CLI fällt durch die Kette (T-0069: Stub → Executor v1). Verifiziert: SWR-008."""
+        # Seit T-0069 ist copilot implementiert; ohne CLI auf dem Gerät meldet er
+        # "nicht gefunden" — wie ollama ohne Server fällt er durch die Kette.
         e = core.execute("cm", "x", self.kontext(provider_kette=["copilot"]))
         self.assertEqual(e.status, "fehler")
-        self.assertIn("Sprint 6", e.meldung)
+        self.assertIn("nicht gefunden", e.meldung)
 
     def test_unbekannter_provider(self):
         """Unbekannter Provider wird sauber abgewiesen. Verifiziert: SWR-006."""
