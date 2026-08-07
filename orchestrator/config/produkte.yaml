@@ -1,0 +1,9 @@
+# Produkt-Konfiguration (T-0064): Matrix-Parameter je Produkt-Repo.
+# Pfade relativ zur Repos-Wurzel (--repos). Genutzt von trace_matrix.py --produkt.
+produkte:
+  datakonv:
+    repo: produkt-datakonv
+    tests: produkt-datakonv/tests
+    swr: produkt-datakonv/requirements/software/software-requirements.md
+    ziel: p0/verification/reports/datakonv-swr-test-matrix.md
+    id_muster: 'SWR-D\d{2}'

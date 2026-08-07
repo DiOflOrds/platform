@@ -19,6 +19,25 @@ import sys
 from datetime import date
 
 SWR_RE = re.compile(r"SWR-\d{3}")
+PRODUKTE_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                            "orchestrator", "config", "produkte.yaml")
+
+
+def lade_produkt_cfg(name, wurzel, cfg_pfad=None):
+    """T-0064: Matrix-Parameter eines Produkts aus produkte.yaml (Pfade absolut)."""
+    try:
+        import yaml
+    except ImportError:
+        raise RuntimeError("PyYAML fehlt für --produkt (pip install pyyaml).")
+    daten = yaml.safe_load(open(cfg_pfad or PRODUKTE_CFG, encoding="utf-8"))
+    if name not in (daten.get("produkte") or {}):
+        raise RuntimeError(f"Produkt '{name}' nicht in produkte.yaml "
+                           f"(bekannt: {', '.join(daten.get('produkte', {}))}).")
+    cfg = daten["produkte"][name]
+    return {"tests": os.path.join(wurzel, cfg["tests"]),
+            "swr": os.path.join(wurzel, cfg["swr"]),
+            "ziel": os.path.join(wurzel, cfg["ziel"]),
+            "id_muster": cfg.get("id_muster", SWR_RE.pattern)}
 
 
 def _ids(node, muster=SWR_RE):
@@ -110,8 +129,14 @@ def main():
                                   "reports/swr-test-matrix.md)")
     p.add_argument("--id-muster", default=SWR_RE.pattern,
                    help="Regex für Anforderungs-IDs (T-0048, z.B. 'SWR-D\\d{2}')")
+    p.add_argument("--produkt", help="Produktname aus config/produkte.yaml (T-0064) — "
+                                     "ersetzt --tests/--swr/--ziel/--id-muster")
     a = p.parse_args()
     wurzel = os.path.abspath(a.repos)
+    if a.produkt:
+        cfg = lade_produkt_cfg(a.produkt, wurzel)
+        a.tests, a.swr, a.ziel, a.id_muster = (cfg["tests"], cfg["swr"],
+                                               cfg["ziel"], cfg["id_muster"])
     muster = re.compile(a.id_muster)
     abdeckung, ohne = tests_scannen(
         a.tests or os.path.join(wurzel, "platform", "tests"), muster)

@@ -92,12 +92,49 @@ Automatisch geroutet aus Feedback {fb['id']} (feedback_route.py v1, T-0055).
     return ergebnisse
 
 
+ROUTING_ZIEL = re.compile(r"Routing.*?→\s*(T-\d{4})")
+
+
+def abschliessen(projekt_repo, dry_run=False):
+    """T-0063 (v1.1): zweiphasiger Auto-Abschluss gerouteter Feedbacks.
+
+    Phase A: Feedback in_progress + Folge-Ticket done → in_review (Reviewer PL).
+    Phase B: Feedback in_review + Folge-Ticket done → done.
+    Zwischen den Phasen liegt ein Commit (Playbook-Statusregeln) — zwei
+    Abschluss-Läufe schließen das Feedback regelkonform."""
+    tickets, _ = board.lade_tickets(projekt_repo)
+    nach_id = {t["id"]: t for t in tickets if t.get("id")}
+    ergebnisse = []
+    for fb in [t for t in tickets if t.get("typ") == "feedback"
+               and t.get("status") in ("in_progress", "in_review")]:
+        m = ROUTING_ZIEL.search(fb.get("_body", ""))
+        if not m or nach_id.get(m.group(1), {}).get("status") != "done":
+            continue
+        neu = "in_review" if fb["status"] == "in_progress" else "done"
+        ergebnisse.append((fb["id"], neu))
+        if dry_run:
+            continue
+        board.setze_status(
+            projekt_repo, fb["id"], neu,
+            reviewer="pl" if neu == "in_review" else None,
+            notiz=(f"**Feedback-Abschluss ({date.today().isoformat()}, "
+                   f"feedback_route v1.1):** Folge-Ticket {m.group(1)} done.")
+            if neu == "done" else None)
+    return ergebnisse
+
+
 def main():
-    p = argparse.ArgumentParser(description="Feedback-Routing v1 (T-0055)")
+    p = argparse.ArgumentParser(description="Feedback-Routing v1.1 (T-0055, T-0063)")
     p.add_argument("projekt_repo")
     p.add_argument("--feedback", help="nur dieses Feedback-Ticket routen")
+    p.add_argument("--abschliessen", action="store_true",
+                   help="T-0063: geroutete Feedbacks mit erledigtem Folge-Ticket schließen")
     p.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
+    if a.abschliessen:
+        for fb, neu in abschliessen(a.projekt_repo, a.dry_run):
+            print(f"{fb} -> {neu}{' [dry-run]' if a.dry_run else ''}")
+        return
     for fb, neu, typ in route(a.projekt_repo, a.feedback, a.dry_run):
         print(f"{fb} -> {neu} ({typ}){' [dry-run]' if a.dry_run else ''}")
 

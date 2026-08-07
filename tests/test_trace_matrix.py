@@ -119,5 +119,28 @@ class TestIdMuster(unittest.TestCase):
         self.assertEqual(ohne, ["test_p.py::T::test_a"])
 
 
+class ProduktCfgTest(unittest.TestCase):
+    """T-0064: Produkt-Konfiguration produkte.yaml für Ein-Parameter-Matrix-Aufrufe."""
+
+    def test_cfg_aufloesung_und_unbekanntes_produkt(self):
+        """--produkt löst Pfade relativ zur Wurzel auf; unbekannter Name wird klar abgelehnt."""
+        with tempfile.TemporaryDirectory() as d:
+            cfg = os.path.join(d, "produkte.yaml")
+            open(cfg, "w", encoding="utf-8").write(
+                "produkte:\n  demo:\n    repo: produkt-demo\n    tests: produkt-demo/tests\n"
+                "    swr: produkt-demo/reqs/swr.md\n    ziel: p0/reports/demo-matrix.md\n"
+                "    id_muster: 'SWR-X\\d{2}'\n")
+            erg = trace_matrix.lade_produkt_cfg("demo", "/wurzel", cfg)
+            self.assertTrue(erg["tests"].endswith(os.path.join("produkt-demo", "tests")))
+            self.assertEqual(erg["id_muster"], "SWR-X\\d{2}")
+            with self.assertRaises(RuntimeError):
+                trace_matrix.lade_produkt_cfg("gibtsnicht", "/wurzel", cfg)
+
+    def test_echte_cfg_kennt_datakonv(self):
+        """Die eingecheckte produkte.yaml enthält datakonv mit korrektem Muster."""
+        erg = trace_matrix.lade_produkt_cfg("datakonv", ".")
+        self.assertEqual(erg["id_muster"], "SWR-D\\d{2}")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -231,5 +231,46 @@ Body.
         self.assertEqual(board.parse_optionstoken(""), [])
 
 
+class SetzeStatusTest(unittest.TestCase):
+    """T-0062: Status-Subkommando — Übergangsprüfung, Felder, BOARD."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = self.tmp.name
+        schreibe(self.repo, "T-0001")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_gueltiger_uebergang_schreibt_ticket_und_board(self):
+        """open→in_progress wird geschrieben, geändert gesetzt, BOARD regeneriert. Verifiziert: SWR-002."""
+        board.setze_status(self.repo, "T-0001", "in_progress")
+        text = open(os.path.join(self.repo, "tickets", "T-0001.md"), encoding="utf-8").read()
+        self.assertIn("status: in_progress", text)
+        self.assertIn("geändert:", text)
+        self.assertTrue(os.path.exists(os.path.join(self.repo, "BOARD.md")))
+
+    def test_unzulaessiger_uebergang_wird_abgelehnt(self):
+        """open→done wird mit klarer Meldung abgelehnt, Datei unverändert. Verifiziert: SWR-002."""
+        with self.assertRaises(ValueError):
+            board.setze_status(self.repo, "T-0001", "done")
+        self.assertIn("status: open",
+                      open(os.path.join(self.repo, "tickets", "T-0001.md"), encoding="utf-8").read())
+
+    def test_in_review_erfordert_reviewer(self):
+        """in_review ohne Reviewer wird abgelehnt; mit Reviewer gesetzt. Verifiziert: SWR-002."""
+        board.setze_status(self.repo, "T-0001", "in_progress")
+        with self.assertRaises(ValueError):
+            board.setze_status(self.repo, "T-0001", "in_review")
+        board.setze_status(self.repo, "T-0001", "in_review", reviewer="qm")
+        self.assertIn("reviewer: qm",
+                      open(os.path.join(self.repo, "tickets", "T-0001.md"), encoding="utf-8").read())
+
+    def test_status_cli(self):
+        """CLI-Form `<repo> status T-xxxx <neu>` liefert 0/1. Verifiziert: SWR-002."""
+        self.assertEqual(board.main([self.repo, "status", "T-0001", "in_progress"]), 0)
+        self.assertEqual(board.main([self.repo, "status", "T-0001", "done"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

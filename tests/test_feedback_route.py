@@ -69,5 +69,33 @@ class RoutingTest(unittest.TestCase):
                       open(os.path.join(repo, "tickets", "T-0001.md"), encoding="utf-8").read())
 
 
+class AbschlussTest(unittest.TestCase):
+    """T-0063: zweiphasiger Auto-Abschluss gerouteter Feedbacks."""
+
+    def _repo_mit_geroutetem_feedback(self, folge_status="done"):
+        repo = repo_mit(("T-0001", "Wunsch", "Bitte Option."))
+        feedback_route.route(repo)  # -> T-0002 (open), Feedback in_progress
+        if folge_status != "open":
+            pfad = os.path.join(repo, "tickets", "T-0002.md")
+            text = open(pfad, encoding="utf-8").read().replace(
+                "status: open", f"status: {folge_status}")
+            open(pfad, "w", encoding="utf-8").write(text)
+        return repo
+
+    def test_zwei_laeufe_schliessen_feedback(self):
+        """Lauf 1: in_progress→in_review; Lauf 2: →done mit Notiz. Bezug: T-0063."""
+        repo = self._repo_mit_geroutetem_feedback("done")
+        self.assertEqual(feedback_route.abschliessen(repo), [("T-0001", "in_review")])
+        self.assertEqual(feedback_route.abschliessen(repo), [("T-0001", "done")])
+        fb = open(os.path.join(repo, "tickets", "T-0001.md"), encoding="utf-8").read()
+        self.assertIn("status: done", fb)
+        self.assertIn("Feedback-Abschluss", fb)
+
+    def test_offenes_folgeticket_blockiert_abschluss(self):
+        """Solange das Folge-Ticket nicht done ist, passiert nichts. Bezug: T-0063."""
+        repo = self._repo_mit_geroutetem_feedback("open")
+        self.assertEqual(feedback_route.abschliessen(repo), [])
+
+
 if __name__ == "__main__":
     unittest.main()

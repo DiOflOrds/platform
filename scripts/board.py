@@ -199,7 +199,73 @@ def generiere_board(tickets, stand=None):
     return "\n".join(zeilen) + "\n"
 
 
+def setze_status(repo, tid, neu, reviewer=None, notiz=None):
+    """T-0062: Statuswechsel als Skript-Route — Übergangsprüfung gegen den
+    AKTUELLEN Dateizustand, Pflichtfeld-Logik (reviewer bei in_review),
+    geändert-Datum, Validierung, BOARD-Regeneration. Wirft ValueError bei
+    unzulässigem Übergang (Session und Tick nutzen denselben Pfad)."""
+    pfad = os.path.join(repo, "tickets", f"{tid}.md")
+    if not os.path.exists(pfad):
+        raise ValueError(f"unbekanntes Ticket: {tid}")
+    text = open(pfad, encoding="utf-8").read().replace("\r\n", "\n")
+    t, err = parse_frontmatter(text)
+    if err:
+        raise ValueError(f"{tid}: {err}")
+    alt = t.get("status")
+    if neu != alt and neu not in UEBERGAENGE.get(alt, []):
+        raise ValueError(f"unzulässiger Status-Übergang: {alt} -> {neu} "
+                         f"(erlaubt: {', '.join(UEBERGAENGE.get(alt, []))})")
+    if neu == "in_review" and not (reviewer or t.get("reviewer")):
+        raise ValueError("in_review erfordert --reviewer")
+    text = re.sub(r"(?m)^status:.*$", f"status: {neu}", text, count=1)
+    heute = date.today().isoformat()
+    for feld, wert in (("reviewer", reviewer), ("geändert", heute)):
+        if not wert:
+            continue
+        if re.search(rf"(?m)^{feld}:", text):
+            text = re.sub(rf"(?m)^{feld}:.*$", f"{feld}: {wert}", text, count=1)
+        else:
+            text = re.sub(r"(?m)^erstellt:", f"{feld}: {wert}\nerstellt:", text, count=1)
+    if notiz:
+        text = text.rstrip() + f"\n\n{notiz}\n"
+    open(pfad, "w", encoding="utf-8", newline="\n").write(text)
+    tickets, probleme = lade_tickets(repo)
+    probleme += validiere_alle(tickets, repo, git_pruefen=False)
+    if probleme:
+        raise ValueError("Ticket-Update invalide: " + "; ".join(probleme))
+    open(os.path.join(repo, "BOARD.md"), "w", encoding="utf-8", newline="\n").write(
+        generiere_board(tickets))
+
+
+def _status_cli(argv):
+    """`board.py <repo> status T-xxxx <neu> [--reviewer r] [--notiz text]` (T-0062)."""
+    repo, rest = argv[0], argv[2:]
+    reviewer = notiz = None
+    pos = []
+    i = 0
+    while i < len(rest):
+        if rest[i] == "--reviewer":
+            reviewer, i = rest[i + 1], i + 2
+        elif rest[i] == "--notiz":
+            notiz, i = rest[i + 1], i + 2
+        else:
+            pos.append(rest[i])
+            i += 1
+    if len(pos) != 2:
+        print("Nutzung: board.py <repo> status T-xxxx <neu> [--reviewer r] [--notiz text]")
+        return 2
+    try:
+        setze_status(repo, pos[0], pos[1], reviewer, notiz)
+    except ValueError as e:
+        print(f"STATUS ABGELEHNT: {e}")
+        return 1
+    print(f"OK: {pos[0]} -> {pos[1]}, BOARD.md aktualisiert.")
+    return 0
+
+
 def main(argv):
+    if len(argv) >= 2 and argv[1] == "status":
+        return _status_cli(argv)
     args = [a for a in argv if not a.startswith("--")]
     repo = args[0] if args else "."
     nur_check = "--check" in argv
