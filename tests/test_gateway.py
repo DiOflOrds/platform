@@ -91,9 +91,13 @@ class GatewayTest(unittest.TestCase):
 
     def test_stub_executoren_nicht_verfuegbar(self):
         """Copilot ohne installierte CLI fällt durch die Kette (T-0069: Stub → Executor v1). Verifiziert: SWR-008."""
-        # Seit T-0069 ist copilot implementiert; ohne CLI auf dem Gerät meldet er
-        # "nicht gefunden" — wie ollama ohne Server fällt er durch die Kette.
-        e = core.execute("cm", "x", self.kontext(provider_kette=["copilot"]))
+        # Hermetisch (Gold-Beispiel gb-02): "CLI fehlt" wird per Mock erzwungen —
+        # sonst hängt der Test vom Maschinenzustand ab und riefe auf Team-Nodes
+        # mit installierter CLI das ECHTE copilot auf (Befund abschluss-Lauf 2026-08-15).
+        from unittest import mock
+        from gateway.executors import copilot_executor
+        with mock.patch.object(copilot_executor.shutil, "which", return_value=None):
+            e = core.execute("cm", "x", self.kontext(provider_kette=["copilot"]))
         self.assertEqual(e.status, "fehler")
         self.assertIn("nicht gefunden", e.meldung)
 
