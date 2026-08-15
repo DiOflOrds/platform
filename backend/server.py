@@ -7,13 +7,31 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend import aggregation, inbox, mailer  # noqa: E402
+
+_PLATFORM_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _code_stand():
+    """SWR-047 (P3): aktueller Code-Stand des platform-Repos (git, frisch je Aufruf)."""
+    try:
+        lauf = subprocess.run(["git", "-C", _PLATFORM_DIR, "rev-parse", "--short", "HEAD"],
+                              capture_output=True, text=True, timeout=5)
+        return lauf.stdout.strip() or "unbekannt"
+    except OSError:
+        return "unbekannt"
+
+
+PROZESS_STAND = _code_stand()  # beim Prozessstart eingefroren
+GESTARTET = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -77,6 +95,15 @@ class Api(BaseHTTPRequestHandler):
                 return self._json(200, inbox.liste(wurzel))
             if pfad == "/api/nutzer":  # SWR-037: Registry (read-only)
                 return self._json(200, {"nutzer": inbox.lade_nutzer(wurzel)})
+            if pfad == "/api/ticket":  # SWR-040 (P3): Einzelticket für die Detailansicht
+                tid = (parse_qs(teile.query).get("id") or [""])[0]
+                return self._json(200, aggregation.lade_ticket(wurzel, projekt, tid))
+            if pfad == "/api/inbox/historie":  # SWR-042 (P3): entschiedene DRs
+                return self._json(200, inbox.historie(wurzel))
+            if pfad == "/api/version":  # SWR-047 (P3): Prozess- vs. Code-Stand
+                return self._json(200, {"prozess_stand": PROZESS_STAND,
+                                        "code_stand": _code_stand(),
+                                        "gestartet": GESTARTET})
             if pfad.startswith("/api/"):
                 return self._json(404, {"fehler": "unbekannter Endpunkt"})
             return self._statisch(pfad)

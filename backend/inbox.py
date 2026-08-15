@@ -75,7 +75,8 @@ def _entscheider_pruefen(root, entscheider):
 
 
 def liste(root, projekt=None):
-    """Offene DRs mit Body — über ALLE Projekte (SWR-027) oder gescopt auf eines."""
+    """Offene DRs mit Body — über ALLE Projekte (SWR-027) oder gescopt auf eines.
+    SWR-042 (P3): optionen/frist/default maschinenlesbar für die Button-Entscheidung."""
     namen = [projekt] if projekt else (aggregation.projekte(root) or ["p0"])
     eintraege = []
     for name in namen:
@@ -85,8 +86,33 @@ def liste(root, projekt=None):
             body = re.sub(r"(?s)^---.*?---\s*", "", open(pfad, encoding="utf-8").read())
             eintraege.append({"projekt": name, "id": t["id"], "titel": t.get("titel"),
                               "status": t.get("status"), "prio": t.get("prio"),
-                              "sprint": t.get("sprint"), "body": body.strip()})
+                              "sprint": t.get("sprint"), "body": body.strip(),
+                              "optionen": board.parse_liste(t.get("optionen")),
+                              "frist": t.get("frist", ""),
+                              "default": t.get("default", "")})
     return {"inbox": eintraege}
+
+
+def historie(root, projekt=None):
+    """SWR-042 (P3): entschiedene DRs (read-only) — Entscheidungs-Vermerk im Body
+    oder finaler Status, neueste zuerst je Projekt."""
+    namen = [projekt] if projekt else (aggregation.projekte(root) or ["p0"])
+    eintraege = []
+    for name in namen:
+        repo = os.path.join(root, name)
+        tickets, _ = board.lade_tickets(repo)
+        for t in tickets:
+            if t.get("typ") != "decision-request":
+                continue
+            body = t.get("_body", "")
+            if ENTSCHIEDEN not in body and t.get("status") not in FINAL:
+                continue
+            m = re.findall(r"\*\*Entscheidung \([^)]*\):\*\*[^\n]*", body)
+            eintraege.append({"projekt": name, "id": t["id"], "titel": t.get("titel"),
+                              "status": t.get("status"), "sprint": t.get("sprint"),
+                              "entscheidung": m[-1] if m else "(Vermerk im Ticket)"})
+        eintraege.sort(key=lambda e: (e["projekt"], e["id"]), reverse=True)
+    return {"historie": eintraege}
 
 
 def _naechste_d_id(log_pfad):

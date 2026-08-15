@@ -59,6 +59,18 @@ def lade_board(root, projekt="p0"):
     return {"gruppen": gruppen, "anzahl": len(tickets), "validierungsprobleme": probleme}
 
 
+def lade_ticket(root, projekt="p0", ticket_id=""):
+    """SWR-040 (P3): Einzelticket mit allen Metadaten + Body für die Detailansicht."""
+    tickets, _ = board.lade_tickets(projekt_pfad(root, projekt))
+    for t in tickets:
+        if t.get("id") == ticket_id:
+            felder = {k: v for k, v in t.items() if not k.startswith("_")}
+            felder["body"] = t.get("_body", "")
+            felder["projekt"] = projekt
+            return felder
+    raise ValueError(f"unbekanntes Ticket: {ticket_id} in {projekt}")
+
+
 def lade_reports(root, projekt="p0"):
     """Sprint-Reports (Quelle: <projekt>/management/sprint-*/report.md), neueste zuerst."""
     muster = os.path.join(projekt_pfad(root, projekt), "management", "sprint-*", "report.md")

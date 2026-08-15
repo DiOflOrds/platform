@@ -6,6 +6,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -360,6 +361,51 @@ class HttpTest(unittest.TestCase):
         das Frontend speist daraus die Entscheider-Auswahl. Verifiziert: SWR-037, SWR-038."""
         self.assertEqual(self._get("/api/nutzer")["nutzer"],
                          [{"name": "E. John", "rolle": "entscheider"}])
+
+    def test_ticket_detail(self):
+        """/api/ticket liefert Metadaten + Body fuer die klickbare Detailansicht;
+        unbekannte IDs -> 404. Verifiziert: SWR-040."""
+        t = self._get("/api/ticket?projekt=p0&id=T-0099")
+        self.assertEqual(t["id"], "T-0099")
+        self.assertEqual(t["typ"], "decision-request")
+        self.assertIn("Optionen", t["body"])
+        with self.assertRaises(urllib.error.HTTPError) as k:
+            self._get("/api/ticket?projekt=p0&id=T-9999")
+        self.assertEqual(k.exception.code, 404)
+
+    def test_board_felder_fuer_filter(self):
+        """Board-Eintraege tragen typ/rolle/sprint/prio — Basis der Jira-like
+        Spalten- und Filteransicht. Verifiziert: SWR-041."""
+        gruppen = self._get("/api/board")["gruppen"]
+        eintrag = gruppen["open"][0]
+        for feld in ("id", "titel", "typ", "rolle", "sprint", "prio"):
+            self.assertIn(feld, eintrag)
+
+    def test_inbox_optionen_und_historie(self):
+        """Inbox-Eintraege liefern optionen/frist/default maschinenlesbar (Buttons);
+        entschiedene DRs wandern in /api/inbox/historie. Verifiziert: SWR-042."""
+        _p1_dazu(self.wurzel)
+        eintraege = self._get("/api/inbox")["inbox"]
+        p1_dr = [e for e in eintraege if e["projekt"] == "p1"][0]
+        self.assertEqual(p1_dr["optionen"], ["A", "B"])
+        self.assertEqual(self._get("/api/inbox/historie")["historie"], [])
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/inbox/T-0001/decision",
+            data=json.dumps({"option": "A", "projekt": "p1"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req):
+            pass
+        historie = self._get("/api/inbox/historie")["historie"]
+        self.assertEqual([e["id"] for e in historie], ["T-0001"])
+        self.assertIn("Entscheidung", historie[0]["entscheidung"])
+
+    def test_version_endpunkt(self):
+        """/api/version nennt Prozess- und Code-Stand — Grundlage des
+        'Server-Neustart noetig'-Hinweises. Verifiziert: SWR-047."""
+        v = self._get("/api/version")
+        for feld in ("prozess_stand", "code_stand", "gestartet"):
+            self.assertIn(feld, v)
+        self.assertEqual(v["prozess_stand"], v["code_stand"])  # im Test kein Versatz
 
     def test_post_entscheidung(self):
         """POST /api/inbox/<id>/decision nimmt die Entscheidung an (Mail best effort). Verifiziert: SWR-020, SWR-023."""
