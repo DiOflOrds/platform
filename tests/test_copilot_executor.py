@@ -46,5 +46,41 @@ class CopilotExecutorTest(unittest.TestCase):
         self.assertIn("auth required", erg["log"])
 
 
+class CopilotAusgabeHaertungTest(unittest.TestCase):
+    """BB-1-Erstlauf-Befund: dekorierte/eingezäunte CLI-Ausgaben. Verifiziert: SWR-008."""
+
+    def _lauf(self, stdout):
+        with tempfile.TemporaryDirectory() as d:
+            fertig = mock.Mock(returncode=0, stdout=stdout, stderr="")
+            with mock.patch.object(copilot_executor.shutil, "which", return_value="/usr/bin/copilot"), \
+                 mock.patch.object(copilot_executor.subprocess, "run", return_value=fertig):
+                erg = copilot_executor.fuehre_aus(
+                    "dev", "A", {"arbeitsverzeichnis": d}, {})
+            inhalt = None
+            pfad = os.path.join(d, "docs", "notiz.md")
+            if os.path.exists(pfad):
+                inhalt = open(pfad, encoding="utf-8").read().strip()
+            return erg, inhalt
+
+    def test_ansi_dekoration_wird_gestrippt(self):
+        """ANSI-Farbcodes um die Blockzeilen verhindern das Parsen nicht mehr."""
+        bunt = "\x1b[32m===DATEI: docs/notiz.md===\x1b[0m\nInhalt aus Copilot.\n\x1b[32m===ENDE===\x1b[0m\n"
+        erg, inhalt = self._lauf(bunt)
+        self.assertEqual(inhalt, "Inhalt aus Copilot.")
+
+    def test_markdown_zaeune_werden_toleriert(self):
+        """Blöcke in ```-Zäunen werden im zweiten Durchgang geparst."""
+        gezaeunt = "Hier das Ergebnis:\n```\n===DATEI: docs/notiz.md===\nInhalt aus Copilot.\n===ENDE===\n```\n"
+        erg, inhalt = self._lauf(gezaeunt)
+        self.assertEqual(inhalt, "Inhalt aus Copilot.")
+
+    def test_ohne_bloecke_landet_rohantwort_im_log(self):
+        """0 Artefakte: Antwort-Anfang steht im Log (Diagnose statt Blindflug)."""
+        erg, inhalt = self._lauf("Ich habe die Datei angelegt, alles erledigt!")
+        self.assertIsNone(inhalt)
+        self.assertIn("Rohantwort", erg["log"])
+        self.assertIn("erledigt", erg["log"])
+
+
 if __name__ == "__main__":
     unittest.main()

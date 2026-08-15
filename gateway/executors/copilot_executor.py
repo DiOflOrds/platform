@@ -8,13 +8,27 @@ Aufrufform konfigurierbar über guardrails `providers.copilot.befehl` (Liste mit
 Platzhalter "{prompt}"), Default: ["copilot", "-p", "{prompt}"] — bei CLI-Updates
 nur die Konfiguration anpassen (Runbook, Störungsbehandlung). Text-only:
 Dateien entstehen über die Datei-Block-Konvention (gateway/dateiblock.py).
+
+Härtung (BB-1-Erstlauf 2026-08-15, real ok aber 0 Artefakte): Die CLI dekoriert
+ihre Ausgabe (ANSI-Codes, Statuszeilen) und Modelle setzen trotz Anweisung gern
+Markdown-Zäune um die Blöcke. Daher: ANSI strippen, bei 0 Treffern Zäune
+entfernen und erneut parsen, und bei weiterhin 0 Artefakten den Antwort-Anfang
+ins Log legen (Diagnose statt Blindflug).
 """
+import re
 import shutil
 import subprocess
 
 from ..dateiblock import AUSGABE_ANWEISUNG, schreibe_dateibloecke
 
 DEFAULT_BEFEHL = ["copilot", "-p", "{prompt}"]
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+_ZAUN = re.compile(r"^\s*```[^\n]*$", re.M)
+
+
+def _bereinigt(text):
+    """ANSI-Escape-Sequenzen entfernen (CLI-Dekoration)."""
+    return _ANSI.sub("", text or "")
 
 
 def fuehre_aus(rolle, aufgabe, kontext, cfg):
@@ -36,9 +50,13 @@ def fuehre_aus(rolle, aufgabe, kontext, cfg):
     if lauf.returncode != 0:
         return {"modell": "copilot-cli", "kosten_eur": 0.0,
                 "log": f"copilot: Exit {lauf.returncode}: {lauf.stderr.strip()[:300]}"}
-    dateien = schreibe_dateibloecke(lauf.stdout, kontext["arbeitsverzeichnis"])
+    antwort = _bereinigt(lauf.stdout)
+    dateien = schreibe_dateibloecke(antwort, kontext["arbeitsverzeichnis"])
+    if not dateien:  # zweiter Versuch: Markdown-Zäune entfernen (Modelle ignorieren die Anweisung gern)
+        dateien = schreibe_dateibloecke(_ZAUN.sub("", antwort), kontext["arbeitsverzeichnis"])
     if not dateien:
         return {"modell": "copilot-cli", "kosten_eur": 0.0,
-                "log": "copilot: Antwort ohne Datei-Blöcke."}
+                "log": ("copilot: Antwort ohne Datei-Blöcke. Rohantwort (Anfang): "
+                        + " ".join(antwort.split())[:400])}
     return {"modell": "copilot-cli", "kosten_eur": 0.0,
             "log": f"copilot: {len(dateien)} Datei(en) eingepflegt: {', '.join(dateien)}"}
