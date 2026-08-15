@@ -1,7 +1,9 @@
-# Software-Architektur Plattform — Backend/Frontend (v1.2, P3 Sprint 0; v1.1 P1; v1 Sprint 3, T-0031)
+# Software-Architektur Plattform — Backend/Frontend (v1.3, P4 Sprint 0; v1.2 P3; v1.1 P1; v1 Sprint 3, T-0031)
 
 *Rolle ARCH (SWE.2). Basis: SWR-020–024 (reviewed, T-0030) + SWR-025–029 (p1-req-v1.0, T-0004). Leitplanke (P0 Kap. 5): verteilungsfähig — API-first, kein Zustand außerhalb von Git/Hub. Entscheidungen: siehe `adr/`.*
 
+> **Delta v1.3 (P4 Sprint 0, p4/T-0004, SWR-048–052):** LAN-Betrieb mit PIN-Schutz (localhost frei, remote nur mit `MC_PIN`-Header; sicherer Default: ohne PIN keine Remote-Schreibzugriffe) und Briefkasten-Chat (versionierte Briefe je Projekt, Antwort in derselben Datei, Commit sofort). Entscheidung: ADR-006. Leitplanke: nur LAN, kein Internet-Expose.
+>
 > **Delta v1.2 (P3 Sprint 0, p3/T-0004, SWR-040–047):** Frontend wird interaktive Arbeitsfläche — Hash-Routing für verlinkbare Detailansichten (Ticket, DR-Historie, Cockpit), Requirements/Traceability als geparste Tabellen, Architekturbild aus versionierter Quelle (`komponenten.yaml` → Generator-Skript → eingechecktes SVG), `/api/version` für Frontend/Backend-Versionsabgleich (SWR-047). Entscheidung: ADR-005. Unverändert: ADR-001/002/003/004.
 >
 > **Delta v1.1 (P1 Sprint 1, T-0004, SWR-025–029):** Mission Control ist multi-projektfähig — Projekt-Discovery per Konvention (ADR-004), `projekt`-Parameter auf allen Lese-APIs (Default p0), projektübergreifende Übersicht und Inbox; Tick/Preflight/Matrix arbeiten über alle Projekte. Unverändert: stdlib-Stack (ADR-001), No-build-PWA (ADR-002), Inbox-Schreibpfad (ADR-003).
@@ -58,3 +60,4 @@ SWR-020 → BCK-Server + BCK-Inbox · SWR-021 → FRT-PWA · SWR-022 → BCK-Agg
 - ADR-003: Inbox-Schreibpfad — Datei + sofortiger Git-Commit
 - ADR-004: Multi-Projekt — Discovery per Konvention (tickets/ + .git)
 - ADR-005: Hash-Routing im Frontend + skriptgeneriertes Architektur-SVG (P3)
+- ADR-006: LAN-Betrieb mit PIN-Schutz + Briefkasten-Ablage (P4)
