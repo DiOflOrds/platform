@@ -19,7 +19,7 @@ providers:                        # LLM-Gateway: drei Executor (Masterplan Kap. 
     type: subscription            # GitHub Copilot CLI — Flatrate, zählt NICHT aufs API-Budget
     capability: agentic-repo
     requires: node_with_gh_auth   # läuft nur auf Team-Nodes mit eingeloggter Copilot CLI
-    status: poc                   # Executor implementiert (T-0069, D023: Abo vorhanden); Ausführungsnachweis T-0072 am Team-Node
+    status: inaktiv               # p0/D026 (2026-08-15): Abo abgelaufen — Executor implementiert und real belegt (T-0072), Reaktivierung per CR bei neuem Abo
     befehl: ["copilot", "-p", "{prompt}"]   # bei CLI-Updates hier anpassen (Runbook)
     timeout_s: 300
   ollama:
