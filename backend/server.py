@@ -167,6 +167,12 @@ class Api(BaseHTTPRequestHandler):
             daten = json.loads(self.rfile.read(laenge).decode("utf-8") or "{}")
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"fehler": "ungültiger JSON-Body"})
+        if self.path == "/api/neustart":  # SWR-061 (T-0015, pm/N-0002): Neustart per Knopf
+            self._json(200, {"ok": True, "meldung": "Server startet neu — die Seite lädt gleich neu."})
+            def _ende():
+                os._exit(42)  # Startskript-Schleife (mission-control[-lan].cmd) startet neu
+            threading.Timer(0.5, _ende).start()
+            return None
         if self.path == "/api/team/konfiguration":  # SWR-056 (P7): Eckparameter ändern
             try:
                 erg = teams.konfiguration_schreiben(type(self).wurzel,

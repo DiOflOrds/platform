@@ -656,13 +656,27 @@ function lade() {
   });
 }
 
+function serverNeustart() {  // SWR-061 (pm/N-0002): Neustart per Knopfdruck
+  if (!window.confirm("Mission-Control-Server jetzt neu starten?")) return;
+  api("/api/neustart", { method: "POST" }).then(function (r) {
+    zeige([el("div", { "class": "meldung ok" }, r.meldung + " (Seite lädt in 3 Sekunden neu.)")]);
+    setTimeout(function () { location.reload(); }, 3000);
+  }).catch(function (f) {
+    zeige([el("div", { "class": "meldung fehler" }, String(f.message || f))]);
+  });
+}
+var neustartKnopf = document.getElementById("neustart");
+if (neustartKnopf) neustartKnopf.addEventListener("click", serverNeustart);
+
 function pruefeVersion() {  // SWR-047: Prozess- vs. Code-Stand
   api("/api/version").then(function (v) {
     document.getElementById("stand").textContent = "Server " + v.prozess_stand;
     if (v.prozess_stand !== v.code_stand) {
       document.body.insertBefore(el("div", { "class": "banner" },
         "Neuer Code auf der Platte (" + v.code_stand + ") — der Server läuft noch auf " +
-        v.prozess_stand + ". Bitte Server neu starten (Strg+C, dann neu ausführen) und die Seite hart neu laden."),
+        v.prozess_stand + ". ",
+        el("button", { "class": "knopf", style: "margin-left:.4rem;padding:.3rem .8rem",
+                       onclick: serverNeustart }, "Jetzt neu starten")),
         document.body.firstChild);
     }
   }).catch(function () { /* Altserver ohne /api/version: kein Banner möglich */ });
