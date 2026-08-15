@@ -241,6 +241,62 @@ class InboxTest(unittest.TestCase):
         self.assertEqual(e["option"], "A")
 
 
+def _registry(wurzel, text):
+    team = os.path.join(wurzel, "process", "team")
+    os.makedirs(team, exist_ok=True)
+    open(os.path.join(team, "nutzer.yaml"), "w", encoding="utf-8").write(text)
+
+
+class NutzerUndHaertungTest(unittest.TestCase):
+    """P2/T-0009: Registry, Entscheider-Pflicht, Inbox-Härtung."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wurzel = _wurzel_bauen(self._tmp.name)
+        self.p0 = os.path.join(self.wurzel, "p0")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_registry_parsen_und_fallback(self):
+        """Registry liefert Namen+Rollen; ohne Datei gilt der einzelne Default-Entscheider. Verifiziert: SWR-037."""
+        self.assertEqual(inbox.lade_nutzer(self.wurzel),
+                         [{"name": "E. John", "rolle": "entscheider"}])
+        _registry(self.wurzel, "nutzer:\n  - name: Anna\n    rolle: entscheider\n"
+                               "  - name: Ben\n    rolle: leser\n")
+        self.assertEqual(inbox.lade_nutzer(self.wurzel),
+                         [{"name": "Anna", "rolle": "entscheider"},
+                          {"name": "Ben", "rolle": "leser"}])
+
+    def test_entscheider_pflicht(self):
+        """Leser und Unbekannte werden abgewiesen (403), registrierte Entscheider protokolliert;
+        leer bei mehreren Entscheidern -> 400. Verifiziert: SWR-038."""
+        _registry(self.wurzel, "nutzer:\n  - name: Anna\n    rolle: entscheider\n"
+                               "  - name: Ben\n    rolle: leser\n"
+                               "  - name: Cleo\n    rolle: entscheider\n")
+        for wer in ("Ben", "Unbekannt"):
+            with self.assertRaises(inbox.InboxFehler) as k:
+                inbox.entscheide(self.wurzel, "T-0099", "A", entscheider=wer)
+            self.assertEqual(k.exception.code, 403)
+        with self.assertRaises(inbox.InboxFehler) as k:
+            inbox.entscheide(self.wurzel, "T-0099", "A")
+        self.assertEqual(k.exception.code, 400)
+        e = inbox.entscheide(self.wurzel, "T-0099", "A", entscheider="Anna")
+        self.assertEqual(e["entscheider"], "Anna")
+        log = open(os.path.join(self.p0, "management", "decisions", "decision-log.md"),
+                   encoding="utf-8").read()
+        self.assertIn("Mensch (Anna, via Inbox)", log)
+
+    def test_entschiedener_dr_verschwindet_und_sperrt(self):
+        """Nach der Entscheidung: DR nicht mehr in der Inbox (trotz Status open),
+        Zweitantwort -> 400 (D001-Befund). Verifiziert: SWR-039."""
+        inbox.entscheide(self.wurzel, "T-0099", "A")
+        self.assertEqual(inbox.liste(self.wurzel)["inbox"], [])
+        with self.assertRaises(inbox.InboxFehler) as k:
+            inbox.entscheide(self.wurzel, "T-0099", "B")
+        self.assertEqual(k.exception.code, 400)
+
+
 class MailerTest(unittest.TestCase):
     """Ausfalltoleranz Mailer. Verifiziert: SWR-023."""
 
@@ -299,6 +355,12 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(self._get("/api/kpi")["laeufe"], 2)
         self.assertEqual(len(self._get("/api/inbox")["inbox"]), 1)
 
+    def test_nutzer_endpunkt(self):
+        """/api/nutzer liefert die Registry read-only (hier: Fallback-Entscheider);
+        das Frontend speist daraus die Entscheider-Auswahl. Verifiziert: SWR-037, SWR-038."""
+        self.assertEqual(self._get("/api/nutzer")["nutzer"],
+                         [{"name": "E. John", "rolle": "entscheider"}])
+
     def test_post_entscheidung(self):
         """POST /api/inbox/<id>/decision nimmt die Entscheidung an (Mail best effort). Verifiziert: SWR-020, SWR-023."""
         req = urllib.request.Request(
@@ -309,7 +371,8 @@ class HttpTest(unittest.TestCase):
             antwort = json.loads(r.read().decode("utf-8"))
         self.assertEqual(antwort["entscheidung"], "D001")
         self.assertFalse(antwort["mail"])  # SMTP unkonfiguriert, API funktioniert trotzdem
-        self.assertEqual(self._get("/api/inbox")["inbox"][0]["id"], "T-0099")
+        # SWR-039 (P2/T-0009): entschiedener DR verschwindet aus der Inbox
+        self.assertEqual(self._get("/api/inbox")["inbox"], [])
 
     def test_multi_projekt_endpunkte(self):
         """/api/projekte, /api/uebersicht und ?projekt= scopen korrekt; POST trägt das Projekt. Verifiziert: SWR-025, SWR-026, SWR-027."""

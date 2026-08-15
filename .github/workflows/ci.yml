@@ -3,10 +3,10 @@
 # umgekehrt) und `trace_matrix.py --check` läuft als Gate — Matrix-Lücken brechen die CI.
 # Erwartungswert: 0 manuelle Matrix-Läufe nötig; kein roter Stand erreicht main unbemerkt.
 #
-# VORAUSSETZUNG (Mensch): Fine-grained PAT mit "Contents: Read" für DiOflOrds/p0
-# UND DiOflOrds/p1 (P1/T-0009: bestehende PAT unter github.com/settings/personal-access-tokens
-# editieren und p1 zur Repo-Auswahl hinzufügen) als Secret P0_READ_TOKEN in
-# DiOflOrds/platform. Ohne Secret schlägt der Lauf mit klarer Meldung fehl.
+# VORAUSSETZUNG (Mensch): Fine-grained PAT mit "Contents: Read" für DiOflOrds/p0,
+# p1, p2, process UND produkt-datakonv (P2/T-0008: bestehende PAT unter
+# github.com/settings/personal-access-tokens editieren, Repos zur Auswahl hinzufügen)
+# als Secret P0_READ_TOKEN in DiOflOrds/platform. Ohne Secret klare Fehlermeldung.
 name: CI
 on:
   push:
@@ -36,6 +36,21 @@ jobs:
           repository: DiOflOrds/p1
           token: ${{ secrets.P0_READ_TOKEN }}
           path: p1
+      - uses: actions/checkout@v5
+        with:
+          repository: DiOflOrds/p2
+          token: ${{ secrets.P0_READ_TOKEN }}
+          path: p2
+      - uses: actions/checkout@v5
+        with:
+          repository: DiOflOrds/process
+          token: ${{ secrets.P0_READ_TOKEN }}
+          path: process
+      - uses: actions/checkout@v5
+        with:
+          repository: DiOflOrds/produkt-datakonv
+          token: ${{ secrets.P0_READ_TOKEN }}
+          path: produkt-datakonv
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -46,3 +61,5 @@ jobs:
         run: python -m unittest discover tests -v
       - name: SWR↔Test-Matrix (T-0037/SWR-029/T-0010 — Quellen per Discovery, Lücken brechen die CI)
         run: python platform/scripts/trace_matrix.py --repos . --check --alle-projekte
+      - name: Katalog-Check (SWR-036/P2-T-0008 — Katalog ↔ Produkt-Repos, löst B7 ein)
+        run: python platform/scripts/catalog.py --check --repos .

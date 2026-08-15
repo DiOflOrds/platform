@@ -16,6 +16,8 @@ import board  # noqa: E402
 from . import aggregation  # noqa: E402
 
 FINAL = ("done", "rejected")
+ENTSCHIEDEN = "**Entscheidung ("  # SWR-039: bereits beantwortete DRs
+NUTZER_FALLBACK = [{"name": "E. John", "rolle": "entscheider"}]  # SWR-037 (Auftraggeber)
 COMMIT_IDENTITAET = ["-c", "user.name=Mensch via Inbox",
                      "-c", "user.email=geraldine.john90@gmail.com"]
 
@@ -27,9 +29,49 @@ class InboxFehler(Exception):
 
 
 def _dr_tickets(p0):
+    """Offene, noch UNENTSCHIEDENE DRs (SWR-039: mit Entscheidungs-Vermerk raus)."""
     tickets, _ = board.lade_tickets(p0)
     return [t for t in tickets
-            if t.get("typ") == "decision-request" and t.get("status") not in FINAL]
+            if t.get("typ") == "decision-request" and t.get("status") not in FINAL
+            and ENTSCHIEDEN not in t.get("_body", "")]
+
+
+def lade_nutzer(root):
+    """SWR-037: Registry process/team/nutzer.yaml (Zeilenformat '- name: X' / 'rolle: Y');
+    ohne Datei gilt ein einzelner Default-Entscheider (Auftraggeber)."""
+    pfad = os.path.join(root, "process", "team", "nutzer.yaml")
+    if not os.path.exists(pfad):
+        return list(NUTZER_FALLBACK)
+    nutzer, aktuell = [], None
+    for zeile in open(pfad, encoding="utf-8"):
+        z = zeile.strip()
+        if z.startswith("#") or not z:
+            continue
+        m = re.match(r"-\s*name:\s*[\"']?(.+?)[\"']?\s*$", z)
+        if m:
+            aktuell = {"name": m.group(1), "rolle": "leser"}
+            nutzer.append(aktuell)
+            continue
+        m = re.match(r"rolle:\s*[\"']?(\w+)[\"']?\s*$", z)
+        if m and aktuell is not None:
+            aktuell["rolle"] = m.group(1)
+    return nutzer or list(NUTZER_FALLBACK)
+
+
+def _entscheider_pruefen(root, entscheider):
+    """SWR-038: Namen gegen die Registry validieren; leer -> einziger Default-Entscheider."""
+    registriert = lade_nutzer(root)
+    entscheider_namen = [n["name"] for n in registriert if n.get("rolle") == "entscheider"]
+    name = (entscheider or "").strip()
+    if not name:
+        if len(entscheider_namen) == 1:
+            return entscheider_namen[0]
+        raise InboxFehler(400, "entscheider erforderlich — zugelassen: "
+                               + (", ".join(entscheider_namen) or "keiner registriert"))
+    if name not in entscheider_namen:
+        raise InboxFehler(403, f"'{name}' ist kein registrierter Entscheider (SWR-038) — "
+                               f"zugelassen: {', '.join(entscheider_namen) or 'keiner'}")
+    return name
 
 
 def liste(root, projekt=None):
@@ -53,10 +95,12 @@ def _naechste_d_id(log_pfad):
     return f"D{(max(ids) + 1 if ids else 0):03d}"
 
 
-def entscheide(root, ticket_id, option, begruendung="", projekt="p0"):
-    """Entscheidung annehmen (je Projekt, SWR-027): Log + Ticket + BOARD + Commit."""
+def entscheide(root, ticket_id, option, begruendung="", projekt="p0", entscheider=""):
+    """Entscheidung annehmen (je Projekt, SWR-027; Entscheider-Pflicht SWR-038):
+    Log + Ticket + BOARD + Commit."""
     if not option or not str(option).strip():
         raise InboxFehler(400, "option darf nicht leer sein")
+    entscheider = _entscheider_pruefen(root, entscheider)
     try:
         p0 = aggregation.projekt_pfad(root, projekt)
     except ValueError as e:
@@ -66,7 +110,8 @@ def entscheide(root, ticket_id, option, begruendung="", projekt="p0"):
         raise InboxFehler(404, f"unbekanntes Ticket: {ticket_id}")
     offene = {t["id"]: t for t in _dr_tickets(p0)}
     if ticket_id not in offene:
-        raise InboxFehler(400, f"{ticket_id} ist kein offener Decision Request")
+        raise InboxFehler(400, f"{ticket_id} ist kein offener Decision Request "
+                               f"(SWR-039: bereits entschiedene DRs sind gesperrt)")
     # T-0039: gewählte Option gegen die Ticket-Optionen validieren (statt Freitext).
     # Ungültige Option -> 400, KEIN Decision-Log-Eintrag. Ohne optionen-Feld
     # (Alt-DRs) bleibt Freitext zulässig.
@@ -80,7 +125,7 @@ def entscheide(root, ticket_id, option, begruendung="", projekt="p0"):
     heute = date.today().isoformat()
     log_pfad = os.path.join(p0, "management", "decisions", "decision-log.md")
     d_id = _naechste_d_id(log_pfad)
-    zeile = (f"| {d_id} | {heute} | Mensch (E. John, via Inbox) | **{option.strip()}** "
+    zeile = (f"| {d_id} | {heute} | Mensch ({entscheider}, via Inbox) | **{option.strip()}** "
              f"| lt. {ticket_id} | {begruendung.strip() or '—'} | {ticket_id} |")
     with open(log_pfad, "a", encoding="utf-8", newline="\n") as f:
         f.write(zeile + "\n")
@@ -99,4 +144,5 @@ def entscheide(root, ticket_id, option, begruendung="", projekt="p0"):
     if add.returncode or commit.returncode:
         raise InboxFehler(503, "Git-Commit fehlgeschlagen: " +
                           (add.stderr + commit.stderr + commit.stdout).strip()[:400])
-    return {"entscheidung": d_id, "ticket": ticket_id, "option": option.strip()}
+    return {"entscheidung": d_id, "ticket": ticket_id, "option": option.strip(),
+            "entscheider": entscheider}

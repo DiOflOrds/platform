@@ -75,6 +75,8 @@ class Api(BaseHTTPRequestHandler):
                 return self._json(200, aggregation.lade_baselines(wurzel))
             if pfad == "/api/inbox":  # SWR-027: alle Projekte
                 return self._json(200, inbox.liste(wurzel))
+            if pfad == "/api/nutzer":  # SWR-037: Registry (read-only)
+                return self._json(200, {"nutzer": inbox.lade_nutzer(wurzel)})
             if pfad.startswith("/api/"):
                 return self._json(404, {"fehler": "unbekannter Endpunkt"})
             return self._statisch(pfad)
@@ -97,7 +99,8 @@ class Api(BaseHTTPRequestHandler):
             ergebnis = inbox.entscheide(type(self).wurzel, m.group(1),
                                         daten.get("option", ""),
                                         daten.get("begruendung", ""),
-                                        projekt=projekt)
+                                        projekt=projekt,
+                                        entscheider=daten.get("entscheider", ""))  # SWR-038
         except inbox.InboxFehler as e:
             return self._json(e.code, {"fehler": str(e)})
         except Exception as e:  # noqa: BLE001
@@ -105,7 +108,8 @@ class Api(BaseHTTPRequestHandler):
         ergebnis["projekt"] = projekt
         ok, meldung = mailer.sende(
             f"[{projekt}] Entscheidung {ergebnis['entscheidung']} zu {ergebnis['ticket']}",
-            f"Option: {ergebnis['option']}\nBegründung: {daten.get('begruendung', '—')}\n")
+            f"Option: {ergebnis['option']}\nEntscheider: {ergebnis['entscheider']}\n"
+            f"Begründung: {daten.get('begruendung', '—')}\n")
         type(self).protokoll(f"[backend] Mail: {meldung}")
         ergebnis["mail"] = ok
         return self._json(200, ergebnis)

@@ -105,7 +105,9 @@ function ladeBoard() {
 }
 
 function ladeInbox() {
-  return api("/api/inbox").then(function (antwort) {
+  return Promise.all([api("/api/inbox"), api("/api/nutzer")]).then(function (beide) {
+    var antwort = beide[0];
+    var entscheider = beide[1].nutzer.filter(function (n) { return n.rolle === "entscheider"; });
     if (!antwort.inbox.length) {
       zeige([el("p", { "class": "leer" }, "Keine offenen Entscheidungen.")]);
       return;
@@ -113,6 +115,10 @@ function ladeInbox() {
     zeige(antwort.inbox.map(function (dr) {
       var opt = el("input", { placeholder: "Gewählte Option (z. B. A1 — oder Freitext)" });
       var grund = el("textarea", { rows: "2", placeholder: "Begründung (optional)" });
+      var wer = el("select", {});  // SWR-038: Entscheider-Auswahl
+      entscheider.forEach(function (n) {
+        wer.appendChild(el("option", { value: n.name }, "Entscheider: " + n.name));
+      });
       var knopf = el("button", { "class": "knopf" }, "Entscheiden");
       var meldung = el("div", {});
       knopf.addEventListener("click", function () {
@@ -120,7 +126,8 @@ function ladeInbox() {
         api("/api/inbox/" + dr.id + "/decision", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ option: opt.value, begruendung: grund.value,
-                                 projekt: dr.projekt || "p0" })
+                                 projekt: dr.projekt || "p0",
+                                 entscheider: wer.value })
         }).then(function (e) {
           leeren(meldung);
           meldung.appendChild(el("div", { "class": "meldung ok" },
@@ -135,7 +142,7 @@ function ladeInbox() {
         el("h3", {}, "[" + (dr.projekt || "p0") + "] " + dr.id + " — " + dr.titel),
         el("div", { "class": "zeile" }, el("span", { "class": "pille " + dr.status }, dr.status),
           el("span", { "class": "pille" }, dr.prio + " · Sprint " + dr.sprint)),
-        el("pre", {}, dr.body), opt, grund, knopf, meldung);
+        el("pre", {}, dr.body), opt, grund, wer, knopf, meldung);
     }));
   });
 }
