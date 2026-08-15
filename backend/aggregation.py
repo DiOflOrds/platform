@@ -153,9 +153,18 @@ def cockpit(root, projekt="p0", heute=None):
                           capture_output=True, text=True)
     tags = [z for z in lauf.stdout.splitlines() if z.strip()]
     kpi = lade_kpi(root, projekt)
+    # SWR-051 (P4): unbeantwortete Briefkasten-Nachrichten (inline, kein Zirkelimport)
+    briefe_offen = 0
+    brief_verz = os.path.join(root, projekt, "management", "briefkasten")
+    if os.path.isdir(brief_verz):
+        for name in os.listdir(brief_verz):
+            if name.endswith(".md") and "status: offen" in open(
+                    os.path.join(brief_verz, name), encoding="utf-8").read(300):
+                briefe_offen += 1
     return {"projekt": projekt, "status_zahlen": status_zahlen,
             "tickets_gesamt": len(tickets), "offene_drs": drs,
             "letzte_baseline": tags[-1].strip() if tags else "",
+            "briefe_offen": briefe_offen,
             "kpi": {"laeufe": kpi.get("laeufe", 0),
                     "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}}
 

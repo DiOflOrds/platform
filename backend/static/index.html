@@ -53,11 +53,26 @@
   .tabelle th { text-align:left; cursor:pointer; background:var(--fond); position:sticky; top:0; }
   .tabelle th, .tabelle td { border-bottom:1px solid var(--rand); padding:.35rem .5rem; vertical-align:top; }
   .tabelle tr:hover td { background:#f0f6ff; }
+  /* P4 Sprint 1 (SWR-050/051/052) */
+  .brief { border-left:4px solid var(--akzent); }
+  .brief.beantwortet { border-left-color:var(--ok); }
+  .antwort { background:#eefaf1; border-radius:.4rem; padding:.5rem .7rem; margin-top:.4rem; }
+  @media (max-width: 640px) {
+    main { padding:.6rem; }
+    header { padding:.5rem .6rem; gap:.4rem; }
+    nav button { padding:.55rem .7rem; font-size:.85rem; }
+    .knopf { padding:.65rem 1rem; min-height:44px; }
+    .spalten { grid-template-columns:1fr; }
+    .filterzeile select { flex:1 1 8rem; }
+    .kpiraster { grid-template-columns:repeat(2,1fr); }
+  }
 </style>
 </head>
 <body>
 <header><h1>Mission Control</h1>
   <select id="projekt" style="width:auto;margin:0" title="Projekt wählen (SWR-026)"></select>
+  <input id="pin" type="password" placeholder="PIN (nur remote)" title="Schreib-PIN für Netzwerk-Zugriff (SWR-049)"
+         style="width:8.5rem;margin:0" autocomplete="off">
   <small id="stand"></small></header>
 <nav id="tabs"></nav>
 <main id="inhalt"><p class="leer">Lade …</p></main>

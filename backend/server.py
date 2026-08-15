@@ -15,7 +15,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend import aggregation, inbox, mailer  # noqa: E402
+from backend import aggregation, briefkasten, inbox, mailer  # noqa: E402
+
+
+def schreibschutz_pruefen(client_ip, pin_header):
+    """SWR-048 (P4, ADR-006): None = erlaubt, sonst deutsche Fehlermeldung (403).
+    localhost braucht keine PIN; remote nur mit korrekter MC_PIN; ohne gesetzte
+    MC_PIN sind Remote-Schreibzugriffe komplett gesperrt (sicherer Default)."""
+    import hmac
+    if client_ip in ("127.0.0.1", "::1", "localhost"):
+        return None
+    konfiguriert = os.environ.get("MC_PIN", "")
+    if not konfiguriert:
+        return ("Remote-Schreibzugriffe sind gesperrt: auf dem Server ist keine "
+                "MC_PIN gesetzt (setx MC_PIN <PIN>, Server neu starten — Runbook Kap. 10).")
+    if not pin_header or not hmac.compare_digest(str(pin_header), konfiguriert):
+        return "PIN fehlt oder ist falsch — bitte die PIN im Kopfbereich eingeben (SWR-049)."
+    return None
 
 _PLATFORM_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -106,6 +122,8 @@ class Api(BaseHTTPRequestHandler):
                                         "gestartet": GESTARTET})
             if pfad == "/api/cockpit":  # SWR-046 (P3): alle Projekte auf einen Blick
                 return self._json(200, aggregation.cockpit_alle(wurzel))
+            if pfad == "/api/briefkasten":  # SWR-050 (P4): Konversation lesen
+                return self._json(200, briefkasten.liste(wurzel, projekt))
             if pfad == "/architektur.svg":  # SWR-045 (P3): generiertes Architekturbild
                 svg = os.path.join(_PLATFORM_DIR, "architecture", "architektur.svg")
                 if not os.path.isfile(svg):
@@ -126,14 +144,25 @@ class Api(BaseHTTPRequestHandler):
             return self._json(500, {"fehler": str(e)[:400]})
 
     def do_POST(self):
-        m = re.fullmatch(r"/api/inbox/(T-\d{4})/decision", self.path)
-        if not m:
-            return self._json(404, {"fehler": "unbekannter Endpunkt"})
+        # SWR-048 (P4): Schreibschutz für alle POST-Endpunkte
+        sperre = schreibschutz_pruefen(self.client_address[0], self.headers.get("X-MC-PIN"))
+        if sperre:
+            return self._json(403, {"fehler": sperre})
         try:
             laenge = int(self.headers.get("Content-Length", "0"))
             daten = json.loads(self.rfile.read(laenge).decode("utf-8") or "{}")
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"fehler": "ungültiger JSON-Body"})
+        if self.path == "/api/briefkasten":  # SWR-050 (P4): Nachricht ans Team
+            try:
+                erg = briefkasten.sende(type(self).wurzel, daten.get("projekt", "p0"),
+                                        daten.get("text", ""), daten.get("von", "E. John"))
+            except briefkasten.BriefkastenFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
+        m = re.fullmatch(r"/api/inbox/(T-\d{4})/decision", self.path)
+        if not m:
+            return self._json(404, {"fehler": "unbekannter Endpunkt"})
         projekt = daten.get("projekt", "p0")  # SWR-027
         try:
             ergebnis = inbox.entscheide(type(self).wurzel, m.group(1),

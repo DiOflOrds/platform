@@ -358,6 +358,64 @@ class HmiSprint2Test(unittest.TestCase):
         self.assertEqual([p["projekt"] for p in alle["projekte"]], ["p0", "p1"])
 
 
+class FernzugriffTest(unittest.TestCase):
+    """P4/T-0008+T-0009: PIN-Schreibschutz und Briefkasten."""
+
+    def setUp(self):
+        self._pin_alt = os.environ.pop("MC_PIN", None)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wurzel = _wurzel_bauen(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        os.environ.pop("MC_PIN", None)
+        if self._pin_alt is not None:
+            os.environ["MC_PIN"] = self._pin_alt
+
+    def test_schreibschutz_regeln(self):
+        """localhost frei; remote ohne MC_PIN gesperrt; falsche PIN abgelehnt;
+        korrekte PIN erlaubt. Verifiziert: SWR-048, SWR-049."""
+        from backend import server
+        self.assertIsNone(server.schreibschutz_pruefen("127.0.0.1", None))
+        self.assertIsNone(server.schreibschutz_pruefen("::1", "egal"))
+        meldung = server.schreibschutz_pruefen("192.168.1.50", None)
+        self.assertIn("MC_PIN", meldung)  # sicherer Default: gesperrt
+        os.environ["MC_PIN"] = "4711"
+        self.assertIn("PIN", server.schreibschutz_pruefen("192.168.1.50", "0000"))
+        self.assertIn("PIN", server.schreibschutz_pruefen("192.168.1.50", None))
+        self.assertIsNone(server.schreibschutz_pruefen("192.168.1.50", "4711"))
+
+    def test_briefkasten_senden_und_lesen(self):
+        """Brief -> versionierte Datei + Commit (saubere Arbeitskopie), Konversation
+        chronologisch, Antwort-Abschnitt wird erkannt. Verifiziert: SWR-050."""
+        from backend import briefkasten
+        e = briefkasten.sende(self.wurzel, "p0", "Bitte XML-Support prüfen.", von="E. John")
+        self.assertEqual(e["brief"], "N-0001")
+        p0 = os.path.join(self.wurzel, "p0")
+        status = subprocess.run(["git", "-C", p0, "status", "--porcelain"],
+                                capture_output=True, text=True).stdout.strip()
+        self.assertEqual(status, "", "Brief muss committet sein")
+        briefkasten.sende(self.wurzel, "p0", "Zweite Nachricht.")
+        pfad = os.path.join(p0, "management", "briefkasten", "N-0001.md")
+        text = open(pfad, encoding="utf-8").read().replace("status: offen", "status: beantwortet")
+        open(pfad, "w", encoding="utf-8", newline="\n").write(
+            text + "\n## Antwort (Team, 2026-08-15)\n\nMachen wir als CR.\n")
+        briefe = briefkasten.liste(self.wurzel, "p0")["briefe"]
+        self.assertEqual([b["id"] for b in briefe], ["N-0001", "N-0002"])
+        self.assertEqual(briefe[0]["status"], "beantwortet")
+        self.assertIn("Machen wir als CR", briefe[0]["antwort"])
+        self.assertEqual(briefe[1]["antwort"], "")
+        with self.assertRaises(briefkasten.BriefkastenFehler):
+            briefkasten.sende(self.wurzel, "p0", "   ")
+
+    def test_cockpit_zaehlt_offene_briefe(self):
+        """Unbeantwortete Briefe erscheinen im Cockpit (briefe_offen). Verifiziert: SWR-051."""
+        from backend import briefkasten
+        briefkasten.sende(self.wurzel, "p0", "Offener Brief.")
+        c = aggregation.cockpit(self.wurzel, "p0")
+        self.assertEqual(c["briefe_offen"], 1)
+
+
 class MailerTest(unittest.TestCase):
     """Ausfalltoleranz Mailer. Verifiziert: SWR-023."""
 

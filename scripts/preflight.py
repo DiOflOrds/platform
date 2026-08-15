@@ -147,6 +147,14 @@ def preflight(root, skip_tests=False, keep_locks=False):
         print(f"[{name}] board-check: {'OK' if ok else 'FEHLER — ' + meldung}")
         if not ok:
             befunde += 1
+    # SWR-051 (P4): Session-Routine "Briefkasten zuerst" — offene Briefe anzeigen (informativ)
+    for name in projekt_namen:
+        verz = os.path.join(root, name, "management", "briefkasten")
+        if os.path.isdir(verz):
+            offen = sum(1 for d in os.listdir(verz) if d.endswith(".md") and
+                        "status: offen" in open(os.path.join(verz, d), encoding="utf-8").read(300))
+            if offen:
+                print(f"[{name}] BRIEFKASTEN: {offen} offene(r) Brief(e) — zuerst beantworten!")
     if skip_tests:
         print("[platform] Unit-Tests übersprungen (--skip-tests)")
     else:

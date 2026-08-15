@@ -5,7 +5,7 @@
 // Jira-Board mit Filtern (SWR-041), Inbox-Buttons + Historie (SWR-042), Versions-Banner (SWR-047).
 "use strict";
 var TABS = [["uebersicht", "Cockpit"], ["board", "Board"], ["inbox", "Inbox"],
-            ["requirements", "Requirements"], ["trace", "Traceability"],
+            ["chat", "Team-Chat"], ["requirements", "Requirements"], ["trace", "Traceability"],
             ["architektur", "Architektur"], ["baselines", "Baselines"],
             ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
 var inhalt = document.getElementById("inhalt");
@@ -40,7 +40,18 @@ function el(tag, attrs) {
   return e;
 }
 
+var pinEl = document.getElementById("pin");
+try { pinEl.value = sessionStorage.getItem("mc_pin") || ""; } catch (e) { /* privat-modus */ }
+pinEl.addEventListener("change", function () {
+  try { sessionStorage.setItem("mc_pin", pinEl.value); } catch (e) { /* ok */ }
+});
+
 function api(pfad, optionen) {
+  optionen = optionen || {};
+  if (optionen.method === "POST" && pinEl.value) {  // SWR-049: PIN mitsenden
+    optionen.headers = optionen.headers || {};
+    optionen.headers["X-MC-PIN"] = pinEl.value;
+  }
   return fetch(pfad, optionen).then(function (r) {
     return r.json().then(function (daten) {
       if (!r.ok) throw new Error(daten.fehler || r.status);
@@ -125,6 +136,11 @@ function ladeUebersicht() {  // SWR-046: Projekt-Cockpit
             pille(dr.ampel === "grau" ? "ohne Frist" : "Frist " + dr.frist, AMPEL_KLASSE[dr.ampel]),
             el("a", { "class": "tlink", href: "#/inbox/" + p.projekt }, dr.id), " " + dr.titel));
         });
+      }
+      if (p.briefe_offen) {  // SWR-051: unbeantwortete Briefe sichtbar
+        karte.appendChild(el("div", { "class": "zeile" },
+          pille(p.briefe_offen + " Brief(e) offen", "in_progress"),
+          el("a", { "class": "tlink", href: "#/chat/" + p.projekt }, "zum Team-Chat")));
       }
       if (p.letzte_baseline) {
         karte.appendChild(el("div", { "class": "zeile" }, "Letzte Baseline: " + p.letzte_baseline));
@@ -292,6 +308,57 @@ function ladeInbox() {
     });
 }
 
+function ladeChat() {  // SWR-050/051 (P4): Briefkasten-Konversation mit dem Team
+  return Promise.all([api("/api/briefkasten?projekt=" + encodeURIComponent(projekt)),
+                      api("/api/nutzer")]).then(function (beide) {
+    var briefe = beide[0].briefe;
+    var teile = [el("div", { "class": "karte" },
+      el("h3", {}, "Team-Chat (" + projekt + ") — Briefkasten"),
+      el("p", { "class": "leer" }, "Nachrichten landen versioniert im Repo; die nächste " +
+        "Cowork-Session antwortet in denselben Verlauf (asynchron, 0 €)."))];
+    if (!briefe.length) teile.push(el("p", { "class": "leer" }, "Noch keine Nachrichten."));
+    briefe.forEach(function (b) {
+      var karte = el("div", { "class": "karte brief" + (b.status === "beantwortet" ? " beantwortet" : "") },
+        el("div", { "class": "zeile" }, pille(b.id), pille(b.status, b.status === "offen" ? "in_progress" : "done"),
+          b.von + " · " + b.zeit),
+        preMitLinks(b.nachricht, projekt));
+      if (b.antwort) {
+        var a = el("div", { "class": "antwort" },
+          el("div", { "class": "zeile" }, pille("Team", "done"), b.antwort_datum));
+        a.appendChild(preMitLinks(b.antwort, projekt));
+        karte.appendChild(a);
+      }
+      teile.push(karte);
+    });
+    var text = el("textarea", { rows: "3", placeholder: "Nachricht ans Team …" });
+    var wer = el("select", {});
+    beide[1].nutzer.forEach(function (n) {
+      wer.appendChild(el("option", { value: n.name }, "Von: " + n.name));
+    });
+    var meldung = el("div", {});
+    var knopf = el("button", { "class": "knopf" }, "Absenden");
+    knopf.addEventListener("click", function () {
+      knopf.disabled = true;
+      api("/api/briefkasten", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projekt: projekt, text: text.value, von: wer.value })
+      }).then(function (e) {
+        leeren(meldung);
+        meldung.appendChild(el("div", { "class": "meldung ok" },
+          "Gesendet als " + e.brief + " — die nächste Session antwortet hier."));
+        text.value = ""; knopf.disabled = false;
+        setTimeout(lade, 900);
+      }).catch(function (fehler) {
+        leeren(meldung);
+        meldung.appendChild(el("div", { "class": "meldung fehler" }, String(fehler.message || fehler)));
+        knopf.disabled = false;
+      });
+    });
+    teile.push(el("div", { "class": "karte" }, text, wer, knopf, meldung));
+    zeige(teile);
+  });
+}
+
 function ladeReports() {
   return api("/api/reports?projekt=" + encodeURIComponent(projekt)).then(function (antwort) {
     zeige(antwort.reports.length ? antwort.reports.map(function (r) {
@@ -404,8 +471,8 @@ function lade() {
   zeigeTabs();
   zeige([el("p", { "class": "leer" }, "Lade …")]);
   var ansichten = { uebersicht: ladeUebersicht, board: ladeBoard, inbox: ladeInbox,
-                    ticket: ladeTicket, requirements: ladeRequirements, trace: ladeTrace,
-                    architektur: ladeArchitektur, baselines: ladeBaselines,
+                    chat: ladeChat, ticket: ladeTicket, requirements: ladeRequirements,
+                    trace: ladeTrace, architektur: ladeArchitektur, baselines: ladeBaselines,
                     reports: ladeReports, kpi: ladeKpi };
   (ansichten[aktiv] || ladeUebersicht)().catch(function (fehler) {
     zeige([el("div", { "class": "meldung fehler" }, "API nicht erreichbar: " + String(fehler.message || fehler))]);
