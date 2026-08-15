@@ -272,6 +272,11 @@ class HttpTest(unittest.TestCase):
     """HTTP-Schicht Ende-zu-Ende auf ephemerem Port. Verifiziert: SWR-020, SWR-022."""
 
     def setUp(self):
+        # p2/T-0002: SMTP-Umgebung isolieren — auf konfigurierten Maschinen (Team-Node)
+        # hatte die Suite sonst ECHTE Mails verschickt und war umgebungsabhängig rot.
+        self._env_alt = {k: os.environ.pop(k) for k in
+                         ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "MAIL_TO")
+                         if k in os.environ}
         self._tmp = tempfile.TemporaryDirectory()
         self.wurzel = _wurzel_bauen(self._tmp.name)
         server.Api.protokoll = lambda *a, **k: None
@@ -282,6 +287,7 @@ class HttpTest(unittest.TestCase):
     def tearDown(self):
         self.srv.shutdown()
         self._tmp.cleanup()
+        os.environ.update(self._env_alt)
 
     def _get(self, pfad):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{pfad}") as r:

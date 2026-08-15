@@ -45,9 +45,11 @@ def lade_produkt_cfg(name, wurzel, cfg_pfad=None):
         raise RuntimeError(f"Produkt '{name}' nicht in produkte.yaml "
                            f"(bekannt: {', '.join(daten.get('produkte', {}))}).")
     cfg = daten["produkte"][name]
-    return {"tests": os.path.join(wurzel, cfg["tests"]),
-            "swr": os.path.join(wurzel, cfg["swr"]),
-            "ziel": os.path.join(wurzel, cfg["ziel"]),
+    # p2/T-0002: normpath — produkte.yaml nutzt '/'-Pfade; unter Windows sonst
+    # gemischte Trenner (erster realer Suite-Lauf auf dem Team-Node deckte das auf).
+    return {"tests": os.path.normpath(os.path.join(wurzel, cfg["tests"])),
+            "swr": os.path.normpath(os.path.join(wurzel, cfg["swr"])),
+            "ziel": os.path.normpath(os.path.join(wurzel, cfg["ziel"])),
             "id_muster": cfg.get("id_muster", SWR_RE.pattern)}
 
 
