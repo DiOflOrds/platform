@@ -95,7 +95,8 @@ def execute(rolle, aufgabe, kontext):
             return erg
 
         erg = Ergebnis(status="ok", provider=provider, modell=roh.get("modell", ""),
-                       log=roh.get("log", ""), kosten_eur=float(roh.get("kosten_eur", 0.0)),
+                       log=roh.get("log", ""), meldung=roh.get("log", ""),  # BB-1: Log in die
+                       kosten_eur=float(roh.get("kosten_eur", 0.0)),        # Registry (Diagnose)
                        dauer_s=time.time() - start)
         nachher = _geaenderte_dateien(kontext["arbeitsverzeichnis"])
         if vorher is not None and nachher is not None:
