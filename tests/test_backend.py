@@ -298,6 +298,66 @@ class NutzerUndHaertungTest(unittest.TestCase):
         self.assertEqual(k.exception.code, 400)
 
 
+class HmiSprint2Test(unittest.TestCase):
+    """P3/T-0014+T-0016: Tabellen-Parser und Cockpit."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wurzel = _wurzel_bauen(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_md_tabellen_parser(self):
+        """Markdown-Tabellen werden zu Spalten/Zeilen; Trennzeilen fliegen raus;
+        Text ohne Tabelle ergibt leere Liste. Verifiziert: SWR-043, SWR-044."""
+        text = ("# Doku\n\n| ID | Status |\n|---|---|\n| SWR-001 | reviewed |\n"
+                "| SWR-002 | draft |\n\nProsa.\n\n| A |\n|---|\n| 1 |\n")
+        tabellen = aggregation.parse_md_tabellen(text)
+        self.assertEqual(len(tabellen), 2)
+        self.assertEqual(tabellen[0]["spalten"], ["ID", "Status"])
+        self.assertEqual(tabellen[0]["zeilen"], [["SWR-001", "reviewed"], ["SWR-002", "draft"]])
+        self.assertEqual(aggregation.parse_md_tabellen("nur Prosa"), [])
+
+    def test_requirements_liefern_tabellen(self):
+        """/api-Sicht: requirements/verifikation tragen geparste Tabellen je Datei.
+        Verifiziert: SWR-043, SWR-044."""
+        req_dir = os.path.join(self.wurzel, "p0", "requirements")
+        os.makedirs(req_dir)
+        open(os.path.join(req_dir, "swr.md"), "w", encoding="utf-8").write(
+            "| ID | Requirement |\n|---|---|\n| SWR-001 | The x shall y. |\n")
+        daten = aggregation.lade_requirements(self.wurzel, "p0")
+        self.assertEqual(daten["dateien"][0]["tabellen"][0]["zeilen"],
+                         [["SWR-001", "The x shall y."]])
+
+    def test_cockpit_mit_frist_ampel(self):
+        """Cockpit: Status-Zahlen, DRs mit Ampel (rot=überschritten, gelb=<=2 Tage,
+        gruen=später, grau=ohne Frist), KPI-Kurzfassung. Verifiziert: SWR-046."""
+        import datetime
+        p0 = os.path.join(self.wurzel, "p0")
+        for tid, frist in (("T-0090", "2026-08-10"), ("T-0091", "2026-08-16"),
+                           ("T-0092", "2026-08-30")):
+            open(os.path.join(p0, "tickets", f"{tid}.md"), "w", encoding="utf-8").write(
+                TICKET_DR.replace("T-0099", tid).replace(
+                    "---\n\nOptionen", f"optionen: [A, B]\nfrist: {frist}\n---\n\nOptionen"))
+        c = aggregation.cockpit(self.wurzel, "p0", heute=datetime.date(2026, 8, 15))
+        self.assertEqual(c["tickets_gesamt"], 5)
+        self.assertEqual(c["status_zahlen"]["open"], 5)
+        ampeln = {d["id"]: d["ampel"] for d in c["offene_drs"]}
+        self.assertEqual(ampeln["T-0090"], "rot")
+        self.assertEqual(ampeln["T-0091"], "gelb")
+        self.assertEqual(ampeln["T-0092"], "gruen")
+        self.assertEqual(ampeln["T-0099"], "grau")
+        self.assertIn("laeufe", c["kpi"])
+
+    def test_cockpit_alle_ueber_api_form(self):
+        """cockpit_alle liefert je entdecktem Projekt einen Eintrag (Frontend-Antwort).
+        Verifiziert: SWR-046."""
+        _p1_dazu(self.wurzel)
+        alle = aggregation.cockpit_alle(self.wurzel)
+        self.assertEqual([p["projekt"] for p in alle["projekte"]], ["p0", "p1"])
+
+
 class MailerTest(unittest.TestCase):
     """Ausfalltoleranz Mailer. Verifiziert: SWR-023."""
 

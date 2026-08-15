@@ -1,0 +1,33 @@
+# Architektur-Quelle (SWR-045, ADR-005) — Änderungen hier ändern das Bild:
+#   python platform/scripts/arch_diagramm.py   (Drift-Check: --check, Gate in abschluss.cmd)
+schichten:
+  - name: "Mensch & Geräte"
+    komponenten:
+      - {id: browser, name: "Browser-PWA (app.js, Hash-Router)"}
+      - {id: teamnode, name: "Team-Node (abschluss.cmd, Ticks)"}
+  - name: "Backend (Python-Standardbibliothek)"
+    komponenten:
+      - {id: server, name: "server.py — HTTP-API + Static"}
+      - {id: aggregation, name: "aggregation.py — Lese-Sichten"}
+      - {id: inbox, name: "inbox.py — Entscheidungen"}
+      - {id: mailer, name: "mailer.py — SMTP"}
+  - name: "Orchestrierung & Skript-Route"
+    komponenten:
+      - {id: tick, name: "tick.py — Orchestrator"}
+      - {id: gateway, name: "gateway — Provider-Kette"}
+      - {id: skripte, name: "scripts — board/matrix/katalog/dr/preflight"}
+  - name: "Quelle der Wahrheit"
+    komponenten:
+      - {id: repos, name: "Git-Repos: process · platform · p0–p3 · produkt-*"}
+beziehungen:
+  - {von: browser, nach: server, label: "HTTP/JSON"}
+  - {von: teamnode, nach: tick, label: "startet"}
+  - {von: teamnode, nach: skripte, label: "abschluss-Gates"}
+  - {von: server, nach: aggregation}
+  - {von: server, nach: inbox}
+  - {von: server, nach: mailer, label: "DR-Mails"}
+  - {von: tick, nach: gateway}
+  - {von: aggregation, nach: repos, label: "liest"}
+  - {von: inbox, nach: repos, label: "Commit"}
+  - {von: gateway, nach: repos, label: "Datei-Blöcke"}
+  - {von: skripte, nach: repos, label: "prüft/pflegt"}

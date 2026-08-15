@@ -4,9 +4,10 @@
 // P3 Sprint 1 (ADR-005): Hash-Router #/<tab>/<projekt>[/<id>], Ticket-Detail (SWR-040),
 // Jira-Board mit Filtern (SWR-041), Inbox-Buttons + Historie (SWR-042), Versions-Banner (SWR-047).
 "use strict";
-var TABS = [["uebersicht", "Übersicht"], ["board", "Board"], ["inbox", "Inbox"],
+var TABS = [["uebersicht", "Cockpit"], ["board", "Board"], ["inbox", "Inbox"],
             ["requirements", "Requirements"], ["trace", "Traceability"],
-            ["baselines", "Baselines"], ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
+            ["architektur", "Architektur"], ["baselines", "Baselines"],
+            ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
 var inhalt = document.getElementById("inhalt");
 var tabsEl = document.getElementById("tabs");
 var projektEl = document.getElementById("projekt");
@@ -102,21 +103,34 @@ function zeige(elemente) {
 }
 
 // ---------- Ansichten ----------
-function ladeUebersicht() {
-  return api("/api/uebersicht").then(function (u) {
+var AMPEL_KLASSE = { rot: "rejected", gelb: "in_progress", gruen: "done", grau: "" };
+
+function ladeUebersicht() {  // SWR-046: Projekt-Cockpit
+  return api("/api/cockpit").then(function (u) {
     document.getElementById("stand").textContent = u.projekte.length + " Projekt(e)";
     zeige(u.projekte.map(function (p) {
+      var fertig = (p.status_zahlen.done || 0) + (p.status_zahlen.rejected || 0);
       var karte = el("div", { "class": "karte" },
         el("h3", {}, p.projekt),
-        el("div", { "class": "zeile" },
-          pille(p.tickets_offen + " offen", "open"), pille(p.tickets_gesamt + " gesamt")));
+        el("div", { "class": "zeile" }, pille(fertig + "/" + p.tickets_gesamt + " fertig", "done")));
+      var statusZeile = el("div", { "class": "zeile" });
+      Object.keys(p.status_zahlen).sort().forEach(function (s) {
+        statusZeile.appendChild(pille(s + " " + p.status_zahlen[s], s));
+      });
+      karte.appendChild(statusZeile);
       if (p.offene_drs.length) {
         karte.appendChild(el("div", { "class": "zeile" }, "Offene Entscheidungen:"));
         p.offene_drs.forEach(function (dr) {
           karte.appendChild(el("div", { "class": "zeile" },
+            pille(dr.ampel === "grau" ? "ohne Frist" : "Frist " + dr.frist, AMPEL_KLASSE[dr.ampel]),
             el("a", { "class": "tlink", href: "#/inbox/" + p.projekt }, dr.id), " " + dr.titel));
         });
       }
+      if (p.letzte_baseline) {
+        karte.appendChild(el("div", { "class": "zeile" }, "Letzte Baseline: " + p.letzte_baseline));
+      }
+      karte.appendChild(el("div", { "class": "zeile" },
+        pille(p.kpi.laeufe + " Läufe"), pille(p.kpi.kosten_eur.toFixed(2) + " € API")));
       karte.appendChild(el("button", { "class": "knopf", onclick: function () {
         gehe("board", p.projekt);
       } }, "Zum Board"));
@@ -304,22 +318,75 @@ function ladeKpi() {
   });
 }
 
+function tabelle(t) {  // SWR-043/044: sortier- und filterbare Tabelle
+  var sortSpalte = -1, sortAuf = true;
+  var filter = el("input", { placeholder: "Filtern …", oninput: function () { baue(); } });
+  var wrap = el("div", { "class": "tabellenwrap" });
+  function zelleMitLinks(td, text) {
+    tlinks(String(text).replace(/\*\*/g, ""), projekt).forEach(function (k) { td.appendChild(k); });
+    return td;
+  }
+  function baue() {
+    leeren(wrap);
+    var tab = el("table", { "class": "tabelle" });
+    var kopf = el("tr", {});
+    t.spalten.forEach(function (s, i) {
+      kopf.appendChild(el("th", { onclick: function () {
+        if (sortSpalte === i) sortAuf = !sortAuf; else { sortSpalte = i; sortAuf = true; }
+        baue();
+      } }, s.replace(/\*\*/g, "") + (sortSpalte === i ? (sortAuf ? " ▲" : " ▼") : "")));
+    });
+    tab.appendChild(kopf);
+    var zeilen = t.zeilen.filter(function (z) {
+      var wort = filter.value.toLowerCase();
+      return !wort || z.join(" ").toLowerCase().indexOf(wort) >= 0;
+    });
+    if (sortSpalte >= 0) zeilen = zeilen.slice().sort(function (a, b) {
+      var x = String(a[sortSpalte] || ""), y = String(b[sortSpalte] || "");
+      return (x < y ? -1 : x > y ? 1 : 0) * (sortAuf ? 1 : -1);
+    });
+    zeilen.forEach(function (z) {
+      var tr = el("tr", {});
+      z.forEach(function (zelle) { tr.appendChild(zelleMitLinks(el("td", {}), zelle)); });
+      tab.appendChild(tr);
+    });
+    wrap.appendChild(tab);
+  }
+  baue();
+  return el("div", {}, filter, wrap);
+}
+
 function dateiKarten(antwort, leerText) {
   return antwort.dateien.length ? antwort.dateien.map(function (d) {
-    return el("div", { "class": "karte" }, el("h3", {}, d.datei), preMitLinks(d.text, projekt));
+    var karte = el("div", { "class": "karte" }, el("h3", {}, d.datei));
+    if (d.tabellen && d.tabellen.length) {
+      d.tabellen.forEach(function (t) { karte.appendChild(tabelle(t)); });
+    } else {
+      karte.appendChild(preMitLinks(d.text, projekt));
+    }
+    return karte;
   }) : [el("p", { "class": "leer" }, leerText)];
 }
 
-function ladeRequirements() {  // SWR-030 (Tabellen: P3 Sprint 2, SWR-043)
+function ladeRequirements() {  // SWR-030 + SWR-043 (Tabellen)
   return api("/api/requirements?projekt=" + encodeURIComponent(projekt)).then(function (a) {
     zeige(dateiKarten(a, "Keine Requirements-Dokumente in diesem Projekt."));
   });
 }
 
-function ladeTrace() {  // SWR-031 (Tabellen: P3 Sprint 2, SWR-044)
+function ladeTrace() {  // SWR-031 + SWR-044 (Matrix als Tabelle)
   return api("/api/verifikation?projekt=" + encodeURIComponent(projekt)).then(function (a) {
     zeige(dateiKarten(a, "Keine Verifikationsreports in diesem Projekt."));
   });
+}
+
+function ladeArchitektur() {  // SWR-045: generiertes Bild aus komponenten.yaml
+  var karte = el("div", { "class": "karte" },
+    el("h3", {}, "Software-Architektur (generiert aus platform/architecture/komponenten.yaml)"),
+    el("img", { src: "/architektur.svg", alt: "Architekturdiagramm", style: "width:100%;height:auto" }),
+    el("p", { "class": "leer" }, "Änderungen an der YAML-Quelle ändern dieses Bild (arch_diagramm.py, Drift-Check im abschluss-Gate)."));
+  zeige([karte]);
+  return Promise.resolve();
 }
 
 function ladeBaselines() {  // SWR-032
@@ -338,7 +405,8 @@ function lade() {
   zeige([el("p", { "class": "leer" }, "Lade …")]);
   var ansichten = { uebersicht: ladeUebersicht, board: ladeBoard, inbox: ladeInbox,
                     ticket: ladeTicket, requirements: ladeRequirements, trace: ladeTrace,
-                    baselines: ladeBaselines, reports: ladeReports, kpi: ladeKpi };
+                    architektur: ladeArchitektur, baselines: ladeBaselines,
+                    reports: ladeReports, kpi: ladeKpi };
   (ansichten[aktiv] || ladeUebersicht)().catch(function (fehler) {
     zeige([el("div", { "class": "meldung fehler" }, "API nicht erreichbar: " + String(fehler.message || fehler))]);
   });

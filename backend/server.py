@@ -104,6 +104,19 @@ class Api(BaseHTTPRequestHandler):
                 return self._json(200, {"prozess_stand": PROZESS_STAND,
                                         "code_stand": _code_stand(),
                                         "gestartet": GESTARTET})
+            if pfad == "/api/cockpit":  # SWR-046 (P3): alle Projekte auf einen Blick
+                return self._json(200, aggregation.cockpit_alle(wurzel))
+            if pfad == "/architektur.svg":  # SWR-045 (P3): generiertes Architekturbild
+                svg = os.path.join(_PLATFORM_DIR, "architecture", "architektur.svg")
+                if not os.path.isfile(svg):
+                    return self._json(404, {"fehler": "architektur.svg fehlt — Generator ausführen"})
+                daten = open(svg, "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/svg+xml")
+                self.send_header("Content-Length", str(len(daten)))
+                self.end_headers()
+                self.wfile.write(daten)
+                return None
             if pfad.startswith("/api/"):
                 return self._json(404, {"fehler": "unbekannter Endpunkt"})
             return self._statisch(pfad)

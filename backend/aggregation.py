@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+from datetime import date as _datum, timedelta as _zeitspanne
 
 _SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 if _SCRIPTS not in sys.path:
@@ -82,24 +83,86 @@ def lade_reports(root, projekt="p0"):
     return {"reports": reports}
 
 
-def lade_requirements(root, projekt="p0"):
-    """SWR-030: Requirements-Markdown eines Projekts read-only (relativer Pfad + Text)."""
-    basis = os.path.join(projekt_pfad(root, projekt), "requirements")
+def parse_md_tabellen(text):
+    """SWR-043/044 (P3): Markdown-Tabellen -> [{"spalten": [...], "zeilen": [[...]]}].
+    Trennzeilen (|---|) werden verworfen, Fettmarker bleiben Rohtext (Frontend-Sache)."""
+    tabellen, aktuelle = [], None
+    for zeile in (text or "").splitlines():
+        s = zeile.strip()
+        if s.startswith("|") and s.endswith("|") and len(s) > 1:
+            zellen = [z.strip() for z in s.strip("|").split("|")]
+            if all(re.fullmatch(r":?-{3,}:?", z) for z in zellen):
+                continue
+            if aktuelle is None:
+                aktuelle = {"spalten": zellen, "zeilen": []}
+            else:
+                aktuelle["zeilen"].append(zellen)
+        else:
+            if aktuelle and aktuelle["zeilen"]:
+                tabellen.append(aktuelle)
+            aktuelle = None
+    if aktuelle and aktuelle["zeilen"]:
+        tabellen.append(aktuelle)
+    return tabellen
+
+
+def _md_dateien(basis):
     dateien = []
     for pfad in sorted(glob.glob(os.path.join(basis, "**", "*.md"), recursive=True)):
+        text = open(pfad, encoding="utf-8").read()
         dateien.append({"datei": os.path.relpath(pfad, basis).replace(os.sep, "/"),
-                        "text": open(pfad, encoding="utf-8").read()})
+                        "text": text, "tabellen": parse_md_tabellen(text)})
     return {"dateien": dateien}
+
+
+def lade_requirements(root, projekt="p0"):
+    """SWR-030/043: Requirements-Markdown read-only + geparste Tabellen."""
+    return _md_dateien(os.path.join(projekt_pfad(root, projekt), "requirements"))
 
 
 def lade_verifikation(root, projekt="p0"):
-    """SWR-031: Verifikationsreports (inkl. Traceability-Matrizen) eines Projekts."""
-    basis = os.path.join(projekt_pfad(root, projekt), "verification")
-    dateien = []
-    for pfad in sorted(glob.glob(os.path.join(basis, "**", "*.md"), recursive=True)):
-        dateien.append({"datei": os.path.relpath(pfad, basis).replace(os.sep, "/"),
-                        "text": open(pfad, encoding="utf-8").read()})
-    return {"dateien": dateien}
+    """SWR-031/044: Verifikationsreports (inkl. Matrizen) + geparste Tabellen."""
+    return _md_dateien(os.path.join(projekt_pfad(root, projekt), "verification"))
+
+
+def cockpit(root, projekt="p0", heute=None):
+    """SWR-046 (P3): alle relevanten Projektinfos auf einen Blick — Status-Zahlen,
+    offene DRs mit Frist-Ampel (rot=überschritten, gelb=<=2 Tage, gruen=später,
+    grau=ohne Frist), letzte Baseline, KPI-Kurzfassung."""
+    heute = heute or _datum.today()
+    tickets, _ = board.lade_tickets(projekt_pfad(root, projekt))
+    status_zahlen = {}
+    for t in tickets:
+        status_zahlen[t.get("status", "?")] = status_zahlen.get(t.get("status", "?"), 0) + 1
+    drs = []
+    for t in tickets:
+        if t.get("typ") != "decision-request" or t.get("status") in ("done", "rejected"):
+            continue
+        if "**Entscheidung (" in t.get("_body", ""):
+            continue
+        frist, ampel = str(t.get("frist", "") or ""), "grau"
+        try:
+            f = _datum.fromisoformat(frist)
+            ampel = "rot" if f < heute else ("gelb" if f <= heute + _zeitspanne(days=2) else "gruen")
+        except ValueError:
+            pass
+        drs.append({"id": t["id"], "titel": t.get("titel"), "frist": frist,
+                    "default": t.get("default", ""), "ampel": ampel})
+    import subprocess
+    lauf = subprocess.run(["git", "-C", os.path.join(root, projekt), "tag", "-n1"],
+                          capture_output=True, text=True)
+    tags = [z for z in lauf.stdout.splitlines() if z.strip()]
+    kpi = lade_kpi(root, projekt)
+    return {"projekt": projekt, "status_zahlen": status_zahlen,
+            "tickets_gesamt": len(tickets), "offene_drs": drs,
+            "letzte_baseline": tags[-1].strip() if tags else "",
+            "kpi": {"laeufe": kpi.get("laeufe", 0),
+                    "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}}
+
+
+def cockpit_alle(root, heute=None):
+    """SWR-046: Cockpits aller entdeckten Projekte (eine Antwort fürs Frontend)."""
+    return {"projekte": [cockpit(root, name, heute) for name in projekte(root)]}
 
 
 def lade_baselines(root):

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1264 580" font-family="system-ui, sans-serif" font-size="13">
+<defs><marker id="pfeil" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#57606a"/></marker></defs>
+<rect width="1264" height="580" fill="#f6f8fa"/>
+<text x="30" y="44" fill="#57606a" font-size="12" font-weight="600">Mensch &amp; Geräte</text>
+<rect x="180" y="54" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="300.0" y="84.0" text-anchor="middle">Browser-PWA (app.js, Hash-Router)</text>
+<rect x="448" y="54" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="568.0" y="84.0" text-anchor="middle">Team-Node (abschluss.cmd, Ticks)</text>
+<text x="30" y="174" fill="#57606a" font-size="12" font-weight="600">Backend (Python-Standardbibliothek)</text>
+<rect x="180" y="184" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="300.0" y="214.0" text-anchor="middle">server.py — HTTP-API + Static</text>
+<rect x="448" y="184" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="568.0" y="214.0" text-anchor="middle">aggregation.py — Lese-Sichten</text>
+<rect x="716" y="184" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="836.0" y="214.0" text-anchor="middle">inbox.py — Entscheidungen</text>
+<rect x="984" y="184" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="1104.0" y="214.0" text-anchor="middle">mailer.py — SMTP</text>
+<text x="30" y="304" fill="#57606a" font-size="12" font-weight="600">Orchestrierung &amp; Skript-Route</text>
+<rect x="180" y="314" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="300.0" y="344.0" text-anchor="middle">tick.py — Orchestrator</text>
+<rect x="448" y="314" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="568.0" y="344.0" text-anchor="middle">gateway — Provider-Kette</text>
+<rect x="716" y="314" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="836.0" y="344.0" text-anchor="middle">scripts — board/matrix/katalog/dr/preflight</text>
+<text x="30" y="434" fill="#57606a" font-size="12" font-weight="600">Quelle der Wahrheit</text>
+<rect x="180" y="444" width="240" height="52" rx="8" fill="#ffffff" stroke="#1a2b3c" stroke-width="1.4"/>
+<text x="300.0" y="474.0" text-anchor="middle">Git-Repos: process · platform · p0–p3 · produkt-*</text>
+<line x1="300.0" y1="106" x2="300.0" y2="184" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<text x="305.0" y="142.0" fill="#57606a" font-size="11">HTTP/JSON</text>
+<line x1="568.0" y1="106" x2="300.0" y2="314" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<text x="439.0" y="207.0" fill="#57606a" font-size="11">startet</text>
+<line x1="568.0" y1="106" x2="836.0" y2="314" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<text x="707.0" y="207.0" fill="#57606a" font-size="11">abschluss-Gates</text>
+<line x1="300.0" y1="184" x2="568.0" y2="236" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<line x1="300.0" y1="184" x2="836.0" y2="236" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<line x1="300.0" y1="184" x2="1104.0" y2="236" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<text x="707.0" y="207.0" fill="#57606a" font-size="11">DR-Mails</text>
+<line x1="300.0" y1="314" x2="568.0" y2="366" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<line x1="568.0" y1="236" x2="300.0" y2="444" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<text x="439.0" y="337.0" fill="#57606a" font-size="11">liest</text>
+<line x1="836.0" y1="236" x2="300.0" y2="444" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<text x="573.0" y="337.0" fill="#57606a" font-size="11">Commit</text>
+<line x1="568.0" y1="366" x2="300.0" y2="444" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<text x="439.0" y="402.0" fill="#57606a" font-size="11">Datei-Blöcke</text>
+<line x1="836.0" y1="366" x2="300.0" y2="444" stroke="#57606a" stroke-width="1.2" marker-end="url(#pfeil)"/>
+<text x="573.0" y="402.0" fill="#57606a" font-size="11">prüft/pflegt</text>
+</svg>
