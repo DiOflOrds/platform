@@ -4,7 +4,7 @@
 # Erwartungswert: 0 manuelle Matrix-Läufe nötig; kein roter Stand erreicht main unbemerkt.
 #
 # VORAUSSETZUNG (Mensch): Fine-grained PAT mit "Contents: Read" für DiOflOrds/p0,
-# p1, p2, process UND produkt-datakonv (P2/T-0008: bestehende PAT unter
+# p1, p2, p3, process UND produkt-datakonv (bestehende PAT unter
 # github.com/settings/personal-access-tokens editieren, Repos zur Auswahl hinzufügen)
 # als Secret P0_READ_TOKEN in DiOflOrds/platform. Ohne Secret klare Fehlermeldung.
 name: CI
@@ -42,6 +42,11 @@ jobs:
           repository: DiOflOrds/p2
           token: ${{ secrets.P0_READ_TOKEN }}
           path: p2
+      - uses: actions/checkout@v5
+        with:
+          repository: DiOflOrds/p3
+          token: ${{ secrets.P0_READ_TOKEN }}
+          path: p3
       - uses: actions/checkout@v5
         with:
           repository: DiOflOrds/process
