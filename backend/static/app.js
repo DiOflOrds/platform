@@ -467,12 +467,19 @@ function ladeArchitektur() {  // SWR-045: generiertes Bild aus komponenten.yaml
 // nummerierte/ungeordnete Listen, Pipe-Tabellen, --- Trennlinien.
 function mdInline(text, ziel) {
   var rest = String(text || ""), m;
-  var muster = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/;
+  // SWR-060 (Betriebs-CR aus team-mail/N-0001): [text](https://...) als Link.
+  var muster = /(\[([^\]]*)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/;
   while ((m = rest.match(muster))) {
     if (m.index > 0) ziel.appendChild(document.createTextNode(rest.slice(0, m.index)));
-    if (m[2] !== undefined) ziel.appendChild(el("strong", {}, m[2]));
-    else if (m[3] !== undefined) ziel.appendChild(el("em", {}, m[3]));
-    else ziel.appendChild(el("code", {}, m[4]));
+    if (m[2] !== undefined) {
+      if (m[3].indexOf("http") === 0) {  // nur http/https, neuer Tab (SWR-060)
+        ziel.appendChild(el("a", { "class": "tlink", href: m[3], target: "_blank",
+                                   rel: "noopener" }, m[2] || m[3]));
+      } else ziel.appendChild(document.createTextNode(m[2]));
+    }
+    else if (m[4] !== undefined) ziel.appendChild(el("strong", {}, m[4]));
+    else if (m[5] !== undefined) ziel.appendChild(el("em", {}, m[5]));
+    else ziel.appendChild(el("code", {}, m[6]));
     rest = rest.slice(m.index + m[1].length);
   }
   if (rest) ziel.appendChild(document.createTextNode(rest));
