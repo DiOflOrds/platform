@@ -4,9 +4,10 @@
 // P3 Sprint 1 (ADR-005): Hash-Router #/<tab>/<projekt>[/<id>], Ticket-Detail (SWR-040),
 // Jira-Board mit Filtern (SWR-041), Inbox-Buttons + Historie (SWR-042), Versions-Banner (SWR-047).
 "use strict";
+// P7 (SWR-054): Tab "Team" — Digest-Verlauf, Steckbrief, Konfigurator.
 var TABS = [["uebersicht", "Cockpit"], ["board", "Board"], ["inbox", "Inbox"],
-            ["chat", "Team-Chat"], ["requirements", "Requirements"], ["trace", "Traceability"],
-            ["architektur", "Architektur"], ["baselines", "Baselines"],
+            ["chat", "Team-Chat"], ["team", "Team"], ["requirements", "Requirements"],
+            ["trace", "Traceability"], ["architektur", "Architektur"], ["baselines", "Baselines"],
             ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
 var inhalt = document.getElementById("inhalt");
 var tabsEl = document.getElementById("tabs");
@@ -48,7 +49,7 @@ pinEl.addEventListener("change", function () {
 
 function api(pfad, optionen) {
   optionen = optionen || {};
-  if (optionen.method === "POST" && pinEl.value) {  // SWR-049: PIN mitsenden
+  if (pinEl.value) {  // SWR-049 + SWR-053 (P7): PIN auch für geschützte Lese-Endpunkte
     optionen.headers = optionen.headers || {};
     optionen.headers["X-MC-PIN"] = pinEl.value;
   }
@@ -141,6 +142,11 @@ function ladeUebersicht() {  // SWR-046: Projekt-Cockpit
         karte.appendChild(el("div", { "class": "zeile" },
           pille(p.briefe_offen + " Brief(e) offen", "in_progress"),
           el("a", { "class": "tlink", href: "#/chat/" + p.projekt }, "zum Team-Chat")));
+      }
+      if (p.team) {  // SWR-055 (P7): Team-Kachel mit letztem Digest
+        karte.appendChild(el("div", { "class": "zeile" },
+          pille(p.team.letzter_digest ? "Digest " + p.team.letzter_digest : "noch kein Digest", "in_review"),
+          el("a", { "class": "tlink", href: "#/team/" + p.projekt }, "zum Team")));
       }
       if (p.letzte_baseline) {
         karte.appendChild(el("div", { "class": "zeile" }, "Letzte Baseline: " + p.letzte_baseline));
@@ -456,6 +462,99 @@ function ladeArchitektur() {  // SWR-045: generiertes Bild aus komponenten.yaml
   return Promise.resolve();
 }
 
+function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrief, Konfigurator
+  return api("/api/team?projekt=" + encodeURIComponent(projekt)).then(function (t) {
+    var s = t.steckbrief;
+    if (detailId) {  // Digest-Detail (Name steht im Hash)
+      return api("/api/team/digest?projekt=" + encodeURIComponent(projekt) +
+                 "&name=" + encodeURIComponent(detailId)).then(function (d) {
+        zeige([el("div", { "class": "karte" },
+          el("div", { "class": "btnreihe" },
+            el("button", { "class": "knopf zweit", onclick: function () { gehe("team", projekt); } },
+              "← Zurück zum Team")),
+          el("h3", {}, "Digest " + d.name),
+          el("pre", {}, d.inhalt))]);
+      });
+    }
+    var kopf = el("div", { "class": "karte" }, el("h3", {}, s.name || t.projekt));
+    var pillen = el("div", { "class": "zeile" },
+      pille("Profil: " + (s.profil || "?"), "in_review"),
+      pille("Datenklasse: " + s.datenklasse, s.datenklasse === "sensibel" ? "rejected" : "done"));
+    (s.rollen || []).forEach(function (r) { pillen.appendChild(pille(r, "open")); });
+    kopf.appendChild(pillen);
+    (s.sla || []).forEach(function (z) {
+      kopf.appendChild(el("div", { "class": "zeile" }, "SLA: " + z));
+    });
+    if (s.gegruendet) kopf.appendChild(el("div", { "class": "zeile leer" }, "Gegründet: " + s.gegruendet));
+
+    var digestKarte = el("div", { "class": "karte" }, el("h3", {}, "Digests (" + t.digests.length + ")"));
+    if (!t.digests.length) digestKarte.appendChild(el("p", { "class": "leer" }, "Noch kein Digest."));
+    t.digests.forEach(function (d) {
+      digestKarte.appendChild(el("div", { "class": "karte klick brief", onclick: function () {
+        gehe("team", projekt, d.name);
+      } }, el("div", { "class": "zeile" }, pille(d.datum, "done"), " " + d.titel)));
+    });
+
+    var k = t.konfiguration;
+    var konfigKarte = el("div", { "class": "karte" }, el("h3", {}, "Konfiguration"));
+    if (!k.vorhanden) {
+      konfigKarte.appendChild(el("p", { "class": "leer" }, "Dieses Team hat keine konfiguration.yaml."));
+    } else {
+      var zeitraumSel = el("select", { style: "width:auto;margin:0" });
+      [["1", "Tageszusammenfassung"], ["7", "Wochenzusammenfassung"], ["30", "Monatszusammenfassung"]]
+        .forEach(function (paar) {
+          var o = el("option", { value: paar[0] }, paar[1]);
+          if (String(k.zeitraum_tage) === paar[0]) o.setAttribute("selected", "selected");
+          zeitraumSel.appendChild(o);
+        });
+      var rechnungenBox = el("input", { type: "checkbox", style: "width:auto;margin:0" });
+      rechnungenBox.checked = !!k.abschnitt_rechnungen;
+      var mailBox = el("input", { type: "checkbox", style: "width:auto;margin:0" });
+      mailBox.checked = !!k.zustellung_mail;
+      var meldung = el("div", {});
+      var speichern = el("button", { "class": "knopf", onclick: function () {
+        speichern.disabled = true;
+        leeren(meldung);
+        api("/api/team/konfiguration", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projekt: projekt,
+            zeitraum_tage: parseInt(zeitraumSel.value, 10),
+            abschnitt_rechnungen: rechnungenBox.checked,
+            zustellung_mail: mailBox.checked })
+        }).then(function () {
+          speichern.disabled = false;
+          meldung.appendChild(el("div", { "class": "meldung ok" },
+            "Gespeichert und committet — gilt ab dem nächsten Digest-Lauf."));
+        }).catch(function (fehler) {
+          speichern.disabled = false;
+          meldung.appendChild(el("div", { "class": "meldung fehler" }, String(fehler.message || fehler)));
+        });
+      } }, "Speichern (PIN bei Netzwerk-Zugriff)");
+      konfigKarte.appendChild(el("div", { "class": "zeile" }, "Zeitraum: ", zeitraumSel));
+      konfigKarte.appendChild(el("label", { "class": "zeile" }, rechnungenBox, " Rechnungs-Abschnitt im Digest"));
+      konfigKarte.appendChild(el("label", { "class": "zeile" }, mailBox, " Digest zusätzlich per Mail (SWR-058)"));
+      var konten = el("div", { "class": "zeile" }, "Konten (Klasse A — Änderung per Brief/Session): ");
+      (k.konten || []).forEach(function (konto) { konten.appendChild(pille(konto.name, "open")); });
+      konfigKarte.appendChild(konten);
+      konfigKarte.appendChild(el("div", { "class": "btnreihe" }, speichern));
+      konfigKarte.appendChild(meldung);
+    }
+
+    var chartaKarte = el("div", { "class": "karte" }, el("h3", {}, "Charter"),
+      t.charta ? el("pre", {}, t.charta) : el("p", { "class": "leer" }, "Keine Charter-Datei."));
+    zeige([kopf, digestKarte, konfigKarte, chartaKarte]);
+  }).catch(function (fehler) {
+    var text = String(fehler.message || fehler);
+    if (text.indexOf("kein Team-Projekt") >= 0) {
+      zeige([el("div", { "class": "karte" }, el("h3", {}, "Kein Team-Projekt"),
+        el("p", { "class": "leer" }, projekt + " ist ein Projekt-Repo ohne team.yaml — " +
+          "Team-Ansichten gibt es für Teams aus der Registry (z. B. team-mail, pm)."))]);
+      return;
+    }
+    throw fehler;
+  });
+}
+
 function ladeBaselines() {  // SWR-032
   return api("/api/baselines").then(function (a) {
     zeige(a.repos.map(function (r) {
@@ -471,8 +570,9 @@ function lade() {
   zeigeTabs();
   zeige([el("p", { "class": "leer" }, "Lade …")]);
   var ansichten = { uebersicht: ladeUebersicht, board: ladeBoard, inbox: ladeInbox,
-                    chat: ladeChat, ticket: ladeTicket, requirements: ladeRequirements,
-                    trace: ladeTrace, architektur: ladeArchitektur, baselines: ladeBaselines,
+                    chat: ladeChat, team: ladeTeam, ticket: ladeTicket,
+                    requirements: ladeRequirements, trace: ladeTrace,
+                    architektur: ladeArchitektur, baselines: ladeBaselines,
                     reports: ladeReports, kpi: ladeKpi };
   (ansichten[aktiv] || ladeUebersicht)().catch(function (fehler) {
     zeige([el("div", { "class": "meldung fehler" }, "API nicht erreichbar: " + String(fehler.message || fehler))]);

@@ -15,3 +15,7 @@ Basic-Auth/Session-Cookies (mehr Fläche, kein Gewinn im Heimnetz), TLS mit Self
 ## Konsequenzen
 
 server.py bekommt eine kleine PIN-Prüfung im Schreibpfad und den Briefkasten-Endpunkt; app.js einen Chat-Tab + PIN-Feld; Runbook ein Kapitel „LAN-Betrieb" (Firewall, PIN setzen per `setx MC_PIN`, Grenzen). Die Session-Routine erweitert sich um „Briefkasten zuerst".
+
+## Delta 2026-08-15 (P7, SWR-053): PIN-Lesegate für Team-Inhalte
+
+Das PIN-Modell galt bisher nur für Schreibzugriffe. Mit den Team-Ansichten (P7) liefert die API erstmals **sensible Inhalte** aus (Mail-Digests, Datenklasse `sensibel` nach Playbook Kap. 16). Darum wird die bestehende Prüfung `schreibschutz_pruefen` unverändert auch auf die `/api/team*`-**Lese**-Endpunkte angewendet: localhost bleibt frei, remote nur mit `MC_PIN`, ohne gesetzte PIN sind Remote-Zugriffe auf Team-Inhalte gesperrt (sicherer Default). Kein neues Mechanikstück, dieselbe Funktion an einer zweiten Stelle — bewusst kein generisches Rechtemodell (YAGNI, Heimnetz-Kontext). Frontend sendet die PIN daher bei allen Anfragen mit, nicht nur bei POST. Guardrail 2 (kein GitHub-Remote für sensible Repos) bleibt unberührt — Mission Control liest lokal.

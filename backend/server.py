@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend import aggregation, briefkasten, inbox, mailer  # noqa: E402
+from backend import aggregation, briefkasten, inbox, mailer, teams  # noqa: E402
 
 
 def schreibschutz_pruefen(client_ip, pin_header):
@@ -124,6 +124,20 @@ class Api(BaseHTTPRequestHandler):
                 return self._json(200, aggregation.cockpit_alle(wurzel))
             if pfad == "/api/briefkasten":  # SWR-050 (P4): Konversation lesen
                 return self._json(200, briefkasten.liste(wurzel, projekt))
+            if pfad.startswith("/api/team"):  # SWR-053 (P7): PIN-Lesegate für
+                # sensible Team-Inhalte — remote nur mit PIN, localhost frei
+                sperre = schreibschutz_pruefen(self.client_address[0],
+                                               self.headers.get("X-MC-PIN"))
+                if sperre:
+                    return self._json(403, {"fehler": sperre})
+                try:
+                    if pfad == "/api/team":
+                        return self._json(200, teams.team_daten(wurzel, projekt))
+                    if pfad == "/api/team/digest":
+                        name = (parse_qs(teile.query).get("name") or [""])[0]
+                        return self._json(200, teams.digest_inhalt(wurzel, projekt, name))
+                except teams.TeamFehler as e:
+                    return self._json(e.code, {"fehler": str(e)})
             if pfad == "/architektur.svg":  # SWR-045 (P3): generiertes Architekturbild
                 svg = os.path.join(_PLATFORM_DIR, "architecture", "architektur.svg")
                 if not os.path.isfile(svg):
@@ -153,6 +167,13 @@ class Api(BaseHTTPRequestHandler):
             daten = json.loads(self.rfile.read(laenge).decode("utf-8") or "{}")
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"fehler": "ungültiger JSON-Body"})
+        if self.path == "/api/team/konfiguration":  # SWR-056 (P7): Eckparameter ändern
+            try:
+                erg = teams.konfiguration_schreiben(type(self).wurzel,
+                                                    daten.get("projekt", ""), daten)
+            except teams.TeamFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
         if self.path == "/api/briefkasten":  # SWR-050 (P4): Nachricht ans Team
             try:
                 erg = briefkasten.sende(type(self).wurzel, daten.get("projekt", "p0"),

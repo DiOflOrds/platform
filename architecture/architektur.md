@@ -1,8 +1,9 @@
-# Software-Architektur Plattform — Backend/Frontend (v1.3, P4 Sprint 0; v1.2 P3; v1.1 P1; v1 Sprint 3, T-0031)
+# Software-Architektur Plattform — Backend/Frontend (v1.4, P7 Sprint 1; v1.3 P4; v1.2 P3; v1.1 P1; v1 Sprint 3, T-0031)
 
 *Rolle ARCH (SWE.2). Basis: SWR-020–024 (reviewed, T-0030) + SWR-025–029 (p1-req-v1.0, T-0004). Leitplanke (P0 Kap. 5): verteilungsfähig — API-first, kein Zustand außerhalb von Git/Hub. Entscheidungen: siehe `adr/`.*
 
 > **Delta v1.3 (P4 Sprint 0, p4/T-0004, SWR-048–052):** LAN-Betrieb mit PIN-Schutz (localhost frei, remote nur mit `MC_PIN`-Header; sicherer Default: ohne PIN keine Remote-Schreibzugriffe) und Briefkasten-Chat (versionierte Briefe je Projekt, Antwort in derselben Datei, Commit sofort). Entscheidung: ADR-006. Leitplanke: nur LAN, kein Internet-Expose.
+> **Delta v1.4 (P7 Sprint 1, p7/T-0005, SWR-053–057):** Team-Ansichten — Modul `teams.py` (Steckbrief/Konfiguration/Charta/Digests aus Team-Repos mit `team.yaml`), Endpunkte `/api/team*` mit **PIN-Lesegate** (ADR-006-Delta), Konfigurations-Schreibpfad mit Sofort-Commit (Identität „Mensch via HMI", Konten = Klasse A ausgenommen), Cockpit-Team-Kachel, Frontend-Tab „Team" mit Konfigurator.
 >
 > **Delta v1.2 (P3 Sprint 0, p3/T-0004, SWR-040–047):** Frontend wird interaktive Arbeitsfläche — Hash-Routing für verlinkbare Detailansichten (Ticket, DR-Historie, Cockpit), Requirements/Traceability als geparste Tabellen, Architekturbild aus versionierter Quelle (`komponenten.yaml` → Generator-Skript → eingechecktes SVG), `/api/version` für Frontend/Backend-Versionsabgleich (SWR-047). Entscheidung: ADR-005. Unverändert: ADR-001/002/003/004.
 >

@@ -161,10 +161,17 @@ def cockpit(root, projekt="p0", heute=None):
             if name.endswith(".md") and "status: offen" in open(
                     os.path.join(brief_verz, name), encoding="utf-8").read(300):
                 briefe_offen += 1
+    # SWR-055 (P7): Team-Kachel — letzter Digest für Team-Repos (team.yaml)
+    team = None
+    if os.path.isfile(os.path.join(root, projekt, "team.yaml")):
+        dverz = os.path.join(root, projekt, "digest")
+        digests = sorted(n for n in os.listdir(dverz)
+                         if n.endswith(".md")) if os.path.isdir(dverz) else []
+        team = {"letzter_digest": digests[-1][:10] if digests else ""}
     return {"projekt": projekt, "status_zahlen": status_zahlen,
             "tickets_gesamt": len(tickets), "offene_drs": drs,
             "letzte_baseline": tags[-1].strip() if tags else "",
-            "briefe_offen": briefe_offen,
+            "briefe_offen": briefe_offen, "team": team,
             "kpi": {"laeufe": kpi.get("laeufe", 0),
                     "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}}
 
