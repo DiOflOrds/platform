@@ -8,7 +8,7 @@ import os
 import smtplib
 from email.message import EmailMessage
 
-MAIL_TO_DEFAULT = "geraldine.john90@gmail.com"  # D004
+MAIL_TO_DEFAULT = "dimitri.john83@gmail.com"  # D004, Adresse revidiert per P1-D008 (2026-08-15)
 
 
 def konfiguriert():
