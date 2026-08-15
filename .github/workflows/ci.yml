@@ -10,6 +10,7 @@
 name: CI
 on:
   push:
+    branches: [main]  # P2/T-0013: keine Tag-Laeufe (alte Commits vs. heutige Repos = Rauschen)
   pull_request:
 jobs:
   tests:
@@ -51,6 +52,8 @@ jobs:
           repository: DiOflOrds/produkt-datakonv
           token: ${{ secrets.P0_READ_TOKEN }}
           path: produkt-datakonv
+          fetch-depth: 0        # P2/T-0013: Katalog-Check braucht die Release-Tags —
+          fetch-tags: true      # Default-Checkout holt keine Tags -> falscher Befund
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
