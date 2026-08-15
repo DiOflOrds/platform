@@ -173,6 +173,12 @@ class Api(BaseHTTPRequestHandler):
                 os._exit(42)  # Startskript-Schleife (mission-control[-lan].cmd) startet neu
             threading.Timer(0.5, _ende).start()
             return None
+        if self.path == "/api/team/digest-jetzt":  # SWR-063 (P8): Sofort-Zusammenfassung
+            try:
+                erg = teams.digest_jetzt(type(self).wurzel, daten.get("projekt", ""))
+            except teams.TeamFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
         if self.path == "/api/team/konfiguration":  # SWR-056 (P7): Eckparameter ändern
             try:
                 erg = teams.konfiguration_schreiben(type(self).wurzel,

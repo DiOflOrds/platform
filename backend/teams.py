@@ -62,7 +62,7 @@ def lade_steckbrief(root, projekt):
 
 def lade_konfiguration(root, projekt):
     """konfiguration.yaml → Eckparameter (Konten nur Namen, nie Zugangsdaten)."""
-    cfg = {"zeitraum_tage": 1, "konten": [], "abschnitt_rechnungen": True,
+    cfg = {"zeitraum_tage": 1, "takte": [], "konten": [], "abschnitt_rechnungen": True,
            "zustellung_mail": False, "vorhanden": False}
     pfad = _pfad(root, projekt, "konfiguration.yaml")
     if not os.path.isfile(pfad):
@@ -80,8 +80,13 @@ def lade_konfiguration(root, projekt):
             k, v = k.strip(), v.strip()
             if k == "zeitraum_tage" and v.isdigit():
                 cfg["zeitraum_tage"] = int(v)
+            elif k == "takte":  # SWR-064 (P8): Mehrfachauswahl
+                cfg["takte"] = sorted({int(t) for t in v.strip("[]").split(",")
+                                       if t.strip().isdigit()} & set(GUELTIGE_ZEITRAEUME))
             elif k in ("abschnitt_rechnungen", "zustellung_mail"):
                 cfg[k] = v.lower() in ("ja", "true", "yes")
+    if not cfg["takte"]:  # rückwärtskompatibel
+        cfg["takte"] = [cfg["zeitraum_tage"]] if cfg["zeitraum_tage"] in GUELTIGE_ZEITRAEUME else [1]
     return cfg
 
 
@@ -132,12 +137,16 @@ def konfiguration_schreiben(root, projekt, werte):
     if not ist_team(root, projekt):
         raise TeamFehler(404, f"'{projekt}' ist kein Team-Projekt (keine team.yaml).")
     alt = lade_konfiguration(root, projekt)
-    try:
-        zeitraum = int(werte.get("zeitraum_tage", alt["zeitraum_tage"]))
+    try:  # SWR-064: Mehrfachauswahl; einzelnes zeitraum_tage bleibt gültig (Altpfad)
+        if "takte" in werte:
+            takte = sorted({int(t) for t in (werte.get("takte") or [])})
+        else:
+            takte = [int(werte.get("zeitraum_tage", alt["takte"][0]))]
     except (TypeError, ValueError):
-        raise TeamFehler(400, "zeitraum_tage muss eine Zahl sein (1, 7 oder 30).")
-    if zeitraum not in GUELTIGE_ZEITRAEUME:
-        raise TeamFehler(400, "Ungültiger Zeitraum — erlaubt sind 1 (Tag), 7 (Woche), 30 (Monat).")
+        raise TeamFehler(400, "Takte müssen Zahlen sein (1, 7, 30).")
+    if not takte or any(t not in GUELTIGE_ZEITRAEUME for t in takte):
+        raise TeamFehler(400, "Ungültige Takt-Auswahl — erlaubt sind 1 (Tag), 7 (Woche), "
+                              "30 (Monat), mindestens einer.")
     if "konten" in werte:
         raise TeamFehler(400, "Konten sind Klasse A und werden nicht über das HMI geändert "
                               "(Playbook Kap. 16) — bitte per Brief/Session beantragen.")
@@ -148,7 +157,7 @@ def konfiguration_schreiben(root, projekt, werte):
         "# Konfiguration " + projekt + " (Eckparameter des Teams — P5-Prinzip: Teams sind konfigurierbar)",
         "# Aendern: HMI-Formular (PIN) oder Datei/Brief. NIE Passwoerter hier eintragen.",
         "",
-        f"zeitraum_tage: {zeitraum}            # 1 = Tages-, 7 = Wochen-, 30 = Monatszusammenfassung",
+        f"takte: [{', '.join(str(t) for t in takte)}]        # 1 = Tages-, 7 = Wochen-, 30 = Monats-Digest (mehrere gleichzeitig, SWR-064)",
         "",
         "konten:                     # Klasse A — Aenderung nur per Brief/Session (Zugangs-Freigabe)",
     ]
@@ -168,10 +177,33 @@ def konfiguration_schreiben(root, projekt, werte):
     subprocess.run(["git", "-C", repo, "add", "konfiguration.yaml"],
                    capture_output=True, text=True)
     lauf = subprocess.run(["git", "-C", repo] + _COMMIT_IDENT +
-                          ["commit", "-m", f"Konfiguration via HMI: zeitraum={zeitraum}, "
+                          ["commit", "-m", f"Konfiguration via HMI: takte={takte}, "
                            f"rechnungen={_bool_text(rechnungen)}, mail={_bool_text(zustellung)}"],
                           capture_output=True, text=True)
     if lauf.returncode != 0 and "nothing to commit" not in (lauf.stdout + lauf.stderr):
         raise TeamFehler(500, "Konfiguration geschrieben, aber Commit fehlgeschlagen: "
                               + (lauf.stderr or lauf.stdout)[:200])
     return {"projekt": projekt, "konfiguration": lade_konfiguration(root, projekt)}
+
+
+def digest_jetzt(root, projekt, runner=None):
+    """SWR-063 (P8): stößt den Sofort-Lauf des Team-Werkzeugs an (holen → Ollama →
+    Digest → ggf. Mail). runner injizierbar für Tests; Default: subprocess."""
+    werkzeug = _pfad(root, projekt, "tools", "mail_digest.py")
+    if not os.path.isfile(werkzeug):
+        raise TeamFehler(404, f"'{projekt}' hat kein Digest-Werkzeug (tools/mail_digest.py).")
+    if runner is None:
+        import sys as _sys
+
+        def runner(pfad):  # noqa: ANN001
+            lauf = subprocess.run([_sys.executable, pfad, "--jetzt"],
+                                  capture_output=True, text=True, timeout=600,
+                                  cwd=os.path.join(root, projekt))
+            return lauf.returncode, (lauf.stdout + lauf.stderr).strip()
+    try:
+        code, ausgabe = runner(werkzeug)
+    except subprocess.TimeoutExpired:
+        raise TeamFehler(504, "Zeitüberschreitung — Ollama/IMAP antworten nicht (Werkzeuglauf abgebrochen).")
+    if code != 0:
+        raise TeamFehler(502, "Werkzeuglauf fehlgeschlagen: " + ausgabe[-300:])
+    return {"projekt": projekt, "meldung": ausgabe[-600:] or "Lauf abgeschlossen."}

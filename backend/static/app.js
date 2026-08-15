@@ -565,6 +565,27 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
     if (s.gegruendet) kopf.appendChild(el("div", { "class": "zeile leer" }, "Gegründet: " + s.gegruendet));
 
     var digestKarte = el("div", { "class": "karte" }, el("h3", {}, "Digests (" + t.digests.length + ")"));
+    var jetztMeldung = el("div", {});
+    var jetztKnopf = el("button", { "class": "knopf", onclick: function () {  // SWR-063 (P8)
+      jetztKnopf.disabled = true;
+      leeren(jetztMeldung);
+      jetztMeldung.appendChild(el("div", { "class": "meldung" }, "Läuft — holen, verdichten (Ollama), ggf. senden … das kann eine Minute dauern."));
+      api("/api/team/digest-jetzt", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projekt: projekt })
+      }).then(function (r) {
+        jetztKnopf.disabled = false;
+        leeren(jetztMeldung);
+        jetztMeldung.appendChild(el("div", { "class": "meldung ok" }, r.meldung));
+        lade();
+      }).catch(function (f) {
+        jetztKnopf.disabled = false;
+        leeren(jetztMeldung);
+        jetztMeldung.appendChild(el("div", { "class": "meldung fehler" }, String(f.message || f)));
+      });
+    } }, "Jetzt zusammenfassen (Ollama)");
+    digestKarte.appendChild(el("div", { "class": "btnreihe" }, jetztKnopf));
+    digestKarte.appendChild(jetztMeldung);
     if (!t.digests.length) digestKarte.appendChild(el("p", { "class": "leer" }, "Noch kein Digest."));
     t.digests.forEach(function (d) {
       digestKarte.appendChild(el("div", { "class": "karte klick brief", onclick: function () {
@@ -577,13 +598,15 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
     if (!k.vorhanden) {
       konfigKarte.appendChild(el("p", { "class": "leer" }, "Dieses Team hat keine konfiguration.yaml."));
     } else {
-      var zeitraumSel = el("select", { style: "width:auto;margin:0" });
-      [["1", "Tageszusammenfassung"], ["7", "Wochenzusammenfassung"], ["30", "Monatszusammenfassung"]]
-        .forEach(function (paar) {
-          var o = el("option", { value: paar[0] }, paar[1]);
-          if (String(k.zeitraum_tage) === paar[0]) o.setAttribute("selected", "selected");
-          zeitraumSel.appendChild(o);
-        });
+      var taktBoxen = [];  // SWR-064 (P8): Tag/Woche/Monat gleichzeitig
+      var taktZeile = el("div", { "class": "zeile" }, "Takte: ");
+      [[1, "Täglich"], [7, "Wöchentlich"], [30, "Monatlich"]].forEach(function (paar) {
+        var box = el("input", { type: "checkbox", style: "width:auto;margin:0" });
+        box.checked = (k.takte || [k.zeitraum_tage]).indexOf(paar[0]) >= 0;
+        box._tage = paar[0];
+        taktBoxen.push(box);
+        taktZeile.appendChild(el("label", { style: "display:flex;gap:.3rem;align-items:center" }, box, " " + paar[1]));
+      });
       var rechnungenBox = el("input", { type: "checkbox", style: "width:auto;margin:0" });
       rechnungenBox.checked = !!k.abschnitt_rechnungen;
       var mailBox = el("input", { type: "checkbox", style: "width:auto;margin:0" });
@@ -592,10 +615,11 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
       var speichern = el("button", { "class": "knopf", onclick: function () {
         speichern.disabled = true;
         leeren(meldung);
+        var takte = [];
+        taktBoxen.forEach(function (b) { if (b.checked) takte.push(b._tage); });
         api("/api/team/konfiguration", { method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projekt: projekt,
-            zeitraum_tage: parseInt(zeitraumSel.value, 10),
+          body: JSON.stringify({ projekt: projekt, takte: takte,
             abschnitt_rechnungen: rechnungenBox.checked,
             zustellung_mail: mailBox.checked })
         }).then(function () {
@@ -607,7 +631,7 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
           meldung.appendChild(el("div", { "class": "meldung fehler" }, String(fehler.message || fehler)));
         });
       } }, "Speichern (PIN bei Netzwerk-Zugriff)");
-      konfigKarte.appendChild(el("div", { "class": "zeile" }, "Zeitraum: ", zeitraumSel));
+      konfigKarte.appendChild(taktZeile);
       konfigKarte.appendChild(el("label", { "class": "zeile" }, rechnungenBox, " Rechnungs-Abschnitt im Digest"));
       konfigKarte.appendChild(el("label", { "class": "zeile" }, mailBox, " Digest zusätzlich per Mail (SWR-058)"));
       var konten = el("div", { "class": "zeile" }, "Konten (Klasse A — Änderung per Brief/Session): ");

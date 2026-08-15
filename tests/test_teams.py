@@ -81,10 +81,10 @@ class TeamsTest(unittest.TestCase):
         self.assertEqual(c["team"], {"letzter_digest": "2026-08-15"})
 
     def test_konfiguration_schreiben_und_commit(self):
-        """SWR-056: gültige Änderung → Datei + sofortiger Commit, Konten unverändert."""
+        """SWR-056/064: gültige Änderung (Mehrfach-Takt) → Datei + Commit, Konten unverändert."""
         erg = teams.konfiguration_schreiben(self.root, "team-x",
-                                            {"zeitraum_tage": 7, "zustellung_mail": True})
-        self.assertEqual(erg["konfiguration"]["zeitraum_tage"], 7)
+                                            {"takte": [7, 30], "zustellung_mail": True})
+        self.assertEqual(erg["konfiguration"]["takte"], [7, 30])
         self.assertTrue(erg["konfiguration"]["zustellung_mail"])
         self.assertEqual(erg["konfiguration"]["konten"][0]["name"], "a@b.de")
         status = _git(self.repo, "status", "--porcelain").stdout.strip()
@@ -93,15 +93,30 @@ class TeamsTest(unittest.TestCase):
         self.assertIn("Mensch via HMI", log)
 
     def test_konfiguration_validierung(self):
-        """SWR-056: ungültiger Zeitraum → 400; Konten-Änderung → 400 (Klasse A)."""
-        with self.assertRaises(teams.TeamFehler) as k:
-            teams.konfiguration_schreiben(self.root, "team-x", {"zeitraum_tage": 5})
-        self.assertEqual(k.exception.code, 400)
-        self.assertIn("erlaubt sind 1", str(k.exception))
+        """SWR-056/064: ungültiger Takt oder leere Auswahl → 400; Konten-Änderung → 400 (Klasse A)."""
+        for kaputt in ({"takte": [5]}, {"takte": []}, {"zeitraum_tage": 5}):
+            with self.assertRaises(teams.TeamFehler) as k:
+                teams.konfiguration_schreiben(self.root, "team-x", kaputt)
+            self.assertEqual(k.exception.code, 400)
         with self.assertRaises(teams.TeamFehler) as k:
             teams.konfiguration_schreiben(self.root, "team-x", {"konten": []})
         self.assertEqual(k.exception.code, 400)
         self.assertIn("Klasse A", str(k.exception))
+
+    def test_digest_jetzt(self):
+        """SWR-063: Sofort-Lauf über injizierten Runner; ohne Werkzeug → 404; Fehler → 502."""
+        with self.assertRaises(teams.TeamFehler) as k:
+            teams.digest_jetzt(self.root, "team-x")
+        self.assertEqual(k.exception.code, 404)
+        os.makedirs(os.path.join(self.repo, "tools"), exist_ok=True)
+        with open(os.path.join(self.repo, "tools", "mail_digest.py"), "w", encoding="utf-8") as f:
+            f.write("# dummy\n")
+        erg = teams.digest_jetzt(self.root, "team-x",
+                                 runner=lambda p: (0, "[tag] Digest -> digest/x.md"))
+        self.assertIn("Digest", erg["meldung"])
+        with self.assertRaises(teams.TeamFehler) as k:
+            teams.digest_jetzt(self.root, "team-x", runner=lambda p: (1, "kaputt"))
+        self.assertEqual(k.exception.code, 502)
 
 
 if __name__ == "__main__":
