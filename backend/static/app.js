@@ -462,6 +462,77 @@ function ladeArchitektur() {  // SWR-045: generiertes Bild aus komponenten.yaml
   return Promise.resolve();
 }
 
+// P7 SWR-059: kleiner Markdown-Renderer (DOM-basiert, keine Bibliothek — ADR-002).
+// Unterstützt: #..#### Überschriften, Absätze, **fett**, *kursiv*, `code`,
+// nummerierte/ungeordnete Listen, Pipe-Tabellen, --- Trennlinien.
+function mdInline(text, ziel) {
+  var rest = String(text || ""), m;
+  var muster = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/;
+  while ((m = rest.match(muster))) {
+    if (m.index > 0) ziel.appendChild(document.createTextNode(rest.slice(0, m.index)));
+    if (m[2] !== undefined) ziel.appendChild(el("strong", {}, m[2]));
+    else if (m[3] !== undefined) ziel.appendChild(el("em", {}, m[3]));
+    else ziel.appendChild(el("code", {}, m[4]));
+    rest = rest.slice(m.index + m[1].length);
+  }
+  if (rest) ziel.appendChild(document.createTextNode(rest));
+}
+
+function mdRender(text) {
+  var wurzel = el("div", { "class": "md" });
+  var zeilen = String(text || "").split("\n");
+  var i = 0, liste = null;
+  while (i < zeilen.length) {
+    var strip = zeilen[i].trim();
+    if (!strip) { i++; liste = null; continue; }
+    var h = strip.match(/^(#{1,4})\s+(.*)$/);
+    if (h) {
+      var hEl = el("h" + Math.min(h[1].length + 1, 5), {});
+      mdInline(h[2], hEl); wurzel.appendChild(hEl); i++; liste = null; continue;
+    }
+    if (strip.charAt(0) === "|") {  // Tabellenblock
+      var tab = el("table", { "class": "tabelle" }), kopfzeile = true;
+      while (i < zeilen.length && zeilen[i].trim().charAt(0) === "|") {
+        var tz = zeilen[i].trim();
+        i++;
+        if (/^[|\s:-]+$/.test(tz)) continue;  // Trennzeile
+        var tr = el("tr", {});
+        tz.replace(/^\||\|$/g, "").split("|").forEach(function (zelle) {
+          var td = el(kopfzeile ? "th" : "td", {});
+          mdInline(zelle.trim(), td); tr.appendChild(td);
+        });
+        tab.appendChild(tr); kopfzeile = false;
+      }
+      wurzel.appendChild(el("div", { "class": "tabellenwrap" }, tab)); liste = null; continue;
+    }
+    var li = strip.match(/^([-*]|\d+\.)\s+(.*)$/);
+    if (li) {
+      var typ = /^\d/.test(li[1]) ? "ol" : "ul";
+      if (!liste || liste.tagName.toLowerCase() !== typ) {
+        liste = el(typ, {}); wurzel.appendChild(liste);
+      }
+      var punkt = el("li", {}), puffer = [li[2]];
+      i++;  // Folgezeilen ohne eigenes Muster gehören zum Punkt (Umbruch im Editor)
+      while (i < zeilen.length) {
+        var f = zeilen[i].trim();
+        if (!f || /^(#{1,4}\s|\||[-*]\s|\d+\.\s|---)/.test(f)) break;
+        puffer.push(f); i++;
+      }
+      mdInline(puffer.join(" "), punkt); liste.appendChild(punkt); continue;
+    }
+    if (/^---+$/.test(strip)) { wurzel.appendChild(el("hr", {})); i++; liste = null; continue; }
+    var p = el("p", {}), absatz = [strip];
+    i++;
+    while (i < zeilen.length) {
+      var w = zeilen[i].trim();
+      if (!w || /^(#{1,4}\s|\||[-*]\s|\d+\.\s|---)/.test(w)) break;
+      absatz.push(w); i++;
+    }
+    mdInline(absatz.join(" "), p); wurzel.appendChild(p); liste = null;
+  }
+  return wurzel;
+}
+
 function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrief, Konfigurator
   return api("/api/team?projekt=" + encodeURIComponent(projekt)).then(function (t) {
     var s = t.steckbrief;
@@ -472,8 +543,7 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
           el("div", { "class": "btnreihe" },
             el("button", { "class": "knopf zweit", onclick: function () { gehe("team", projekt); } },
               "← Zurück zum Team")),
-          el("h3", {}, "Digest " + d.name),
-          el("pre", {}, d.inhalt))]);
+          mdRender(d.inhalt))]);  // SWR-059: formatiert statt Rohtext
       });
     }
     var kopf = el("div", { "class": "karte" }, el("h3", {}, s.name || t.projekt));
@@ -541,7 +611,7 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
     }
 
     var chartaKarte = el("div", { "class": "karte" }, el("h3", {}, "Charter"),
-      t.charta ? el("pre", {}, t.charta) : el("p", { "class": "leer" }, "Keine Charter-Datei."));
+      t.charta ? mdRender(t.charta) : el("p", { "class": "leer" }, "Keine Charter-Datei."));  // SWR-059
     zeige([kopf, digestKarte, konfigKarte, chartaKarte]);
   }).catch(function (fehler) {
     var text = String(fehler.message || fehler);
