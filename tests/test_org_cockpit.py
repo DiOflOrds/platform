@@ -76,6 +76,31 @@ class OrgCockpitTest(unittest.TestCase):
         self.assertEqual(c2["aufgaben_wiederkehrend"], 0)
         self.assertFalse(c2["aufgaben"][0]["takt"])
 
+    def test_altlasten_erkennung(self):
+        """SWR-075 (pm/N-0013): erledigt + älter als 1 Tag → ausblendbar; alles andere bleibt.
+        Ohne Änderungsdatum gilt ein Ticket als frisch (nie ohne Datenlage verstecken)."""
+        from datetime import date
+        heute = date(2026, 8, 16)
+        f = aggregation.ist_altlast
+        self.assertTrue(f({"status": "done", "geändert": "2026-08-10"}, heute=heute))
+        self.assertTrue(f({"status": "rejected", "geändert": "2026-08-14"}, heute=heute))
+        self.assertFalse(f({"status": "done", "geändert": "2026-08-15"}, heute=heute))  # Grenze
+        self.assertFalse(f({"status": "done", "geändert": "2026-08-16"}, heute=heute))
+        self.assertFalse(f({"status": "open", "geändert": "2026-01-01"}, heute=heute))
+        self.assertFalse(f({"status": "in_review", "geändert": "2026-01-01"}, heute=heute))
+        self.assertFalse(f({"status": "done"}, heute=heute))
+        self.assertFalse(f({"status": "done", "geändert": "kaputt"}, heute=heute))
+
+    def test_board_reicht_veraltet_durch(self):
+        """SWR-075: Das Board-API markiert jede Karte, damit das HMI filtern kann."""
+        basis = self._repo("altlast", team_typ="pm")
+        pfad = os.path.join(basis, "tickets", "T-0001.md")
+        text = open(pfad, encoding="utf-8").read().replace(
+            "status: open", "status: done").replace("geändert: 2026-08-16", "geändert: 2000-01-01")
+        open(pfad, "w", encoding="utf-8").write(text)
+        b = aggregation.lade_board(self.root, "altlast")
+        self.assertTrue(b["gruppen"]["done"][0]["veraltet"])
+
     def test_status_fallback_ueber_baseline_tag(self):
         """SWR-066: <repo>-v1.0-Tag ohne Steckbrief-Status -> abgeschlossen."""
         self._repo("beta", tag="beta-v1.0")

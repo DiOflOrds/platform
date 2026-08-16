@@ -237,16 +237,29 @@ function ladeBoard() {  // SWR-041: Jira-like — Statusspalten, Filter, Karte -
         if (v && werte[k].indexOf(v) < 0) werte[k].push(v);
       });
     });
+    // SWR-075 (pm/N-0013): länger erledigte Aufgaben verstopfen das Board nicht mehr
+    var veraltet = alle.filter(function (t) { return t.veraltet; }).length;
     var filterzeile = el("div", { "class": "karte filterzeile" },
       filterSelect("sprint", werte.sprint.sort(), "Sprint"),
       filterSelect("rolle", werte.rolle.sort(), "Rolle"),
       filterSelect("typ", werte.typ.sort(), "Typ"));
+    if (veraltet) {
+      var altBox = el("input", { type: "checkbox", style: "width:auto;margin:0" });
+      altBox.checked = boardFilter.alteZeigen === true;
+      altBox.addEventListener("change", function () {
+        boardFilter.alteZeigen = altBox.checked;
+        ladeBoard();
+      });
+      filterzeile.appendChild(el("label", { style: "display:flex;gap:.3rem;align-items:center" },
+        altBox, " älter als 1 Tag erledigt anzeigen (" + veraltet + ")"));
+    }
     var spalten = el("div", { "class": "spalten" });
     reihenfolge.forEach(function (status) {
       var gruppe = (b.gruppen[status] || []).filter(function (t) {
         return (!boardFilter.sprint || String(t.sprint) === boardFilter.sprint) &&
                (!boardFilter.rolle || t.rolle === boardFilter.rolle) &&
-               (!boardFilter.typ || String(t.typ || "") === boardFilter.typ);
+               (!boardFilter.typ || String(t.typ || "") === boardFilter.typ) &&
+               (boardFilter.alteZeigen === true || !t.veraltet);  // SWR-075
       });
       if (!gruppe.length) return;
       var spalte = el("div", { "class": "spalte" },

@@ -79,6 +79,24 @@ def uebersicht(root):
     return {"projekte": eintraege}
 
 
+ENDZUSTAENDE = ("done", "rejected")
+
+
+def ist_altlast(t, heute=None, tage=1):
+    """SWR-075 (pm/N-0013): erledigt UND länger als `tage` her → im Board ausblendbar.
+
+    Maßgeblich ist das Feld `geändert`; fehlt oder ist es unlesbar, gilt das Ticket als
+    frisch und bleibt sichtbar (nie etwas ohne Datenlage verstecken).
+    """
+    if t.get("status") not in ENDZUSTAENDE:
+        return False
+    try:
+        geaendert = _datum.fromisoformat(str(t.get("geändert", "")).strip())
+    except ValueError:
+        return False
+    return ((heute or _datum.today()) - geaendert).days > tage
+
+
 def lade_board(root, projekt="p0"):
     """Tickets gruppiert nach Status (Quelle: <projekt>/tickets/*.md; SWR-025)."""
     tickets, probleme = board.lade_tickets(projekt_pfad(root, projekt))
@@ -86,7 +104,9 @@ def lade_board(root, projekt="p0"):
     for t in sorted(tickets, key=lambda x: (x.get("status", ""), x.get("id", ""))):
         eintrag = {k: t.get(k) for k in
                    ("id", "titel", "typ", "prozess", "rolle", "sprint", "prio", "blocked_by",
-                    "takt")}  # SWR-074: wiederkehrend vs. einmalig
+                    "takt",       # SWR-074: wiederkehrend vs. einmalig
+                    "geändert")}  # SWR-075: Alter erledigter Aufgaben
+        eintrag["veraltet"] = ist_altlast(t)  # SWR-075 (pm/N-0013)
         gruppen.setdefault(t.get("status", "unbekannt"), []).append(eintrag)
     return {"gruppen": gruppen, "anzahl": len(tickets), "validierungsprobleme": probleme}
 
