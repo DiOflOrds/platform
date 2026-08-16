@@ -1,0 +1,10 @@
+# Team-Steckbrief (Quelle der Wahrheit: process/teams/registry.yaml)
+name: "ASPICE-Team"
+typ: aspice
+profil: "entwicklung"
+datenklasse: intern
+rollen: [PL, RM, ARCH, DEV, TEST, QM, CM, PROB, CHG, COACH]
+sla:
+  - "werkzeuge: Tools/Skripte fuer Genesis, PM und alle Projekte entwickeln, pflegen, maintainen"
+  - "qualitaet: requirements-first, Tests gruen, Matrix 0 Luecken vor jedem Abschluss"
+gegruendet: "2026-08-02 (P0 Genesis, Masterplan)"
