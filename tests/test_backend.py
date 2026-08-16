@@ -1,6 +1,7 @@
 """API-Tests Backend-MVP (T-0032, T-0034). Verifiziert: SWR-020, SWR-022, SWR-023, SWR-024."""
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -253,6 +254,50 @@ class InboxTest(unittest.TestCase):
         status = subprocess.run(["git", "-C", self.p0, "status", "--porcelain"],
                                 capture_output=True, text=True).stdout.strip()
         self.assertEqual(status, "", "Arbeitskopie muss nach der Entscheidung sauber sein")
+
+    def test_zeitpunkt_mit_uhrzeit_in_log_und_ticket(self):
+        """SWR-084 (Wunsch Auftraggeber via Session): Log-Zeile und Ticket-Vermerk tragen Datum UND Uhrzeit —
+        und zwar denselben Wert, damit beide Spuren zusammenpassen."""
+        inbox.entscheide(self.wurzel, "T-0099", "A", "Testgrund")
+        log = open(os.path.join(self.p0, "management", "decisions", "decision-log.md"),
+                   encoding="utf-8").read()
+        ticket = open(os.path.join(self.p0, "tickets", "T-0099.md"), encoding="utf-8").read()
+        muster = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}"
+        im_log = re.search(r"\| D001 \| (" + muster + r") \|", log)
+        im_ticket = re.search(r"\*\*Entscheidung \(D001, via Inbox, (" + muster + r")\):\*\*",
+                              ticket)
+        self.assertIsNotNone(im_log, "Decision-Log ohne Uhrzeit:\n" + log)
+        self.assertIsNotNone(im_ticket, "Ticket-Vermerk ohne Uhrzeit:\n" + ticket)
+        self.assertEqual(im_log.group(1), im_ticket.group(1))
+
+    def test_zeitpunkt_formatiert_uebergebene_uhr(self):
+        """SWR-084: reine Formatierfunktion mit injizierter Uhr — exakter Wert prüfbar,
+        ohne auf die echte Uhrzeit zu warten."""
+        from datetime import datetime as _dt
+        self.assertEqual(inbox.entscheidungszeitpunkt(_dt(2026, 8, 16, 7, 5)),
+                         "2026-08-16 07:05")
+        self.assertEqual(inbox.entscheidungszeitpunkt(_dt(2026, 12, 31, 23, 59)),
+                         "2026-12-31 23:59")
+
+    def test_historie_liest_vermerk_mit_uhrzeit(self):
+        """SWR-084/042: Der Historien-Endpunkt muss den erweiterten Vermerk weiter
+        erkennen — sonst wäre die Uhrzeit gegen die Entscheidungshistorie erkauft."""
+        inbox.entscheide(self.wurzel, "T-0099", "A")
+        treffer = [e for e in inbox.historie(self.wurzel)["historie"] if e["id"] == "T-0099"]
+        self.assertEqual(len(treffer), 1)
+        self.assertRegex(treffer[0]["entscheidung"], r"D001, via Inbox, \d{4}-\d{2}-\d{2} \d{2}:\d{2}")
+
+    def test_alte_eintraege_ohne_uhrzeit_bleiben_gueltig(self):
+        """SWR-084: Bestandszeilen tragen nur ein Datum — sie dürfen weder die
+        D-ID-Vergabe noch die Historie stören (append-only, kein Umschreiben)."""
+        log_pfad = os.path.join(self.p0, "management", "decisions", "decision-log.md")
+        with open(log_pfad, "a", encoding="utf-8") as f:
+            f.write("| D001 | 2026-08-15 | Mensch (E. John, via Inbox) | **X** | — | — | T-0001 |\n")
+        e = inbox.entscheide(self.wurzel, "T-0099", "A")
+        self.assertEqual(e["entscheidung"], "D002")  # zählt über die alte Zeile hinweg
+        log = open(log_pfad, encoding="utf-8").read()
+        self.assertIn("| D001 | 2026-08-15 |", log)  # unverändert stehen geblieben
+        self.assertRegex(log, r"\| D002 \| \d{4}-\d{2}-\d{2} \d{2}:\d{2} \|")
 
     def test_fehlerfaelle(self):
         """Unbekanntes Ticket → 404, Nicht-DR → 400, leere Option → 400. Verifiziert: SWR-020."""

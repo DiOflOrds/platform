@@ -6,7 +6,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import date
+from datetime import datetime
 
 _SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 if _SCRIPTS not in sys.path:
@@ -26,6 +26,17 @@ class InboxFehler(Exception):
     def __init__(self, code, meldung):
         super().__init__(meldung)
         self.code = code
+
+
+def entscheidungszeitpunkt(jetzt=None):
+    """SWR-084 (Wunsch Auftraggeber via Session): Zeitpunkt einer Entscheidung als `JJJJ-MM-TT HH:MM`.
+
+    Bis dahin wurde nur das Datum vermerkt — bei mehreren Entscheidungen an einem
+    Tag (Regelfall seit dem 30-Minuten-Takt) war die Reihenfolge nicht mehr aus
+    dem Log ablesbar. Ortszeit des Servers, Minutengenauigkeit; eine Quelle für
+    Decision-Log-Zeile und Ticket-Vermerk.
+    """
+    return (jetzt or datetime.now()).strftime("%Y-%m-%d %H:%M")
 
 
 def _dr_tickets(p0):
@@ -148,15 +159,15 @@ def entscheide(root, ticket_id, option, begruendung="", projekt="p0", entscheide
         if not token or unbekannt:
             raise InboxFehler(400, f"ungültige Option '{option.strip()}' — zulässig: "
                                    f"{', '.join(zulaessig)} (T-0039)")
-    heute = date.today().isoformat()
+    zeitpunkt = entscheidungszeitpunkt()  # SWR-084: Datum UND Uhrzeit
     log_pfad = os.path.join(p0, "management", "decisions", "decision-log.md")
     d_id = _naechste_d_id(log_pfad)
-    zeile = (f"| {d_id} | {heute} | Mensch ({entscheider}, via Inbox) | **{option.strip()}** "
+    zeile = (f"| {d_id} | {zeitpunkt} | Mensch ({entscheider}, via Inbox) | **{option.strip()}** "
              f"| lt. {ticket_id} | {begruendung.strip() or '—'} | {ticket_id} |")
     with open(log_pfad, "a", encoding="utf-8", newline="\n") as f:
         f.write(zeile + "\n")
     with open(ticket_pfad, "a", encoding="utf-8", newline="\n") as f:
-        f.write(f"\n**Entscheidung ({d_id}, via Inbox, {heute}):** {option.strip()}"
+        f.write(f"\n**Entscheidung ({d_id}, via Inbox, {zeitpunkt}):** {option.strip()}"
                 f"{' — ' + begruendung.strip() if begruendung.strip() else ''}\n")
     tickets, _ = board.lade_tickets(p0)
     open(os.path.join(p0, "BOARD.md"), "w", encoding="utf-8", newline="\n").write(
