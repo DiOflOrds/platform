@@ -832,8 +832,13 @@ function poolFormular() {  // SWR-088 (pm/T-0022, Teil "Anlegen")
     el("textarea", { rows: "3",
       placeholder: "Kurzbeschreibung (nur Team-Kandidaten) — auch lange Texte möglich" }));
   var kurz = kurzZeile.firstChild;
-  var extra1 = el("input", { type: "text", placeholder: "Nutzen" });
-  var extra2 = el("input", { type: "text", placeholder: "Voraussetzung" });
+  // pm/N-0024: "Quelle" (Technik) läuft durch dieselbe Prüfung wie Kandidat-Text
+  // und Kurzbeschreibung (siehe FELD_MAX in pool.py) — also auch dieselbe
+  // Textfläche statt einer einzeiligen Eingabe, sonst wiederholt sich der Befund
+  // nur an der nächsten Zusatzspalte (Nutzen/Voraussetzung laufen durch dieselbe
+  // Funktion und bekommen die Fläche deshalb gleich mit).
+  var extra1 = el("textarea", { rows: "2", placeholder: "Nutzen" });
+  var extra2 = el("textarea", { rows: "2", placeholder: "Voraussetzung" });
   var extra2Zeile = el("div", { "class": "zeile" }, extra2);
   function kandidatFeld() { return kategorie.value === "technik" ? kandidatText : kandidatInput; }
   kategorie.addEventListener("change", function () {

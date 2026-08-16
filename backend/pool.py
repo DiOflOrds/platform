@@ -52,7 +52,16 @@ NAME_MUSTER = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
 # einer Markdown-Tabelle (Speicherformat, siehe `_zeile_bauen`), ein Vielfaches
 # an Text ist aber möglich. Nur `|` bleibt hart verboten (sprengt die Tabelle);
 # Zeilenumbrüche werden ab jetzt normalisiert statt abgelehnt (`_text_bereinigen`).
-FELD_MAX = 4000
+#
+# pm/N-0024 (2026-08-16): Auch 4000 Zeichen reichten für ein reales "Quelle"-Feld
+# nicht — zweiter Fehlversuch, eine konkrete Zahl zu raten (dieselbe Zusatzspalte
+# lief seit T-0027 durch dieselbe Prüfung wie Kurzbeschreibung/Kandidat-Text, nur
+# eben mit derselben Zahl). Der eigentliche Grund für eine Obergrenze war nie ein
+# inhaltliches Limit, sondern der Schutz der Markdown-Tabellenzeile — und dafür
+# ist, wie in T-0027 bereits festgehalten, einzig `|` das Zeichen, das wirklich
+# etwas sprengt. FELD_MAX ist deshalb keine Inhaltsgrenze mehr, sondern nur noch
+# eine technische Notbremse gegen einen versehentlichen Mega-Paste.
+FELD_MAX = 200_000
 
 
 def _text_bereinigen(wert):

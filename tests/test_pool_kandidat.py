@@ -176,6 +176,18 @@ class TestAnlegenTechnik(Basis):
         self.assertTrue(erg["ok"])
         self.assertNotIn("\n", self.text().split("KI-Vorschlag")[0].splitlines()[-1])
 
+    def test_lange_quelle_ueber_alten_4000er_deckel_wird_akzeptiert(self):
+        """pm/N-0024: Selbst die auf 4000 Zeichen angehobene Grenze aus T-0027
+        reichte für ein reales "Quelle"-Feld nicht — FELD_MAX ist jetzt eine
+        technische Notbremse (200_000), keine Inhaltsgrenze mehr. Regressionstest
+        gegen den alten Code: Bei FELD_MAX = 4000 hätte dieser Text abgelehnt."""
+        quelle_lang = "Auszug aus einem weitergeleiteten Gespräch als Herkunftsbeleg. " * 100
+        self.assertGreater(len(quelle_lang), 4000)
+        erg = pool.kandidat_anlegen(self.wurzel, "technik", "CSV-Export für Reports", "",
+                                    {"Quelle": quelle_lang})
+        self.assertTrue(erg["ok"])
+        self.assertIn(" ".join(quelle_lang.split()), self.text())
+
     def test_doppelter_kandidat_abgelehnt_technik(self):
         with self.assertRaises(pool.PoolFehler) as ctx:
             pool.kandidat_anlegen(self.wurzel, "technik", "JS-Frontend-Tests", "",
