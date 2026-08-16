@@ -15,6 +15,12 @@ from . import aggregation
 COMMIT_IDENTITAET = ["-c", "user.name=Mensch via Briefkasten",
                      "-c", "user.email=geraldine.john90@gmail.com"]
 
+# B054: Die Antwort-Überschrift wird an ihrem Anfang erkannt, nicht an ihrer vollen
+# Fassung — die Sessions schreiben sie mit Zusatz ("des Teams", "Routine-Session",
+# Uhrzeit). Das Datum kommt aus derselben Kopfzeile.
+ANTWORT_KOPF = re.compile(r"(?m)^## Antwort\b(.*)$")
+DATUM_IM_KOPF = re.compile(r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?")
+
 
 class BriefkastenFehler(Exception):
     def __init__(self, code, meldung):
@@ -24,6 +30,29 @@ class BriefkastenFehler(Exception):
 
 def _verzeichnis(root, projekt):
     return os.path.join(aggregation.projekt_pfad(root, projekt), "management", "briefkasten")
+
+
+def spalte_antwort(body):
+    """Nachricht und Team-Antwort trennen (SWR-050) — Befund **B054**.
+
+    Bis hierher wurde exakt auf `## Antwort (Team, JJJJ-MM-TT)` getrennt, also auf
+    genau die Fassung, die der Test selbst erzeugt. Die Routine-Sessions schreiben
+    seit dem 15.08. daneben `## Antwort des Teams (Routine-Session, JJJJ-MM-TT HH:MM)`
+    — bei zehn von dreißig beantworteten pm-Briefen lief die Trennung deshalb ins
+    Leere: `antwort` blieb leer, die vollständige Team-Antwort stand ungetrennt im
+    Nachrichtenblock, und die Chat-Ansicht (`app.js`: `if (b.antwort)`) zeigte Frage
+    und Antwort als einen Block. Betroffen war unter anderem `pm/N-0030`.
+
+    Erkannt wird deshalb die **Überschrift**, nicht ihre Fassung; das Datum wird aus
+    der Kopfzeile gelesen (mit Uhrzeit, wenn sie dasteht). Getrennt wird weiterhin
+    an der **ersten** Antwort-Überschrift — alles darunter gehört zur Antwort.
+    """
+    m = ANTWORT_KOPF.search(body)
+    if not m:
+        return body.strip(), "", ""
+    datum = DATUM_IM_KOPF.search(m.group(1) or "")
+    return (body[:m.start()].strip(), body[m.end():].strip(),
+            datum.group(0) if datum else "")
 
 
 def _parse(pfad):
@@ -36,14 +65,12 @@ def _parse(pfad):
                 k, v = zeile.split(":", 1)
                 felder[k.strip()] = v.strip()
         body = m.group(2).strip()
-    teile = re.split(r"\n## Antwort \(Team, ([0-9-]+)\)\n", body, maxsplit=1)
-    nachricht = teile[0].strip()
-    antwort = teile[2].strip() if len(teile) == 3 else ""
+    nachricht, antwort, antwort_datum = spalte_antwort(body)
     return {"id": os.path.splitext(os.path.basename(pfad))[0],
             "von": felder.get("von", "?"), "zeit": felder.get("zeit", ""),
             "status": felder.get("status", "offen"),
             "nachricht": nachricht, "antwort": antwort,
-            "antwort_datum": teile[1] if len(teile) == 3 else ""}
+            "antwort_datum": antwort_datum}
 
 
 def liste(root, projekt="p0"):

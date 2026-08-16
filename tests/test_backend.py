@@ -502,6 +502,59 @@ class FernzugriffTest(unittest.TestCase):
         with self.assertRaises(briefkasten.BriefkastenFehler):
             briefkasten.sende(self.wurzel, "p0", "   ")
 
+    def test_briefkasten_erkennt_die_ueberschrift_der_sessions(self):
+        """B054: Die Antwort-Überschrift, die die Routine-Sessions tatsächlich schreiben,
+        muss erkannt werden — nicht nur die Fassung, die der Test selbst erzeugt.
+
+        Gegenprobe zum Altstand: dort trennte ein exaktes Muster
+        `## Antwort (Team, JJJJ-MM-TT)`; die Sessions schreiben
+        `## Antwort des Teams (Routine-Session, JJJJ-MM-TT HH:MM)`. Folge war kein
+        Fehler, sondern ein stiller: `antwort` blieb leer und die vollständige
+        Team-Antwort stand im **Nachrichtenblock** — die Chat-Ansicht zeigte Frage und
+        Antwort ununterscheidbar. Verifiziert: SWR-050."""
+        from backend import briefkasten
+        faelle = [
+            ("## Antwort (Team, 2026-08-15)", "2026-08-15"),
+            ("## Antwort des Teams (Routine-Session, 2026-08-16 20:35)", "2026-08-16 20:35"),
+            ("## Antwort des Teams (Routine-Session, 2026-08-16)", "2026-08-16"),
+        ]
+        for kopf, datum in faelle:
+            with self.subTest(kopf=kopf):
+                nachricht, antwort, gelesen = briefkasten.spalte_antwort(
+                    "Meine Frage.\n\n" + kopf + "\n\nDie Antwort.\n\n## Beleg\n\nTabelle.")
+                self.assertEqual(nachricht, "Meine Frage.")
+                self.assertIn("Die Antwort.", antwort)
+                self.assertIn("## Beleg", antwort,
+                              "alles unter der ersten Antwort-Überschrift gehört zur Antwort")
+                self.assertEqual(gelesen, datum)
+        # Ohne Antwort bleibt die Nachricht unangetastet und die Antwort leer.
+        self.assertEqual(briefkasten.spalte_antwort("Nur eine Frage."),
+                         ("Nur eine Frage.", "", ""))
+        # Nur die *erste* Überschrift trennt — eine zweite bleibt Teil der Antwort.
+        _, antwort, _ = briefkasten.spalte_antwort(
+            "Frage.\n\n## Antwort (Team, 2026-08-15)\n\nEins.\n\n"
+            "## Antwort des Teams (Routine-Session, 2026-08-16 20:35)\n\nZwei.")
+        self.assertIn("Eins.", antwort)
+        self.assertIn("Zwei.", antwort)
+
+    def test_briefkasten_antwort_steht_nicht_im_nachrichtenblock(self):
+        """B054, der Test der den Schaden benennt: Gegen den Altstand landet die
+        Team-Antwort **in `nachricht`** — genau das, was die Chat-Ansicht dann als
+        eine einzige Nachricht des Menschen darstellt (`app.js`: `if (b.antwort)`).
+        Geprüft wird über den echten Lesepfad `liste()`. Verifiziert: SWR-050."""
+        from backend import briefkasten
+        briefkasten.sende(self.wurzel, "p0", "Wer arbeitet an dem Task?")
+        pfad = os.path.join(self.wurzel, "p0", "management", "briefkasten", "N-0001.md")
+        text = open(pfad, encoding="utf-8").read().replace("status: offen", "status: beantwortet")
+        open(pfad, "w", encoding="utf-8", newline="\n").write(
+            text + "\n## Antwort des Teams (Routine-Session, 2026-08-16 20:35)\n\n"
+                   "**Kurz:** Das Board kann das heute nicht sagen.\n")
+        brief = briefkasten.liste(self.wurzel, "p0")["briefe"][0]
+        self.assertEqual(brief["nachricht"], "Wer arbeitet an dem Task?",
+                         "die Antwort des Teams darf nicht im Nachrichtenblock stehen")
+        self.assertIn("Das Board kann das heute nicht sagen", brief["antwort"])
+        self.assertEqual(brief["antwort_datum"], "2026-08-16 20:35")
+
     def test_cockpit_zaehlt_offene_briefe(self):
         """Unbeantwortete Briefe erscheinen im Cockpit (briefe_offen). Verifiziert: SWR-051."""
         from backend import briefkasten
