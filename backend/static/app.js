@@ -224,10 +224,29 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
         });
         karte.appendChild(az);
       }
+      // SWR-091 (pm/T-0030, Brief pm/N-0025): überfällige Aufgaben stehen VOR den
+      // Statuszahlen und ungekürzt — sie sind der Grund, warum es dieses Feld gibt.
+      if (p.ueberfaellig && p.ueberfaellig.length) {
+        karte.appendChild(el("div", { "class": "zeile" },
+          pille(p.ueberfaellig.length + " überfällig", AMPEL_KLASSE.rot)));
+        p.ueberfaellig.forEach(function (u) {
+          karte.appendChild(el("div", { "class": "zeile" },
+            pille("Frist " + u.frist + " (" + u.tage + " Tag" + (u.tage === 1 ? "" : "e") +
+                  " über)", AMPEL_KLASSE.rot),
+            el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + u.id },
+               u.ref || u.id),
+            " " + u.titel));
+        });
+      }
       var statusZeile = el("div", { "class": "zeile" });
       Object.keys(p.status_zahlen).sort().forEach(function (s) {
         statusZeile.appendChild(pille(s + " " + p.status_zahlen[s], s));
       });
+      // SWR-091: unterminierte offene Backlog-Tickets ehrlich benennen statt sie als
+      // „einfach offen" mitlaufen zu lassen — genau das war der Befund aus pm/N-0025.
+      if (p.unterminiert) {
+        statusZeile.appendChild(pille(p.unterminiert + " ohne Frist", "in_progress"));
+      }
       karte.appendChild(statusZeile);
       if (p.offene_drs.length) {
         karte.appendChild(el("div", { "class": "zeile" }, "Offene Entscheidungen:"));

@@ -6,7 +6,7 @@ import json
 import os
 import re
 import sys
-from datetime import date as _datum, timedelta as _zeitspanne
+from datetime import date as _datum  # Fristarithmetik: board.frist_ampel (SWR-091)
 
 _SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 if _SCRIPTS not in sys.path:
@@ -328,12 +328,10 @@ def cockpit(root, projekt="p0", heute=None):
             continue
         if "**Entscheidung (" in t.get("_body", ""):
             continue
-        frist, ampel = str(t.get("frist", "") or ""), "grau"
-        try:
-            f = _datum.fromisoformat(frist)
-            ampel = "rot" if f < heute else ("gelb" if f <= heute + _zeitspanne(days=2) else "gruen")
-        except ValueError:
-            pass
+        # SWR-091: die Ampel-Regel liegt seit pm/T-0030 in board.frist_ampel —
+        # sie galt hier inline und wird jetzt von DRs und Backlog-Tickets geteilt.
+        frist = str(t.get("frist", "") or "")
+        ampel = board.frist_ampel(frist, heute)
         drs.append({"id": t["id"], "ref": ref(projekt, t["id"]),  # SWR-087
                     "titel": t.get("titel"), "frist": frist,
                     "default": t.get("default", ""), "ampel": ampel})
@@ -362,9 +360,24 @@ def cockpit(root, projekt="p0", heute=None):
     offene = sorted((t for t in tickets if t.get("status") not in ("done", "rejected")),
                     key=lambda t: t.get("id", ""))
     aufgaben = [{"id": t.get("id"), "ref": ref(projekt, t.get("id")),  # SWR-087
-                 "titel": t.get("titel", ""),
+                 "titel": t.get("titel", ""), "frist": t.get("frist", ""),  # SWR-091
+                 "ampel": board.frist_ampel(t.get("frist"), heute),  # SWR-091
                  "takt": t.get("takt", "")} for t in offene[:3]]  # SWR-074
     wiederkehrend = sum(1 for t in offene if t.get("takt"))
+    # SWR-091 (pm/T-0030): Überfällige Backlog-Tickets stehen eigenständig in der Kachel —
+    # NICHT in `aufgaben` versteckt, das auf drei Einträge gekürzt ist. Ein Termin, der erst
+    # nach dem Aufklappen einer Liste sichtbar wird, ist die Unsichtbarkeit aus B038 in neuem
+    # Gewand: „Wo wird ein Fehlschlag sichtbar für jemanden, der nicht danach sucht?"
+    ueberfaellig = [{"id": t.get("id"), "ref": ref(projekt, t.get("id")),
+                     "titel": t.get("titel", ""), "frist": t.get("frist", ""),
+                     "typ": t.get("typ", ""), "prio": t.get("prio", ""),
+                     "tage": (heute - _datum.fromisoformat(t["frist"])).days}
+                    for t in offene if board.ist_ueberfaellig(t, heute)]
+    # Ohne Frist ist ein offenes Backlog-Ticket nicht „in Ordnung", sondern unterminiert —
+    # Takt-Tickets ausgenommen, die tragen ihr Zeitkonzept im Feld `takt` (SWR-074).
+    unterminiert = sum(1 for t in offene
+                       if not t.get("frist") and not t.get("takt")
+                       and t.get("typ") != "decision-request")
     return {"projekt": projekt, "status_zahlen": status_zahlen,
             "tickets_gesamt": len(tickets), "offene_drs": drs,
             "letzte_baseline": tags[-1].strip() if tags else "",
@@ -372,6 +385,8 @@ def cockpit(root, projekt="p0", heute=None):
             "beschreibung": stufe["beschreibung"], "status": status, "gruppe": gruppe,
             "aufgaben_offen": len(offene), "aufgaben": aufgaben,
             "aufgaben_wiederkehrend": wiederkehrend,  # SWR-074 (pm/N-0012)
+            "ueberfaellig": ueberfaellig,  # SWR-091 (pm/T-0030, Brief pm/N-0025)
+            "unterminiert": unterminiert,  # SWR-091
             "kpi": {"laeufe": kpi.get("laeufe", 0),
                     "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}}
 

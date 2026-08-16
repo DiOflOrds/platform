@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import board  # noqa: E402
@@ -336,6 +337,95 @@ class ProjektDiscoveryTest(unittest.TestCase):
         """Eine nicht lesbare Wurzel liefert eine leere Liste statt eines Absturzes.
         Verifiziert: SWR-070."""
         self.assertEqual(board.projekt_pfade(os.path.join(self.root, "gibtsnicht")), [])
+
+
+class FristTest(unittest.TestCase):
+    """pm/T-0030 (Brief pm/N-0025): Backlog-Tickets terminieren. Verifiziert: SWR-091."""
+
+    HEUTE = date(2026, 8, 16)
+
+    def test_ampel_stufen(self):
+        """rot = überschritten, gelb = <= 2 Tage, gruen = später, grau = ohne Frist.
+        Verifiziert: SWR-091."""
+        self.assertEqual(board.frist_ampel("2026-08-15", self.HEUTE), "rot")
+        self.assertEqual(board.frist_ampel("2026-08-16", self.HEUTE), "gelb")
+        self.assertEqual(board.frist_ampel("2026-08-18", self.HEUTE), "gelb")
+        self.assertEqual(board.frist_ampel("2026-08-19", self.HEUTE), "gruen")
+        self.assertEqual(board.frist_ampel("", self.HEUTE), "grau")
+        self.assertEqual(board.frist_ampel(None, self.HEUTE), "grau")
+        self.assertEqual(board.frist_ampel("morgen", self.HEUTE), "grau")
+
+    def test_ampel_ist_dieselbe_regel_wie_im_cockpit(self):
+        """Gegenprobe zur Kopie, die vor SWR-091 in aggregation.cockpit stand: die
+        alte Inline-Formel und board.frist_ampel müssen über einen ganzen Monat
+        Tag für Tag dasselbe sagen — sonst hat die Zusammenführung die Bedeutung
+        verschoben statt nur den Ort. Verifiziert: SWR-091."""
+        for tag in range(1, 32):
+            frist = date(2026, 8, tag)
+            alt = ("rot" if frist < self.HEUTE
+                   else ("gelb" if frist <= self.HEUTE + timedelta(days=2) else "gruen"))
+            self.assertEqual(board.frist_ampel(frist.isoformat(), self.HEUTE), alt,
+                             f"Abweichung bei {frist}")
+
+    def test_ueberfaellig_nur_bei_offenen_tickets(self):
+        """Eine gerissene Frist an einem erledigten Ticket ist Historie, kein Vorwurf.
+        Verifiziert: SWR-091."""
+        alt = {"frist": "2026-08-01"}
+        for status in ("open", "in_analysis", "in_progress", "in_review", "blocked"):
+            self.assertTrue(board.ist_ueberfaellig(dict(alt, status=status), self.HEUTE))
+        for status in ("done", "rejected"):
+            self.assertFalse(board.ist_ueberfaellig(dict(alt, status=status), self.HEUTE))
+
+    def test_ohne_frist_nie_ueberfaellig(self):
+        """Fristen bleiben optional — ohne Frist ist ein Ticket unterminiert, nicht
+        überfällig. Verifiziert: SWR-091."""
+        self.assertFalse(board.ist_ueberfaellig({"status": "open"}, self.HEUTE))
+        self.assertFalse(board.ist_ueberfaellig({"status": "open", "frist": ""}, self.HEUTE))
+
+    def test_frist_wird_auch_bei_change_request_geprueft(self):
+        """Der eigentliche Befund aus pm/N-0025: bis SWR-091 galt die Datumsprüfung
+        nur für decision-request — ein Tippfehler in der Frist eines CR fiel lautlos
+        auf „keine Frist" zurück. Verifiziert: SWR-091."""
+        repo = tempfile.mkdtemp(prefix="frist-")
+        self.addCleanup(__import__("shutil").rmtree, repo, ignore_errors=True)
+        for tid, typ, frist in (("T-0001", "change-request", "23.08.2026"),
+                                ("T-0002", "problem", "2026-08-23"),
+                                ("T-0003", "task", "2026-13-01")):
+            schreibe(repo, tid, extra=f"typ_ueberschrift\nfrist: {frist}\n")
+            pfad = os.path.join(repo, "tickets", f"{tid}.md")
+            text = open(pfad, encoding="utf-8").read().replace(
+                "typ: task", f"typ: {typ}").replace("typ_ueberschrift\n", "")
+            open(pfad, "w", encoding="utf-8").write(text)
+        tickets, _ = board.lade_tickets(repo)
+        probleme = board.validiere_alle(tickets, git_pruefen=False)
+        fristfehler = [p for p in probleme if "frist" in p]
+        self.assertEqual(len(fristfehler), 2, fristfehler)
+        self.assertTrue(any("T-0001" in p for p in fristfehler), fristfehler)
+        self.assertTrue(any("T-0003" in p for p in fristfehler), fristfehler)
+        self.assertFalse(any("T-0002" in p for p in fristfehler), fristfehler)
+
+    def test_unmoegliches_datum_faellt_nicht_auf_grau_zurueck(self):
+        """„2026-13-01" passte auf DATUM_MUSTER, ist aber kein Tag. Ohne diese Prüfung
+        sähe ein falsch terminiertes Ticket wie ein unterminiertes aus — die Ampel
+        fällt bei unlesbarem Datum bewusst auf „grau". Verifiziert: SWR-091."""
+        self.assertFalse(board.ist_datum("2026-13-01"))
+        self.assertFalse(board.ist_datum("2026-02-30"))
+        self.assertFalse(board.ist_datum("23.08.2026"))
+        self.assertTrue(board.ist_datum("2026-08-23"))
+        self.assertEqual(board.frist_ampel("2026-13-01", self.HEUTE), "grau")
+
+    def test_frist_am_decision_request_bleibt_geprueft(self):
+        """Regression: die Prüfung ist umgezogen, nicht verschwunden.
+        Verifiziert: SWR-091."""
+        repo = tempfile.mkdtemp(prefix="frist-dr-")
+        self.addCleanup(__import__("shutil").rmtree, repo, ignore_errors=True)
+        schreibe(repo, "T-0001", extra="optionen: [A, B]\nfrist: 23.08.\ndefault: A\n")
+        pfad = os.path.join(repo, "tickets", "T-0001.md")
+        text = open(pfad, encoding="utf-8").read().replace("typ: task", "typ: decision-request")
+        open(pfad, "w", encoding="utf-8").write(text)
+        tickets, _ = board.lade_tickets(repo)
+        probleme = board.validiere_alle(tickets, git_pruefen=False)
+        self.assertTrue(any("frist" in p for p in probleme), probleme)
 
 
 if __name__ == "__main__":

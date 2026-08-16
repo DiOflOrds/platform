@@ -133,6 +133,81 @@ DR_TICKET = ("---\nid: T-0002\ntitel: \"DR: Freigabe\"\ntyp: decision-request\n"
              "## Sachverhalt\n\nBitte freigeben.\n")
 
 
+class UeberfaelligTest(RepoWelt):
+    """pm/T-0030 (Brief pm/N-0025): „offene aufgaben ... müssen auch terminiert werden."
+
+    Bis SWR-091 hatte nur der Decision-Request ein Zeitkonzept; ein CR mit
+    `prio: mittel` konnte beliebig lange offen bleiben, ohne dass irgendein
+    Werkzeug das gemeldet hätte (belegt an pm/T-0025, sechs Sessions).
+    """
+
+    HEUTE = __import__("datetime").date(2026, 8, 16)
+
+    def _ticket(self, basis, tid, **felder):
+        text = TICKET.replace("id: T-0001", f"id: {tid}")
+        for feld, wert in felder.items():
+            if feld in text:
+                text = _ersetze_feld(text, feld, wert)
+            else:
+                text = text.replace("status: open\n", f"status: open\n{feld}: {wert}\n")
+        with open(os.path.join(basis, "tickets", f"{tid}.md"), "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def test_ueberfaelliges_backlog_ticket_steht_in_der_kachel(self):
+        """SWR-091: Ein offenes CR über seiner Frist erscheint eigenständig samt
+        Tagen-über — nicht nur irgendwo in der auf drei gekürzten Aufgabenliste."""
+        basis = self._repo("pm-test", team_typ="pm")
+        os.remove(os.path.join(basis, "tickets", "T-0001.md"))
+        self._ticket(basis, "T-0001", typ="change-request", frist="2026-08-12")
+        self._ticket(basis, "T-0002", typ="change-request", frist="2026-08-30")
+        c = aggregation.cockpit(self.root, "pm-test", heute=self.HEUTE)
+        self.assertEqual([u["id"] for u in c["ueberfaellig"]], ["T-0001"])
+        self.assertEqual(c["ueberfaellig"][0]["frist"], "2026-08-12")
+        self.assertEqual(c["ueberfaellig"][0]["tage"], 4)
+        self.assertEqual(c["unterminiert"], 0)
+
+    def test_erledigtes_ticket_ist_nie_ueberfaellig(self):
+        """SWR-091: Eine gerissene Frist an einem abgeschlossenen Ticket ist Historie."""
+        basis = self._repo("pm-done", team_typ="pm")
+        os.remove(os.path.join(basis, "tickets", "T-0001.md"))
+        self._ticket(basis, "T-0001", typ="change-request",
+                     frist="2026-08-01", status="done")
+        c = aggregation.cockpit(self.root, "pm-done", heute=self.HEUTE)
+        self.assertEqual(c["ueberfaellig"], [])
+
+    def test_unterminierte_tickets_werden_gezaehlt_takte_nicht(self):
+        """SWR-091: Ein offenes Backlog-Ticket ohne Frist ist unterminiert und wird
+        als solches benannt. Takt-Tickets (SWR-074) tragen ihr Zeitkonzept im Feld
+        `takt` und zählen deshalb nicht mit — sonst stünde die Kachel dauerhaft auf
+        Alarm und die Zahl verlöre ihre Bedeutung."""
+        basis = self._repo("pm-ohne", team_typ="pm")
+        os.remove(os.path.join(basis, "tickets", "T-0001.md"))
+        self._ticket(basis, "T-0001", typ="change-request")
+        self._ticket(basis, "T-0002", typ="task", takt="je-session")
+        self._ticket(basis, "T-0003", typ="change-request", frist="2026-08-30")
+        c = aggregation.cockpit(self.root, "pm-ohne", heute=self.HEUTE)
+        self.assertEqual(c["unterminiert"], 1)
+        self.assertEqual(c["ueberfaellig"], [])
+
+    def test_dr_ampel_kommt_aus_board(self):
+        """SWR-091: Die Ampel der offenen DRs ist dieselbe Funktion wie die der
+        Backlog-Fristen — Gegenprobe gegen eine zweite Kopie der Regel (B033)."""
+        basis = self._repo("pm-dr", team_typ="pm")
+        with open(os.path.join(basis, "tickets", "T-0002.md"), "w", encoding="utf-8") as f:
+            f.write(DR_TICKET)
+        c = aggregation.cockpit(self.root, "pm-dr", heute=self.HEUTE)
+        dr = c["offene_drs"][0]
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        import board
+        self.assertEqual(dr["ampel"], board.frist_ampel(dr["frist"], self.HEUTE))
+        self.assertEqual(dr["ampel"], "gruen")
+
+
+def _ersetze_feld(text, feld, wert):
+    import re as _re
+    return _re.sub(rf"(?m)^{feld}: .*$", f"{feld}: {wert}", text)
+
+
 class VerschachtelteDrsTest(RepoWelt):
     """pm/T-0017: Ein Decision Request in `projects/<p>` muss den Menschen erreichen.
 

@@ -170,6 +170,57 @@ def lade_tickets(repo):
     return tickets, probleme
 
 
+def ist_datum(wert):
+    """SWR-091: Ist `wert` ein echtes Kalenderdatum JJJJ-MM-TT?
+
+    `DATUM_MUSTER` prüft nur die Form — „2026-13-01" kam bis hierher durch. Für
+    `erstellt` war das kosmetisch, für `frist` wäre es ein stiller Ausfall
+    gewesen: `frist_ampel` fällt bei einem unmöglichen Datum auf „grau" zurück,
+    das Ticket sähe also unterminiert statt falsch terminiert aus (B038 —
+    „steht danach im Protokoll, dass geraten wurde?"). Deshalb eine Prüfung für
+    beide Datumsfelder, nicht zwei.
+    """
+    if not DATUM_MUSTER.match(str(wert or "")):
+        return False
+    try:
+        date.fromisoformat(wert)
+    except ValueError:
+        return False
+    return True
+
+
+def frist_ampel(frist, heute=None):
+    """SWR-091 (pm/T-0030): Frist -> Ampel. EINE Quelle für alle Ansichten.
+
+    rot = überschritten, gelb = <= 2 Tage, gruen = später, grau = keine/ungültige
+    Frist. Die Regel stand bis hierher inline in `aggregation.cockpit` und galt
+    nur für Decision-Requests; sie ein zweites Mal für Backlog-Tickets zu
+    schreiben wäre genau die Falle aus B033 („Welche Regel wäre ich versucht,
+    hier noch einmal zu schreiben — und wo steht sie schon?").
+    """
+    try:
+        f = date.fromisoformat(str(frist or "").strip())
+    except ValueError:
+        return "grau"
+    heute = heute or date.today()
+    if f < heute:
+        return "rot"
+    return "gelb" if (f - heute).days <= 2 else "gruen"
+
+
+def ist_ueberfaellig(t, heute=None):
+    """SWR-091: Ist dieses Ticket über seine Frist gelaufen?
+
+    Nur offene Tickets können überfällig sein — `done`/`rejected` tragen ihre
+    Frist als Historie weiter, nicht als Vorwurf. Ohne Frist nie überfällig:
+    ein Ticket ohne Termin ist nach wie vor erlaubt (Fristen sind optional),
+    es ist dann nur nicht terminiert — und genau das ist die ehrliche Aussage.
+    """
+    if t.get("status") in GESCHLOSSEN:
+        return False
+    return frist_ampel(t.get("frist"), heute) == "rot"
+
+
 def status_in_head(repo, datei):
     """Status des Tickets in Git HEAD (None wenn neu/kein Git)."""
     try:
@@ -201,10 +252,16 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
         fehler.append(f"ungültiger typ: {t.get('typ')}")
     if t.get("prio") not in PRIOS:
         fehler.append(f"ungültige prio: {t.get('prio')}")
-    if t.get("erstellt") and not DATUM_MUSTER.match(t["erstellt"]):
+    if t.get("erstellt") and not ist_datum(t["erstellt"]):
         fehler.append(f"ungültiges Datum erstellt: {t['erstellt']}")
     if t.get("takt") and t["takt"] not in TAKTE:  # SWR-074: optional, aber wenn, dann gültig
         fehler.append(f"ungültiger takt: {t['takt']} (erlaubt: {', '.join(TAKTE)})")
+    # SWR-091 (pm/T-0030): `frist` ist ab jetzt für JEDEN Typ zulässig und wird für
+    # jeden Typ geprüft. Bis hierher galt die Datumsprüfung nur für Decision-Requests —
+    # ein Tippfehler in der Frist eines CR wäre stillschweigend als „keine Frist"
+    # durchgegangen, und ein Termin, den niemand prüft, ist keiner (B038).
+    if t.get("frist") and not ist_datum(t["frist"]):
+        fehler.append(f"ungültiges Datum frist: {t['frist']}")
     labels = parse_liste(t.get("labels"))  # SWR-079: optional, frei gewählt, aber prüfbar
     if len(labels) > LABEL_MAX:
         fehler.append(f"zu viele labels: {len(labels)} (erlaubt: höchstens {LABEL_MAX})")
@@ -230,8 +287,7 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
     # T-0039: decision-request — maschinenlesbare Optionen/Frist/Default
     if t.get("typ") == "decision-request":
         opts = parse_liste(t.get("optionen"))
-        if t.get("frist") and not DATUM_MUSTER.match(t["frist"]):
-            fehler.append(f"ungültiges Datum frist: {t['frist']}")
+        # Datumsprüfung der Frist steht seit SWR-091 weiter oben und gilt für alle Typen.
         if opts and t.get("default"):
             for tok in parse_optionstoken(t["default"]):
                 if tok not in opts:
