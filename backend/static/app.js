@@ -99,14 +99,28 @@ function preMitLinks(text, proj) {
   return p;
 }
 
+var offeneDrs = null;  // SWR-076 (pm/N-0016): Anzahl wartender Entscheidungen, null = ungeprüft
 function zeigeTabs() {
   leeren(tabsEl);
   TABS.forEach(function (paar) {
+    // SWR-076: Die Inbox trägt die Zahl der auf dich wartenden Entscheidungen im Reiter
+    var text = paar[1];
+    if (paar[0] === "inbox" && offeneDrs) text = paar[1] + " (" + offeneDrs + ")";
     tabsEl.appendChild(el("button", {
-      "class": paar[0] === aktiv ? "aktiv" : "",
+      "class": (paar[0] === aktiv ? "aktiv" : "") +
+               (paar[0] === "inbox" && offeneDrs ? " wartet" : ""),
+      title: paar[0] === "inbox" && offeneDrs
+        ? offeneDrs + " Entscheidung(en) warten auf dich" : "",
       onclick: function () { gehe(paar[0], projekt); }
-    }, paar[1]));
+    }, text));
   });
+}
+
+function pruefeInbox() {  // SWR-076 (pm/N-0016): Zähler frisch holen und Reiter neu zeichnen
+  return api("/api/inbox").then(function (d) {
+    var neu = (d.inbox || []).length;
+    if (neu !== offeneDrs) { offeneDrs = neu; zeigeTabs(); }
+  }).catch(function () { /* Zähler ist Komfort, nie ein Grund für eine Fehlermeldung */ });
 }
 
 function zeige(elemente) {
@@ -821,5 +835,7 @@ api("/api/projekte").then(function (antwort) {
   if (antwort.projekte.indexOf(projekt) < 0 && antwort.projekte.length) projekt = antwort.projekte[0];
   projektEl.value = projekt;
   pruefeVersion();
+  pruefeInbox();  // SWR-076 (pm/N-0016)
   lade();
 }).catch(function () { parseHash(); lade(); });
+setInterval(pruefeInbox, 60000);  // SWR-076: Zähler bleibt aktuell, auch ohne Neuladen

@@ -339,6 +339,14 @@ class NutzerUndHaertungTest(unittest.TestCase):
         self.assertEqual(k.exception.code, 400)
 
 
+    def test_inbox_zaehler_fuer_den_menschen(self):
+        """Der Inbox-Zähler im Reiter zählt genau die wartenden Entscheidungen und geht
+        nach der Antwort auf null. Verifiziert: SWR-076 (pm/N-0016)."""
+        self.assertEqual(len(inbox.liste(self.wurzel)["inbox"]), 1)
+        inbox.entscheide(self.wurzel, "T-0099", "A")
+        self.assertEqual(len(inbox.liste(self.wurzel)["inbox"]), 0)
+
+
 class HmiSprint2Test(unittest.TestCase):
     """P3/T-0014+T-0016: Tabellen-Parser und Cockpit."""
 
