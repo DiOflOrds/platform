@@ -465,7 +465,9 @@ function ladeChat() {  // SWR-050/051 (P4): Briefkasten-Konversation mit dem Tea
       el("p", { "class": "leer" }, "Nachrichten landen versioniert im Repo; die nächste " +
         "Cowork-Session antwortet in denselben Verlauf (asynchron, 0 €)."))];
     if (!briefe.length) teile.push(el("p", { "class": "leer" }, "Noch keine Nachrichten."));
-    briefe.forEach(function (b) {
+    // SWR-083 (pm/N-0018): neueste Nachricht zuerst — slice(), damit die API-Liste
+    // unangetastet bleibt (andere Ansichten lesen dieselben Daten).
+    briefe.slice().reverse().forEach(function (b) {
       var karte = el("div", { "class": "karte brief" + (b.status === "beantwortet" ? " beantwortet" : "") },
         el("div", { "class": "zeile" }, pille(b.id), pille(b.status, b.status === "offen" ? "in_progress" : "done"),
           b.von + " · " + b.zeit),
@@ -502,7 +504,9 @@ function ladeChat() {  // SWR-050/051 (P4): Briefkasten-Konversation mit dem Tea
         knopf.disabled = false;
       });
     });
-    teile.push(el("div", { "class": "karte" }, text, wer, knopf, meldung));
+    // SWR-083: Das Schreibfeld wandert mit nach oben — bei neuester-zuerst läge es sonst
+    // hinter dem gesamten Verlauf, man müsste zum Schreiben erst durch alles scrollen.
+    teile.splice(1, 0, el("div", { "class": "karte" }, text, wer, knopf, meldung));
     zeige(teile);
   });
 }
