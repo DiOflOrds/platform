@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -48,6 +49,64 @@ def _code_stand():
 
 PROZESS_STAND = _code_stand()  # beim Prozessstart eingefroren
 GESTARTET = datetime.now(timezone.utc).isoformat(timespec="seconds")
+NEUSTART_CODE = 42  # SWR-061: Startskripte starten bei diesem Code neu
+SCHLEIFEN_MARKER = "MC_NEUSTART_SCHLEIFE"  # SWR-073: von mission-control[-lan].cmd gesetzt
+
+
+class _Zaehler:
+    """Zählt gerade bediente Anfragen (SWR-073: nie mitten im Request neu starten)."""
+
+    def __init__(self):
+        self.wert = 0
+        self.sperre = threading.Lock()
+
+    def __enter__(self):
+        with self.sperre:
+            self.wert += 1
+
+    def __exit__(self, *_):
+        with self.sperre:
+            self.wert -= 1
+
+    def leer(self):
+        with self.sperre:
+            return self.wert == 0
+
+
+_laufende = _Zaehler()
+
+
+def selbst_neustart_noetig(prozess_stand, aktueller_stand, vorheriger_fund,
+                           schleife_aktiv, ruhig):
+    """SWR-073: reine Entscheidungsfunktion (testbar, ohne Seiteneffekte).
+
+    Neu gestartet wird nur, wenn ein Startskript den Neustart auffängt
+    (`schleife_aktiv`), der Code auf der Platte von diesem Prozess abweicht,
+    derselbe neue Stand schon beim vorigen Durchlauf gesehen wurde (Entprellen —
+    ein Sprint schreibt viele Dateien) und gerade keine Anfrage läuft (`ruhig`).
+    """
+    if not schleife_aktiv or not aktueller_stand or aktueller_stand == "unbekannt":
+        return False
+    if aktueller_stand == prozess_stand:
+        return False
+    return aktueller_stand == vorheriger_fund and ruhig
+
+
+def _neustart_wache(intervall=20, austritt=None, stand=_code_stand, ruhig=None):
+    """SWR-073: Hintergrundwache — beendet den Prozess mit 42, sobald neuer Code
+    auf der Platte liegt. Alles injizierbar, damit Tests ohne echten Exit laufen."""
+    austritt = austritt or (lambda: os._exit(NEUSTART_CODE))
+    ruhig = ruhig or _laufende.leer
+    vorher = ""
+    schleife = os.environ.get(SCHLEIFEN_MARKER) == "1"
+    while True:
+        jetzt = stand()
+        if selbst_neustart_noetig(PROZESS_STAND, jetzt, vorher, schleife, ruhig()):
+            print(f"[backend] Neuer Code auf der Platte ({jetzt}) — Server startet "
+                  f"selbstständig neu (SWR-073).", flush=True)
+            return austritt()
+        vorher = jetzt
+        time.sleep(intervall)
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -83,6 +142,11 @@ class Api(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):  # Ruhe im Testlauf; Betrieb loggt über protokoll
         type(self).protokoll("[backend] " + fmt % args)
+
+    def handle_one_request(self):
+        """SWR-073: laufende Anfragen zählen — die Neustart-Wache wartet, bis Ruhe ist."""
+        with _laufende:
+            return BaseHTTPRequestHandler.handle_one_request(self)
 
     # ---------- Routen ----------
     def do_GET(self):
@@ -234,6 +298,10 @@ def main():
     a = p.parse_args()
     server = start(a.repos, a.host, a.port)
     print(f"Mission Control v1: http://{a.host}:{a.port}/ (Wurzel {os.path.abspath(a.repos)})")
+    if os.environ.get(SCHLEIFEN_MARKER) == "1":  # SWR-073 (pm/N-0010)
+        threading.Thread(target=_neustart_wache, daemon=True).start()
+        print("[backend] Selbst-Neustart aktiv: neuer Code auf der Platte startet den "
+              "Server automatisch neu (SWR-073).")
     server.serve_forever()
 
 

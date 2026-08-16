@@ -182,6 +182,47 @@ class AggregationTest(unittest.TestCase):
                          aggregation.lade_board(self.wurzel))
 
 
+class SelbstNeustartTest(unittest.TestCase):
+    """Selbst-Neustart bei neuem Code auf der Platte. Verifiziert: SWR-073 (pm/N-0010)."""
+
+    def test_entscheidung_nur_bei_neuem_stand_ruhe_und_schleife(self):
+        """SWR-073: Nur mit Startskript-Marker, geändertem UND entprelltem Stand bei Ruhe."""
+        f = server.selbst_neustart_noetig
+        # Regelfall: neuer Stand, beim vorigen Durchlauf schon gesehen, Server ruhig
+        self.assertTrue(f("alt111", "neu222", "neu222", True, True))
+        # Ohne Startskript-Schleife nie — sonst wäre der Server einfach weg
+        self.assertFalse(f("alt111", "neu222", "neu222", False, True))
+        # Unveränderter Code: kein Grund
+        self.assertFalse(f("alt111", "alt111", "alt111", True, True))
+        # Erst einmal gesehen (Entprellen): ein Sprint schreibt viele Commits
+        self.assertFalse(f("alt111", "neu222", "alt111", True, True))
+        # Anfrage läuft gerade: verschieben, nicht abwürgen
+        self.assertFalse(f("alt111", "neu222", "neu222", True, False))
+        # Kein Git/kein Stand ermittelbar: nichts tun
+        for kaputt in ("", "unbekannt"):
+            self.assertFalse(f("alt111", kaputt, kaputt, True, True))
+
+    def test_wache_beendet_prozess_mit_42(self):
+        """SWR-073/061: Die Wache ruft den Austritt mit dem Neustart-Code der Startskripte."""
+        os.environ[server.SCHLEIFEN_MARKER] = "1"
+        self.addCleanup(os.environ.pop, server.SCHLEIFEN_MARKER, None)
+        staende = iter([server.PROZESS_STAND, "neu222", "neu222"])
+        gerufen = []
+        server._neustart_wache(intervall=0, austritt=lambda: gerufen.append(server.NEUSTART_CODE),
+                               stand=lambda: next(staende), ruhig=lambda: True)
+        self.assertEqual(gerufen, [42])
+
+    def test_wache_ohne_marker_beendet_nie(self):
+        """SWR-073: Ohne Marker (Handstart/Test) läuft die Wache leer durch."""
+        os.environ.pop(server.SCHLEIFEN_MARKER, None)
+        staende = iter(["neu222"] * 4)
+        gerufen = []
+        with self.assertRaises(StopIteration):  # läuft weiter, bis die Stände ausgehen
+            server._neustart_wache(intervall=0, austritt=lambda: gerufen.append(1),
+                                   stand=lambda: next(staende), ruhig=lambda: True)
+        self.assertEqual(gerufen, [])
+
+
 class InboxTest(unittest.TestCase):
     """Decision-Inbox: listen + entscheiden + Commit. Verifiziert: SWR-020, SWR-024."""
 

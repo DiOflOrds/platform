@@ -762,10 +762,15 @@ function serverNeustart() {  // SWR-061 (pm/N-0002): Neustart per Knopfdruck
 var neustartKnopf = document.getElementById("neustart");
 if (neustartKnopf) neustartKnopf.addEventListener("click", serverNeustart);
 
+var _gestartet = "";  // SWR-073: Startzeitpunkt des Servers, an dem die Seite hängt
 function pruefeVersion() {  // SWR-047: Prozess- vs. Code-Stand
   api("/api/version").then(function (v) {
     document.getElementById("stand").textContent = "Server " + v.prozess_stand;
-    if (v.prozess_stand !== v.code_stand) {
+    // SWR-073 (pm/N-0010): Der Server startet sich bei neuem Code selbst neu.
+    // Kommt er mit neuem Startzeitpunkt zurück, lädt die Seite von allein nach.
+    if (!_gestartet) _gestartet = v.gestartet;
+    else if (v.gestartet !== _gestartet) { location.reload(); return; }
+    if (v.prozess_stand !== v.code_stand && !document.querySelector(".banner")) {
       document.body.insertBefore(el("div", { "class": "banner" },
         "Neuer Code auf der Platte (" + v.code_stand + ") — der Server läuft noch auf " +
         v.prozess_stand + ". ",
@@ -773,8 +778,9 @@ function pruefeVersion() {  // SWR-047: Prozess- vs. Code-Stand
                        onclick: serverNeustart }, "Jetzt neu starten")),
         document.body.firstChild);
     }
-  }).catch(function () { /* Altserver ohne /api/version: kein Banner möglich */ });
+  }).catch(function () { /* Altserver ohne /api/version oder Neustart läuft gerade */ });
 }
+setInterval(pruefeVersion, 30000);  // SWR-073: merkt den Selbst-Neustart
 
 projektEl.addEventListener("change", function () { gehe(aktiv === "ticket" ? "board" : aktiv, projektEl.value); });
 api("/api/projekte").then(function (antwort) {
