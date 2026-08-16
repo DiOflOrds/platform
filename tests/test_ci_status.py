@@ -289,3 +289,272 @@ class AusgabeTest(RepoWelt):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --------------------------------------------------------------------------------------
+# SWR-107 (platform/T-0004): ein rotes Ergebnis nennt den fehlgeschlagenen Schritt.
+#
+# Anlass ist ein echter Befund: der erste Hostlauf von SWR-105 meldete p3, p5 und
+# platform als rot. Für platform war die Ursache lokal nachstellbar, für p3/p5 nicht —
+# und die naheliegende Erklärung (Board-Format, Push-Reihenfolge) wurde widerlegt.
+# Was fehlte, war der Schritt. Er steht eine Abfrage entfernt.
+#
+# Reichweite wie oben: jede Abruffunktion ist injiziert. Belegt ist die Auswertung.
+# --------------------------------------------------------------------------------------
+
+def job(name="board", fazit="failure", schritte=()):
+    return {"name": name, "conclusion": fazit,
+            "steps": [{"name": n, "conclusion": c} for n, c in schritte]}
+
+
+def zwei_antworten(laeufe, jobs, protokoll=None):
+    """Eine Abruffunktion, die Läufe und Jobs auseinanderhält — und mitschreibt,
+    welche Adressen überhaupt gefragt wurden. Ohne dieses Protokoll ließe sich
+    „für grüne Repos wird nicht nachgefragt" nur behaupten."""
+    def holen(url, token=None):
+        if protokoll is not None:
+            protokoll.append(url)
+        if "/jobs" in url:
+            return (jobs, None) if not isinstance(jobs, str) else (None, jobs)
+        return {"workflow_runs": list(laeufe)}, None
+    return holen
+
+
+class FehlerschrittTest(unittest.TestCase):
+    """Verifiziert: SWR-107."""
+
+    def test_erster_fehlgeschlagener_schritt_des_fehlgeschlagenen_jobs(self):
+        d = {"jobs": [job("ok-job", "success", [("a", "success")]),
+                      job("board", "failure", [("Secret vorhanden?", "success"),
+                                               ("BOARD.md aktuell?", "failure"),
+                                               ("Aufräumen", "skipped")])]}
+        self.assertEqual(ci_status.fehlerschritt(d),
+                         {"job": "board", "schritt": "BOARD.md aktuell?",
+                          "schritt_fazit": "failure", "weitere_jobs": 0})
+
+    def test_uebersprungene_schritte_sind_kein_fehler(self):
+        """`skipped` ist die Folge eines Fehlers, nicht der Fehler. Wer es als
+        Befund liest, meldet den falschen Schritt. Verifiziert: SWR-107."""
+        d = {"jobs": [job("board", "failure", [("erster", "failure"), ("zweiter", "skipped")])]}
+        self.assertEqual(ci_status.fehlerschritt(d)["schritt"], "erster")
+
+    def test_fehlgeschlagener_job_ohne_fehlgeschlagenen_schritt_faellt_auf_den_job_zurueck(self):
+        """Kommt vor: der Job bricht ab, bevor ein Schritt ein Ergebnis hat. Dann ist
+        der Jobname die beste verfügbare Antwort — und besser als keine.
+        Verifiziert: SWR-107."""
+        d = {"jobs": [job("board", "cancelled", [("a", "success")])]}
+        self.assertEqual(ci_status.fehlerschritt(d),
+                         {"job": "board", "schritt": "", "schritt_fazit": "cancelled",
+                          "weitere_jobs": 0})
+
+    def test_ohne_fehlgeschlagenen_job_keine_erfindung(self):
+        """Lieber `None` als eine Diagnose, die nicht in der Antwort steht.
+        Verifiziert: SWR-107."""
+        self.assertIsNone(ci_status.fehlerschritt({"jobs": [job("a", "success")]}))
+        self.assertIsNone(ci_status.fehlerschritt({"jobs": []}))
+        self.assertIsNone(ci_status.fehlerschritt(None))
+
+
+class DiagnoseTest(RepoWelt):
+    """Verifiziert: SWR-107."""
+
+    def rotlauf(self, sha, lauf_id=4711):
+        r = lauf(sha=sha, fazit="failure")
+        r["id"] = lauf_id
+        return r
+
+    def test_rotes_repo_nennt_job_und_schritt(self):
+        self.repo("a")
+        jobs = {"jobs": [job("board", "failure", [("Secret PLATFORM_READ_TOKEN vorhanden?",
+                                                   "failure")])]}
+        e = ci_status.pruefe(self.wurzel,
+                             holen=zwei_antworten([self.rotlauf(self.sha("a"))], jobs),
+                             warten=0, schlafen=lambda s: None)
+        r = e["repos"][0]
+        self.assertEqual(r["zustand"], "rot")
+        self.assertEqual(r["schritt"], "Secret PLATFORM_READ_TOKEN vorhanden?")
+        self.assertEqual(r["job"], "board")
+        self.assertIn("Secret PLATFORM_READ_TOKEN vorhanden?", ci_status.bericht(e))
+
+    def test_die_nachfrage_gilt_dem_roten_lauf_nicht_dem_ersten_der_liste(self):
+        """Die Liste ist nach Datum sortiert; ganz oben kann ein grüner Lauf eines
+        anderen Commits stehen. Dessen ID zu nehmen hieße, den falschen Lauf zu
+        diagnostizieren — dieselbe Verwechslung wie bei DoD 2 von SWR-105, eine
+        Ebene tiefer. Verifiziert: SWR-107."""
+        self.repo("a")
+        oben = lauf(sha=FREMD)
+        oben["id"] = 1
+        protokoll = []
+        ci_status.pruefe(self.wurzel,
+                         holen=zwei_antworten([oben, self.rotlauf(self.sha("a"), 4711)],
+                                              {"jobs": [job()]}, protokoll),
+                         warten=0, schlafen=lambda s: None)
+        jobabfragen = [u for u in protokoll if "/jobs" in u]
+        self.assertEqual(len(jobabfragen), 1)
+        self.assertIn("/runs/4711/jobs", jobabfragen[0])
+
+    def test_gruenes_repo_loest_keine_nachfrage_aus(self):
+        """60 Abfragen je Stunde sind die harte Grenze. Verifiziert: SWR-107."""
+        self.repo("a")
+        protokoll = []
+        e = ci_status.pruefe(self.wurzel,
+                             holen=zwei_antworten([lauf(sha=self.sha("a"))], {"jobs": []},
+                                                  protokoll),
+                             warten=0, schlafen=lambda s: None)
+        self.assertTrue(e["alles_gruen"])
+        self.assertEqual([u for u in protokoll if "/jobs" in u], [])
+        self.assertEqual(e["abfragen"], 1)
+
+    def test_gescheiterte_nachfrage_laesst_das_repo_rot(self):
+        """Der Kern der Vorsichtsregel: eine Diagnose darf einen Befund nie
+        verschlucken (B038). Verifiziert: SWR-107."""
+        self.repo("a")
+        e = ci_status.pruefe(self.wurzel,
+                             holen=zwei_antworten([self.rotlauf(self.sha("a"))],
+                                                  "Abruf fehlgeschlagen: kein Netz"),
+                             warten=0, schlafen=lambda s: None)
+        r = e["repos"][0]
+        self.assertEqual(r["zustand"], "rot")
+        self.assertFalse(e["alles_gruen"])
+        self.assertNotIn("schritt", r)
+        self.assertIn("kein Netz", r["diagnose_fehler"])
+        self.assertIn("Schritt unbekannt", ci_status.bericht(e))
+
+    def test_die_nachfragen_zaehlen_gegen_dasselbe_budget(self):
+        """Ein zweiter, stiller Zähler wäre B033. Verifiziert: SWR-107."""
+        self.repo("a")
+        e = ci_status.pruefe(self.wurzel,
+                             holen=zwei_antworten([self.rotlauf(self.sha("a"))],
+                                                  {"jobs": [job()]}),
+                             warten=0, schlafen=lambda s: None)
+        self.assertEqual(e["abfragen"], 2)  # ein Lauf-Abruf + eine Diagnose
+
+    def test_erschoepftes_budget_unterdrueckt_die_nachfrage_und_sagt_es(self):
+        """Verifiziert: SWR-107."""
+        self.repo("a")
+        protokoll = []
+        e = ci_status.pruefe(self.wurzel,
+                             holen=zwei_antworten([self.rotlauf(self.sha("a"))],
+                                                  {"jobs": [job()]}, protokoll),
+                             warten=0, budget=1, schlafen=lambda s: None)
+        r = e["repos"][0]
+        self.assertEqual(r["zustand"], "rot")
+        self.assertEqual([u for u in protokoll if "/jobs" in u], [])
+        self.assertIn("Abfragebudget", r["diagnose_fehler"])
+        self.assertIn("Schritt unbekannt", ci_status.bericht(e))
+
+    def test_roter_lauf_ohne_lauf_id_kostet_keine_abfrage(self):
+        """Eine Antwort ohne `id` ist unerwartet — dann wird nicht geraten und auch
+        nichts abgefragt. Verifiziert: SWR-107."""
+        self.repo("a")
+        protokoll = []
+        e = ci_status.pruefe(self.wurzel,
+                             holen=zwei_antworten([lauf(sha=self.sha("a"), fazit="failure")],
+                                                  {"jobs": [job()]}, protokoll),
+                             warten=0, schlafen=lambda s: None)
+        self.assertEqual(e["repos"][0]["zustand"], "rot")
+        self.assertEqual([u for u in protokoll if "/jobs" in u], [])
+        self.assertEqual(e["abfragen"], 1)
+
+
+# --------------------------------------------------------------------------------------
+# B063 — Befunde der unabhängigen Gegenprüfung von SWR-107, bei GRÜNER Suite gefunden.
+# Dieselbe Familie wie B059: die eigene Suite prüft, was die Änderung tun soll, und
+# nicht, was ihre Nachbarn und Grenzfälle daraus machen. Diese Tests sind der
+# Regressionsschutz, kein Nachtrag.
+# --------------------------------------------------------------------------------------
+
+class GegenpruefungTest(RepoWelt):
+    """Verifiziert: SWR-107 (B063)."""
+
+    def rotlauf(self, sha, lauf_id=4711):
+        r = lauf(sha=sha, fazit="failure")
+        r["id"] = lauf_id
+        return r
+
+    def test_unerwartete_nutzlast_reisst_den_bericht_nicht_mit(self):
+        """Die Anforderung nennt „unexpected payload" ausdrücklich als Fall für
+        „Schritt unbekannt". Vorher warf `fehlerschritt` bei einer Liste statt eines
+        Objekts — und `main()` brach ab, ohne die Datei zu schreiben: der rote
+        Befund war ermittelt und ging verloren. Verifiziert: SWR-107."""
+        for kaputt in ([{"name": "b", "conclusion": "failure"}], {"jobs": {"a": 1}},
+                       {"jobs": [None, "x", 7]}, "kein json", 42, [], 0):
+            self.assertIsNone(ci_status.fehlerschritt(kaputt), repr(kaputt))
+        # Eine Liste statt einer Liste von Objekten an der Schritt-Stelle: der Job ist
+        # auswertbar, die Schritte sind es nicht — Rückfall auf den Job, kein Wurf.
+        t = ci_status.fehlerschritt({"jobs": [{"steps": {"a": 1}, "name": "b",
+                                               "conclusion": "failure"}]})
+        self.assertEqual((t["job"], t["schritt"]), ("b", ""))
+        self.repo("a")
+        e = ci_status.pruefe(self.wurzel,
+                             holen=zwei_antworten([self.rotlauf(self.sha("a"))],
+                                                  [{"name": "b", "conclusion": "failure"}]),
+                             warten=0, schlafen=lambda s: None)
+        self.assertEqual(e["repos"][0]["zustand"], "rot")
+        self.assertIn("Schritt unbekannt", ci_status.bericht(e))
+
+    def test_budget_das_die_diagnose_verhungern_laesst_steht_auch_im_json(self):
+        """Vorher sagte der Fließtext viermal „Abfragebudget aufgebraucht" und das
+        maschinenlesbare Feld daneben `false` — zwei Quellen, eine Aussage (B033).
+        Verifiziert: SWR-107."""
+        for n in ("a", "b"):
+            self.repo(n)
+        laeufe = [self.rotlauf(self.sha("a")), self.rotlauf(self.sha("b"), 4712)]
+        e = ci_status.pruefe(self.wurzel, holen=zwei_antworten(laeufe, {"jobs": [job()]}),
+                             warten=0, budget=3, schlafen=lambda s: None)
+        self.assertTrue(e["budget_erschoepft"])
+        self.assertIn("Abfragebudget aufgebraucht", ci_status.bericht(e))
+        self.assertTrue(all(r["zustand"] == "rot" for r in e["repos"]))
+
+    def test_reichendes_budget_meldet_keine_erschoepfung(self):
+        """Der Gegentest zum vorigen — sonst meldete das Feld ab jetzt immer `true`
+        und wäre wertlos. Verifiziert: SWR-107."""
+        self.repo("a")
+        e = ci_status.pruefe(self.wurzel,
+                             holen=zwei_antworten([self.rotlauf(self.sha("a"))],
+                                                  {"jobs": [job()]}),
+                             warten=0, schlafen=lambda s: None)
+        self.assertFalse(e["budget_erschoepft"])
+        self.assertEqual(e["abfragen"], 2)
+
+    def test_neutral_ist_wie_skipped_kein_fehlschlag(self):
+        """`neutral` ist ein ausdrücklich folgenloses Ergebnis. Vorher wurde ein
+        `neutral`-Job als Ursache gemeldet und der wirklich gescheiterte verschwiegen —
+        eine beruhigende Zeile zu einem roten Befund. Verifiziert: SWR-107."""
+        d = {"jobs": [job("lint", "neutral", [("n", "neutral")]),
+                      job("tests", "failure", [("pytest", "failure")])]}
+        t = ci_status.fehlerschritt(d)
+        self.assertEqual((t["job"], t["schritt"]), ("tests", "pytest"))
+
+    def test_mehrere_fehlgeschlagene_jobs_werden_gezaehlt_nicht_verschwiegen(self):
+        """Eine Zeile, die den ersten nennt, liest sich sonst als DIE Ursache.
+        Verifiziert: SWR-107."""
+        d = {"jobs": [job("erster", "failure", [("A", "failure")]),
+                      job("zweiter", "failure", [("B", "failure")])]}
+        t = ci_status.fehlerschritt(d)
+        self.assertEqual(t["weitere_jobs"], 1)
+        self.assertIn("1 weitere(r) Job(s)", ci_status.schritt_klartext(dict(t)))
+
+    def test_ein_einziger_fehlgeschlagener_job_bekommt_keinen_zusatz(self):
+        """Verifiziert: SWR-107."""
+        t = ci_status.fehlerschritt({"jobs": [job("nur-einer", "failure", [("A", "failure")])]})
+        self.assertEqual(t["weitere_jobs"], 0)
+        self.assertNotIn("weitere", ci_status.schritt_klartext(dict(t)))
+
+    def test_geglueckte_nachfrage_ohne_jobnamen_sagt_warum(self):
+        """Vorher nicht unterscheidbar von „gar nicht nachgefragt" — die verbrauchte
+        Abfrage war unsichtbar. Verifiziert: SWR-107."""
+        self.repo("a")
+        e = ci_status.pruefe(self.wurzel,
+                             holen=zwei_antworten([self.rotlauf(self.sha("a"))],
+                                                  {"jobs": [{"conclusion": "failure"}]}),
+                             warten=0, schlafen=lambda s: None)
+        r = e["repos"][0]
+        self.assertEqual(r["zustand"], "rot")
+        self.assertIn("ohne Namen", r["diagnose_fehler"])
+        self.assertIn("Schritt unbekannt", ci_status.bericht(e))
+
+    def test_schritt_klartext_haelt_jeden_unsinn_aus(self):
+        """Verifiziert: SWR-107."""
+        for x in (None, [], "x", 7, {}):
+            self.assertEqual(ci_status.schritt_klartext(x), "Schritt unbekannt")

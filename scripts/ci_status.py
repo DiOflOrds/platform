@@ -14,6 +14,13 @@ Die Regel, an der alles hängt (DoD 2 des Tickets):
 der `head_sha` gegen den lokalen Commit. Ohne Treffer heißt das Ergebnis „noch kein
 Lauf" — nie „grün". Dieselbe Vorsicht wie `session.stille` und `zuletzt_erledigt`.
 
+**SWR-107 (platform/T-0004, Sprint 2):** Bei einem roten Repo nennt der Bericht Job
+und Schritt. Anlass war der erste Hostlauf — er fand drei rote Repos und konnte für
+zwei davon die Ursache nicht nennen. Ein `ROT` ohne Schritt ist eine Farbe und kein
+Befund; es lässt genau die Lücke offen, die dieses Skript schließen sollte. Scheitert
+die Nachfrage, bleibt das Repo **rot** und der Bericht sagt „Schritt unbekannt" —
+eine Diagnose, die einen Befund verschluckt, wäre schlimmer als keine (B038).
+
 Läuft auf dem HOST, nicht in der Cowork-Sandbox (die hat keinen GitHub-Zugang,
 Guardrail 2). Aufgerufen aus `abschluss.cmd`, Schritt [5/5].
 
@@ -38,6 +45,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import board  # noqa: E402  — gemeinsame Projekt-Discovery (SWR-070)
 
 API = "https://api.github.com/repos/{slug}/actions/runs?branch={branch}&per_page=30"
+# SWR-107: dieselbe API-Familie, dieselbe Anmeldefreiheit — die Diagnose eines roten
+# Laufs. Ein `ROT` ohne Schritt ist eine Farbe und kein Befund; es lässt genau die
+# Lücke offen, die SWR-105 schließen sollte (ein Mensch öffnet eine Seite).
+JOBS_API = "https://api.github.com/repos/{slug}/actions/runs/{lauf}/jobs?per_page=50"
 # Unangemeldet erlaubt GitHub 60 Abfragen je Stunde und IP. Das Budget ist deshalb
 # keine Vorsichtsmaßnahme, sondern eine harte Grenze: 13 Repos je Runde sind vier
 # Runden, mehr nicht. Wird es aufgebraucht, sagt der Bericht das — eine Grenze, die
@@ -50,6 +61,11 @@ RUNDE_SEK = 40
 # dazu — nach einem Push ist es der Normalfall und wird zum Befund erst, wenn die
 # Wartezeit abgelaufen ist.
 FERTIG = ("gruen", "rot", "kein_ci", "fehler")
+
+# SWR-107: Ergebnisse, die KEIN Fehlschlag sind. `skipped` und `neutral` sind Folgen
+# eines Fehlers oder ausdrücklich folgenlos — wer sie als Befund liest, meldet den
+# falschen Schritt und liest sich trotzdem wie eine Antwort (B063).
+OHNE_BEFUND = (None, "success", "skipped", "neutral")
 
 KLARTEXT = {
     "gruen": "grün für diesen Commit",
@@ -156,11 +172,109 @@ def bewerte(commit, daten):
                 "url": offen.get("html_url", "")}
     schlecht = [r for r in treffer if r.get("conclusion") != "success"]
     if schlecht:
+        # SWR-107: die Lauf-ID GENAU dieses roten Laufs merken. Sie ist der Schlüssel
+        # zur Diagnose; die ID des ersten Laufs der Liste wäre die eines anderen.
         return {"zustand": "rot", "workflow": schlecht[0].get("name", ""),
                 "fazit": schlecht[0].get("conclusion", ""),
+                "lauf_id": schlecht[0].get("id"),
                 "url": schlecht[0].get("html_url", "")}
     return {"zustand": "gruen", "workflow": treffer[0].get("name", ""),
             "url": treffer[0].get("html_url", "")}
+
+
+def fehlerschritt(daten):
+    """SWR-107: Jobs-Antwort eines roten Laufs -> welcher Job, welcher Schritt.
+
+    Reine Auswertung, kein Abruf — dieselbe Trennung wie `bewerte()`, damit die
+    Regel ohne Netz prüfbar bleibt.
+
+    **Es gibt keine Antwort „unauffällig".** Findet sich kein fehlgeschlagener
+    Schritt, aber ein fehlgeschlagener Job, ist die Antwort der **Jobname**; findet
+    sich auch der nicht, ist sie `None` und der Bericht sagt „Schritt unbekannt".
+    Ein roter Lauf, dessen Diagnose leer ausgeht, bleibt rot — eine Diagnose, die
+    einen Befund verschluckt, wäre schlimmer als keine (B038).
+    """
+    # B063: eine unerwartete Nutzlast ist ein Fall der Anforderung („unexpected
+    # payload"), kein Absturz. Eine Liste statt eines Objekts, ein Objekt statt einer
+    # Liste, ein Eintrag, der kein Objekt ist — alles davon führt zu `None` und damit
+    # zu „Schritt unbekannt". Eine Diagnose, die den ganzen Bericht mitreißt, wäre
+    # schlimmer als das Fehlen der Diagnose (B038): der rote Befund war zu diesem
+    # Zeitpunkt bereits vollständig ermittelt.
+    jobs = daten.get("jobs") if isinstance(daten, dict) else None
+    jobs = [j for j in jobs if isinstance(j, dict)] if isinstance(jobs, list) else []
+    schlecht = [j for j in jobs if j.get("conclusion") not in OHNE_BEFUND]
+    if not schlecht:
+        return None
+    job = schlecht[0]
+    # B063: mehrere gescheiterte Jobs werden gezählt, nicht verschwiegen. Eine Zeile,
+    # die den ersten nennt, liest sich sonst als DIE Ursache.
+    weitere = len(schlecht) - 1
+    schritte = job.get("steps")
+    for s in schritte if isinstance(schritte, list) else []:
+        if isinstance(s, dict) and s.get("conclusion") not in OHNE_BEFUND:
+            return {"job": job.get("name") or "", "schritt": s.get("name") or "",
+                    "schritt_fazit": s.get("conclusion") or "", "weitere_jobs": weitere}
+    return {"job": job.get("name") or "", "schritt": "",
+            "schritt_fazit": job.get("conclusion") or "", "weitere_jobs": weitere}
+
+
+def diagnose(stand, holen, budget_rest, token=None):
+    """SWR-107: für jedes rote Repo **einmal** nachfragen, welcher Schritt fiel.
+
+    Läuft **nach** der Warteschleife: rot ist ein Endzustand, eine Wiederholung je
+    Runde wäre verschenktes Budget. Grüne, laufende und ungelaufene Repos lösen
+    **keine** Abfrage aus.
+
+    Gibt `(verbrauchte Abfragen, Budget war zu knapp)` zurück. Der Zustand eines
+    Repos wird hier **nie** geändert — nur `diagnose_*` kommt hinzu.
+
+    B063: dass das Budget eine Diagnose verhindert hat, wird **auch nach oben**
+    gemeldet und nicht nur in die Zeile des betroffenen Repos geschrieben. Sonst
+    beantwortet das maschinenlesbare `budget_erschoepft` dieselbe Frage mit *nein*,
+    die der Fließtext daneben mit *ja* beantwortet — zwei Quellen für eine Aussage,
+    also B033.
+    """
+    verbraucht, zu_knapp = 0, False
+    for r in [z for z in stand.values() if z.get("zustand") == "rot"]:
+        if not r.get("lauf_id"):
+            r["diagnose_fehler"] = "keine Lauf-Adresse in der Antwort"
+            continue
+        if verbraucht >= budget_rest:
+            r["diagnose_fehler"] = "Abfragebudget aufgebraucht"
+            zu_knapp = True
+            continue
+        daten, fehler = holen(JOBS_API.format(slug=r["slug"], lauf=r["lauf_id"]), token)
+        verbraucht += 1
+        if fehler:
+            r["diagnose_fehler"] = fehler
+            continue
+        treffer = fehlerschritt(daten)
+        if not treffer:
+            r["diagnose_fehler"] = "kein fehlgeschlagener Job in der Antwort"
+            continue
+        if not treffer["job"] and not treffer["schritt"]:
+            # B063: die Antwort kam an und war leer. Das ist etwas anderes, als gar
+            # nicht gefragt zu haben — sonst ist eine verbrauchte Abfrage unsichtbar.
+            r["diagnose_fehler"] = "fehlgeschlagener Job ohne Namen in der Antwort"
+            continue
+        r.update({"job": treffer["job"], "schritt": treffer["schritt"],
+                  "schritt_fazit": treffer["schritt_fazit"],
+                  "weitere_jobs": treffer["weitere_jobs"]})
+    return verbraucht, zu_knapp
+
+
+def schritt_klartext(r):
+    """Eine Zeile für den Menschen — Schritt, sonst Job, sonst ehrlich „unbekannt"."""
+    if not isinstance(r, dict):
+        return "Schritt unbekannt"
+    weitere = r.get("weitere_jobs") or 0
+    dazu = f" · {weitere} weitere(r) Job(s) ebenfalls fehlgeschlagen" if weitere else ""
+    if r.get("schritt"):
+        return f"Schritt „{r['schritt']}“ ({r.get('schritt_fazit') or 'failure'}){dazu}"
+    if r.get("job"):
+        return f"Job „{r['job']}“ ({r.get('schritt_fazit') or 'failure'}){dazu}"
+    grund = r.get("diagnose_fehler")
+    return f"Schritt unbekannt — {grund}" if grund else "Schritt unbekannt"
 
 
 def pruefe(wurzel, holen=hole_json, warten=WARTEN_STANDARD, budget=BUDGET_STANDARD,
@@ -194,6 +308,13 @@ def pruefe(wurzel, holen=hole_json, warten=WARTEN_STANDARD, budget=BUDGET_STANDA
             break
         schlafen(min(RUNDE_SEK, frist))
         frist -= RUNDE_SEK
+    # SWR-107: erst jetzt diagnostizieren. Die Schleife klärt, OB ein Repo fertig ist;
+    # die Diagnose gilt einem Zustand, der sich nicht mehr ändert. Beides zu vermischen
+    # hieße, in jeder Runde erneut zu fragen — bei 60 Abfragen je Stunde die sicherste
+    # Art, das Budget an eine Antwort zu verlieren, die schon vorliegt.
+    diag_abfragen, diag_knapp = diagnose(stand, holen, max(0, budget - verbraucht), token)
+    verbraucht += diag_abfragen
+    budget_alle = budget_alle or diag_knapp
     zeilen = [stand[n] for n in sorted(stand)]
     relevant = [z for z in zeilen if z["zustand"] != "kein_ci"]
     return {
@@ -225,7 +346,10 @@ def bericht(e):
               "in Ordnung — es heißt, dass für diesen Commit noch nichts vorliegt."]
     rot = [r for r in e["repos"] if r["zustand"] == "rot"]
     if rot:
-        z += ["", "**Rot:** " + ", ".join(f"{r['repo']} ({r.get('fazit', '')})" for r in rot)]
+        # SWR-107: nicht nur welches Repo rot ist, sondern woran es liegt. Ohne diese
+        # Zeile muss doch wieder ein Mensch die Actions-Seite öffnen.
+        z += ["", "**Rot — und woran es liegt:**", ""]
+        z += [f"* **{r['repo']}** ({r.get('fazit', '')}): {schritt_klartext(r)}" for r in rot]
     return "\n".join(z) + "\n"
 
 
