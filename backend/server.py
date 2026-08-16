@@ -300,6 +300,12 @@ class Api(BaseHTTPRequestHandler):
             except pool.PoolFehler as e:
                 return self._json(e.code, {"fehler": str(e)})
             return self._json(200, erg)
+        if self.path == "/api/pool/start":  # SWR-089 (pm/T-0022, Teil "Starten"; PIN oben geprüft)
+            try:
+                erg = pool.kandidat_starten(type(self).wurzel, daten.get("kandidat", ""))
+            except pool.PoolFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
         if self.path == "/api/briefkasten":  # SWR-050 (P4): Nachricht ans Team
             try:
                 erg = briefkasten.sende(type(self).wurzel, daten.get("projekt", "p0"),

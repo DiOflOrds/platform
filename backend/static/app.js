@@ -865,6 +865,42 @@ function poolFormular() {  // SWR-088 (pm/T-0022, Teil "Anlegen")
     knopf, meldung);
 }
 
+function poolStartFormular(technikNamen) {  // SWR-089 (pm/T-0022, Teil "Starten")
+  if (!technikNamen.length) {
+    return el("div", { "class": "karte" }, el("h3", {}, "Projekt starten"),
+      el("p", { "class": "leer" }, "Keine Technik-Kandidaten im Pool."));
+  }
+  var auswahl = el.apply(null, ["select", {}].concat(technikNamen.map(function (n) {
+    return el("option", { value: n }, n);
+  })));
+  var meldung = el("div", {});
+  var knopf = el("button", { "class": "knopf" }, "G0-Antrag anlegen (Starten)");
+  knopf.addEventListener("click", function () {
+    knopf.disabled = true;
+    api("/api/pool/start", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kandidat: auswahl.value })
+    }).then(function (e) {
+      leeren(meldung);
+      meldung.appendChild(el("div", { "class": "meldung ok" }, e.meldung));
+      knopf.disabled = false;
+      setTimeout(lade, 900);
+    }).catch(function (fehler) {
+      leeren(meldung);
+      meldung.appendChild(el("div", { "class": "meldung fehler" }, String(fehler.message || fehler)));
+      knopf.disabled = false;
+    });
+  });
+  return el("div", { "class": "karte" },
+    el("h3", {}, "Projekt starten (nur Technik-Kandidaten)"),
+    el("p", { "class": "leer" },
+      "Legt den Ordner projects/<neu> an und stellt einen G0-Antrag in die Inbox — " +
+      "entscheidet nichts, die Freigabe bleibt bei dir (Playbook Kap. 16). Team-Kandidaten " +
+      "laufen weiterhin über den Briefkasten (volle Team-Gründung, intake.md)."),
+    el("div", { "class": "zeile" }, auswahl),
+    knopf, meldung);
+}
+
 function ladePool() {  // SWR-086 (pm/N-0020): Projekt-Pool als Backlog-Bereich
   return api("/api/pool").then(function (p) {
     if (!p.vorhanden) {
@@ -872,17 +908,26 @@ function ladePool() {  // SWR-086 (pm/N-0020): Projekt-Pool als Backlog-Bereich
         el("p", { "class": "leer" }, "Keine Pool-Datei gefunden (" + p.quelle + ")."))]);
       return;
     }
+    var technikNamen = [];
+    (p.abschnitte || []).forEach(function (a) {
+      if ((a.titel || "").indexOf("Technik-Kandidaten") !== -1 && a.tabellen[0]) {
+        var idx = a.tabellen[0].spalten.indexOf("Kandidat");
+        if (idx === -1) idx = 1;
+        a.tabellen[0].zeilen.forEach(function (z) { if (z[idx]) technikNamen.push(z[idx]); });
+      }
+    });
     var kopf = el("div", { "class": "karte" },
       el("h3", {}, "Projekt-Pool — Kandidaten für neue Projekte und Teams"),
       el("div", { "class": "zeile leer" },
         "Quelle: " + p.quelle + " (gepflegt vom PM-Team, pm/D005). " +
-        "Ein Start läuft weiterhin per Zuruf im Briefkasten — die Freigabe bleibt " +
-        "als G0-Entscheidung bei dir."),
+        "Technik-Kandidaten lassen sich unten per Knopf starten (G0-Antrag, entscheidet " +
+        "nichts). Team-Kandidaten starten weiterhin per Zuruf im Briefkasten (volle " +
+        "Team-Gründung, intake.md)."),
       el("div", { "class": "zeile" },
         pille("Anzeigen: da", "done"),
         pille("Anlegen: da", "done"),
-        pille("Starten per Knopf: noch nicht", "in_progress")));
-    var karten = [kopf, poolFormular()];
+        pille("Starten (Technik) per Knopf: da", "done")));
+    var karten = [kopf, poolFormular(), poolStartFormular(technikNamen)];
     (p.abschnitte || []).forEach(function (a) {
       var karte = el("div", { "class": "karte" }, el("h3", {}, a.titel || "Kandidaten"));
       a.tabellen.forEach(function (t) { karte.appendChild(tabelle(t)); });
