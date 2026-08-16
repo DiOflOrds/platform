@@ -146,6 +146,35 @@ class TestBoard(unittest.TestCase):
         b = board.generiere_board(tickets, stand="2026-08-06")
         self.assertLess(b.index("T-0002"), b.index("T-0001"))
 
+    def test_takt_wiederkehrend_sichtbar(self):
+        """Takt-Aufgaben sind im Board als wiederkehrend erkennbar, einmalige als
+        'einmalig'; Kopfzeile zählt sie. Verifiziert: SWR-074 (pm/N-0012)."""
+        schreibe(self.repo, "T-0001", extra="takt: je-session\n")
+        schreibe(self.repo, "T-0002")  # einmalig, Feld fehlt
+        tickets, _ = board.lade_tickets(self.repo)
+        self.assertEqual(board.validiere_alle(tickets, self.repo, git_pruefen=False), [])
+        b = board.generiere_board(tickets, stand="2026-08-16")
+        self.assertIn("davon wiederkehrend: 1", b)
+        self.assertIn("| Takt |", b)
+        self.assertIn("je Session", b)
+        self.assertIn("einmalig", b)
+
+    def test_takt_ohne_feld_unveraendert(self):
+        """Ohne takt-Feld bleibt alles wie bisher — keine Kopfzeilen-Zusatzangabe.
+        Verifiziert: SWR-074."""
+        schreibe(self.repo, "T-0001")
+        tickets, _ = board.lade_tickets(self.repo)
+        b = board.generiere_board(tickets, stand="2026-08-16")
+        self.assertNotIn("wiederkehrend", b)
+
+    def test_takt_ungueltig_wird_abgelehnt(self):
+        """Ein Takt außerhalb des Vokabulars ist ein Validierungsfehler.
+        Verifiziert: SWR-074."""
+        schreibe(self.repo, "T-0001", extra="takt: gelegentlich\n")
+        tickets, _ = board.lade_tickets(self.repo)
+        probleme = board.validiere_alle(tickets, self.repo, git_pruefen=False)
+        self.assertTrue(any("ungültiger takt" in p for p in probleme), probleme)
+
     def test_offene_blocker(self):
         """Offene Blocker werden im Board ausgewiesen. Verifiziert: SWR-004."""
         schreibe(self.repo, "T-0001", status="done")

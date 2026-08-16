@@ -57,6 +57,25 @@ class OrgCockpitTest(unittest.TestCase):
         self.assertEqual(c["aufgaben"][0]["id"], "T-0001")
         self.assertEqual(aggregation.cockpit(self.root, "crew")["gruppe"], "festes-team")
 
+    def test_takt_im_cockpit_und_board(self):
+        """SWR-074 (pm/N-0012): wiederkehrende Aufgaben sind als solche erkennbar —
+        Cockpit zählt sie und reicht den Takt je Aufgabe durch, Board ebenso."""
+        basis = self._repo("takt-team", team_typ="pm")
+        pfad = os.path.join(basis, "tickets", "T-0001.md")
+        text = open(pfad, encoding="utf-8").read().replace(
+            "status: open\n", "status: open\ntakt: je-session\n")
+        open(pfad, "w", encoding="utf-8").write(text)
+        c = aggregation.cockpit(self.root, "takt-team")
+        self.assertEqual(c["aufgaben_wiederkehrend"], 1)
+        self.assertEqual(c["aufgaben"][0]["takt"], "je-session")
+        b = aggregation.lade_board(self.root, "takt-team")
+        self.assertEqual(b["gruppen"]["open"][0]["takt"], "je-session")
+        # Gegenprobe: einmalige Aufgabe bleibt ohne Takt und zählt nicht mit
+        self._repo("einmal-team", team_typ="pm")
+        c2 = aggregation.cockpit(self.root, "einmal-team")
+        self.assertEqual(c2["aufgaben_wiederkehrend"], 0)
+        self.assertFalse(c2["aufgaben"][0]["takt"])
+
     def test_status_fallback_ueber_baseline_tag(self):
         """SWR-066: <repo>-v1.0-Tag ohne Steckbrief-Status -> abgeschlossen."""
         self._repo("beta", tag="beta-v1.0")

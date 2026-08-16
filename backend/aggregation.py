@@ -85,7 +85,8 @@ def lade_board(root, projekt="p0"):
     gruppen = {}
     for t in sorted(tickets, key=lambda x: (x.get("status", ""), x.get("id", ""))):
         eintrag = {k: t.get(k) for k in
-                   ("id", "titel", "typ", "prozess", "rolle", "sprint", "prio", "blocked_by")}
+                   ("id", "titel", "typ", "prozess", "rolle", "sprint", "prio", "blocked_by",
+                    "takt")}  # SWR-074: wiederkehrend vs. einmalig
         gruppen.setdefault(t.get("status", "unbekannt"), []).append(eintrag)
     return {"gruppen": gruppen, "anzahl": len(tickets), "validierungsprobleme": probleme}
 
@@ -212,13 +213,16 @@ def cockpit(root, projekt="p0", heute=None):
         gruppe = "abgeschlossen" if status == "abgeschlossen" else "aktiv"
     offene = sorted((t for t in tickets if t.get("status") not in ("done", "rejected")),
                     key=lambda t: t.get("id", ""))
-    aufgaben = [{"id": t.get("id"), "titel": t.get("titel", "")} for t in offene[:3]]
+    aufgaben = [{"id": t.get("id"), "titel": t.get("titel", ""),
+                 "takt": t.get("takt", "")} for t in offene[:3]]  # SWR-074
+    wiederkehrend = sum(1 for t in offene if t.get("takt"))
     return {"projekt": projekt, "status_zahlen": status_zahlen,
             "tickets_gesamt": len(tickets), "offene_drs": drs,
             "letzte_baseline": tags[-1].strip() if tags else "",
             "briefe_offen": briefe_offen, "team": team,
             "beschreibung": sb["beschreibung"], "status": status, "gruppe": gruppe,
             "aufgaben_offen": len(offene), "aufgaben": aufgaben,
+            "aufgaben_wiederkehrend": wiederkehrend,  # SWR-074 (pm/N-0012)
             "kpi": {"laeufe": kpi.get("laeufe", 0),
                     "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}}
 

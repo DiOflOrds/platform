@@ -28,6 +28,10 @@ TYPEN = ["task", "problem", "change-request", "decision-request", "clarification
          "finding", "feedback", "skriptifizierung"]
 PRIOS = ["kritisch", "hoch", "mittel", "niedrig"]
 PRIO_RANG = {p: i for i, p in enumerate(PRIOS)}
+# SWR-074 (pm/N-0012): Wiederkehrende Aufgaben sind dauerhaft `open` — der Takt sagt,
+# dass das Absicht ist und nicht Liegenbleiben. Feld optional; leer = einmalige Aufgabe.
+TAKTE = {"je-session": "je Session", "taeglich": "täglich", "woechentlich": "wöchentlich",
+         "monatlich": "monatlich", "quartalsweise": "quartalsweise", "jaehrlich": "jährlich"}
 ID_MUSTER = re.compile(r"^T-\d{4}$")
 DATUM_MUSTER = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # T-0051: Bestands-DRs vor Sprint 5 (Freitext-Optionen) — neue DRs brauchen `optionen`.
@@ -125,6 +129,8 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
         fehler.append(f"ungültige prio: {t.get('prio')}")
     if t.get("erstellt") and not DATUM_MUSTER.match(t["erstellt"]):
         fehler.append(f"ungültiges Datum erstellt: {t['erstellt']}")
+    if t.get("takt") and t["takt"] not in TAKTE:  # SWR-074: optional, aber wenn, dann gültig
+        fehler.append(f"ungültiger takt: {t['takt']} (erlaubt: {', '.join(TAKTE)})")
     bb = parse_liste(t.get("blocked_by"))
     for ref in bb:
         if ref == tid:
@@ -183,19 +189,24 @@ def offene_blocker(t, tickets_nach_id):
 
 def generiere_board(tickets, stand=None):
     """BOARD.md-Inhalt deterministisch erzeugen."""
+    wiederkehrend = sum(1 for t in tickets if t.get("takt"))
+    kopf = f"\nStand: {stand or date.today().isoformat()} · Tickets: {len(tickets)}"
+    if wiederkehrend:  # SWR-074: dauerhaft offene Takt-Aufgaben sichtbar von einmaligen trennen
+        kopf += f" · davon wiederkehrend: {wiederkehrend}"
     zeilen = ["# Board (generiert von platform/scripts/board.py — nicht von Hand editieren)",
-              f"\nStand: {stand or date.today().isoformat()} · Tickets: {len(tickets)}\n"]
+              kopf + "\n"]
     for st in STATUS:
         gruppe = [t for t in tickets if t.get("status") == st]
         if not gruppe:
             continue
         zeilen.append(f"\n## {st} ({len(gruppe)})\n")
-        zeilen.append("| ID | Titel | Typ | Rolle | Prio | Sprint | blockiert durch |")
-        zeilen.append("|---|---|---|---|---|---|---|")
+        zeilen.append("| ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |")
+        zeilen.append("|---|---|---|---|---|---|---|---|")
         for t in sorted(gruppe, key=lambda x: (PRIO_RANG.get(x.get("prio"), 99), x.get("id", ""))):
             bb = ", ".join(parse_liste(t.get("blocked_by"))) or "—"
+            takt = TAKTE.get(t.get("takt"), "einmalig")
             zeilen.append(f"| [{t['id']}](tickets/{t['id']}.md) | {t['titel']} | {t['typ']} "
-                          f"| {t['rolle']} | {t['prio']} | {t['sprint']} | {bb} |")
+                          f"| {takt} | {t['rolle']} | {t['prio']} | {t['sprint']} | {bb} |")
     return "\n".join(zeilen) + "\n"
 
 

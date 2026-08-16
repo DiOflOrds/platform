@@ -116,6 +116,10 @@ function zeige(elemente) {
 
 // ---------- Ansichten ----------
 var AMPEL_KLASSE = { rot: "rejected", gelb: "in_progress", gruen: "done", grau: "" };
+// SWR-074 (pm/N-0012): Takt-Aufgaben bleiben absichtlich offen — Klartext statt Rätselraten.
+var TAKT_NAMEN = { "je-session": "je Session", taeglich: "täglich", woechentlich: "wöchentlich",
+                   monatlich: "monatlich", quartalsweise: "quartalsweise", jaehrlich: "jährlich" };
+function TAKT_TEXT(t) { return TAKT_NAMEN[t] || t; }
 
 function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
       var fertig = (p.status_zahlen.done || 0) + (p.status_zahlen.rejected || 0);
@@ -129,10 +133,15 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
         karte.appendChild(el("div", { "class": "zeile leer" }, p.beschreibung));
       }
       if (p.aufgaben && p.aufgaben.length) {  // SWR-068: laufende Aufgaben
-        var az = el("div", { "class": "zeile" }, "Offen (" + p.aufgaben_offen + "): ");
+        var offenText = "Offen (" + p.aufgaben_offen +
+          (p.aufgaben_wiederkehrend ? ", davon " + p.aufgaben_wiederkehrend +
+            " wiederkehrend" : "") + "): ";  // SWR-074
+        var az = el("div", { "class": "zeile" }, offenText);
         p.aufgaben.forEach(function (a) {
           az.appendChild(el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + a.id,
-                                   title: a.titel }, a.id));
+                                   title: a.titel + (a.takt ? " (wiederkehrend: " +
+                                     TAKT_TEXT(a.takt) + ")" : "") },
+                            a.id + (a.takt ? " ↻" : "")));
           az.appendChild(document.createTextNode(" "));
         });
         karte.appendChild(az);
@@ -247,7 +256,9 @@ function ladeBoard() {  // SWR-041: Jira-like — Statusspalten, Filter, Karte -
           gehe("ticket", projekt, t.id);
         } },
           el("div", { "class": "zeile" }, pille(t.id, t._status), String(t.titel).slice(0, 90)),
-          el("div", { "class": "zeile" }, pille(t.rolle + " · S" + t.sprint + " · " + t.prio))));
+          // SWR-074 (pm/N-0012): Takt-Aufgaben sind absichtlich dauerhaft offen
+          el("div", { "class": "zeile" }, pille(t.rolle + " · S" + t.sprint + " · " + t.prio),
+             t.takt ? pille("wiederkehrend: " + TAKT_TEXT(t.takt), "in_progress") : "")));
       });
       spalten.appendChild(spalte);
     });
@@ -263,6 +274,11 @@ function ladeTicket() {  // SWR-040: Detailansicht
       el("div", { "class": "zeile" }, pille(t.status, t.status), pille(t.typ || "task"),
         pille(t.prozess || "-"), pille("Rolle " + (t.rolle || "-")),
         pille("Sprint " + (t.sprint || "-")), pille(t.prio || "-")));
+    if (t.takt) {  // SWR-074 (pm/N-0012): erklärt, warum das Ticket dauerhaft offen bleibt
+      kopf.appendChild(el("div", { "class": "zeile" },
+        pille("wiederkehrend: " + TAKT_TEXT(t.takt), "in_progress"),
+        " Daueraufgabe — wird " + TAKT_TEXT(t.takt) + " erledigt und bleibt danach offen."));
+    }
     if (t.reviewer) kopf.appendChild(el("div", { "class": "zeile" }, "Reviewer: " + t.reviewer));
     if (t.frist) kopf.appendChild(el("div", { "class": "zeile" }, "Frist: " + t.frist +
       (t.default ? " · Default: " + t.default : "")));
