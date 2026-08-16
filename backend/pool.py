@@ -223,6 +223,20 @@ def kandidat_anlegen(root, kategorie, kandidat, kurzbeschreibung, werte):
 _PROJEKT_MUSTER = re.compile(r"^p(\d+)$")
 G0_FRIST_TAGE = 7  # wie p10/T-0002, p5/T-0001: eine Woche zum Lesen des Entwurfs
 
+# pm/T-0037 (B051, Befund 2) — Kopf des Decision-Logs, wortgleich zu den von Hand
+# angelegten Logs (P10/P11) und passend zur Zeile aus `inbox.entscheide`.
+LOG_TABELLENKOPF = ("| ID | Datum | Entscheider | Entscheidung | Optionen | Begründung "
+                    "| Betroffene Artefakte |\n|---|---|---|---|---|---|---|\n")
+
+# pm/T-0037 (B051, Befund 1) — Ein gestarteter Kandidat wird VERSCHOBEN, nicht
+# gelöscht (Lesson B029: „ein Kandidat, der aus der Liste verschwindet, sieht aus
+# wie einer, den nie jemand wollte"). Der Abschnitt wurde am 16.08. von Hand für
+# Kandidat #13 eingeführt; der Knopf war da schon gebaut und kannte ihn nicht.
+REALISIERT_UEBERSCHRIFT = "Realisiert"
+REALISIERT_ABSCHNITT = (
+    "## Realisiert (aus dem Pool herausgelaufen — Nummern werden nicht neu vergeben)\n\n"
+    "| # | Kandidat | Wohin | Beleg |\n|---|---|---|---|\n")
+
 
 def _naechste_projektnummer(root):
     """Nächste freie Projektnummer p<N> — höchste bestehende + 1.
@@ -308,6 +322,32 @@ def _technik_zeile_entfernen(text, ueberschrift, spalten_index, gesucht):
     return None, None
 
 
+def _realisiert_zeile_bauen(nummer_text, name, quelle, neuer_name, heute_iso):
+    """pm/T-0037: Zeile für den Abschnitt „Realisiert" (# | Kandidat | Wohin | Beleg).
+
+    „Wohin" und „Beleg" sind der Zweck des Abschnitts: nachvollziehbar bleibt nicht,
+    DASS der Kandidat weg ist, sondern WOHIN er gegangen ist und woran das zu prüfen
+    ist. `|` ist in `name` bereits verboten (siehe `kandidat_starten`); `quelle` kommt
+    aus einer Tabellenzelle und kann es bauartbedingt nicht enthalten.
+    """
+    kandidat = name + (f" (Quelle: {quelle})" if quelle else "")
+    wohin = (f"Projekt **{neuer_name.upper()}** (`projects/{neuer_name}`) — über den "
+             "„Starten\"-Knopf angelegt (pm/T-0022 Teil 2)")
+    beleg = f"{neuer_name}/T-0001 (G0-Antrag, gestartet {heute_iso})"
+    return f"| {nummer_text or '—'} | {kandidat} | {wohin} | {beleg} |"
+
+
+def _realisiert_zeile_einfuegen(text, neue_zeile):
+    """pm/T-0037: Zeile ans Ende der „Realisiert"-Tabelle. Fehlt der Abschnitt,
+    wird er am Dateiende angelegt — der Knopf darf nicht daran scheitern, dass
+    eine von Hand gewachsene Konvention in einer Pool-Datei noch nicht steht."""
+    ergebnis = _zeile_einfuegen(text, REALISIERT_UEBERSCHRIFT, neue_zeile)
+    if ergebnis is not None:
+        return ergebnis
+    basis = text if text.endswith("\n") else text + "\n"
+    return basis + "\n" + REALISIERT_ABSCHNITT + neue_zeile + "\n"
+
+
 def _projekt_dateien_schreiben(pfad, neuer_name, name, quelle, nummer_text, frist, heute_iso):
     """Skelett eines neuen Projekts vor G0 — README, Auftrags-Entwurf, leeres
     Decision-Log, Steckbrief, der G0-DR selbst (T-0001) und das dazu passende
@@ -349,10 +389,16 @@ def _projekt_dateien_schreiben(pfad, neuer_name, name, quelle, nummer_text, fris
     open(os.path.join(pfad, "docs", "01-projektauftrag.md"), "w",
         encoding="utf-8", newline="\n").write(auftrag)
 
+    # pm/T-0037 (B051, Befund 2): MIT Tabellenkopf. Bis dahin schrieb der Knopf
+    # nur einen Platzhaltersatz — `inbox.entscheide` hängt die D000-Zeile darunter
+    # an, und ohne Kopfzeile ist das keine Tabelle, sondern eine Zeile Pipe-Text
+    # (so geschehen bei P12). Der Platzhaltersatz entfällt: die leere Tabelle sagt
+    # dasselbe, ohne nach der ersten Entscheidung falsch zu werden. Kopf wortgleich
+    # zu den von Hand angelegten Logs (P10/P11) und zur Zeile aus `inbox.entscheide`.
     log = (
         f"# Decision Log {neuer_name}\n\n"
         "*Append-only — Entscheidungen werden nie überschrieben, nur ergänzt (Playbook Kap. 16).*\n\n"
-        "Noch keine Entscheidung — D000 folgt mit der Antwort auf T-0001 (G0).\n"
+        + LOG_TABELLENKOPF
     )
     open(os.path.join(pfad, "management", "decisions", "decision-log.md"), "w",
         encoding="utf-8", newline="\n").write(log)
@@ -508,6 +554,12 @@ def kandidat_starten(root, kandidat):
                           "entfernt werden (Datei änderte sich zwischen Lesen und Schreiben) — "
                           "bitte die Zeile manuell in pm/management/projekt-pool.md prüfen."}
 
+    # pm/T-0037 (B051, Befund 1): verschieben statt löschen — die Kandidatenzeile
+    # wandert in denselben Schreibvorgang/Commit unter „Realisiert".
+    neuer_pool_text = _realisiert_zeile_einfuegen(
+        neuer_pool_text,
+        _realisiert_zeile_bauen(nummer_text, name, quelle, neuer_name, heute_iso))
+
     pm_repo = os.path.join(root, aggregation.POOL_DATEI[0])
     rel = os.path.join(*aggregation.POOL_DATEI[1:])
     open(pool_pfad, "w", encoding="utf-8", newline="\n").write(neuer_pool_text)
@@ -515,15 +567,15 @@ def kandidat_starten(root, kandidat):
     commit2 = subprocess.run(
         ["git", "-C", pm_repo] + COMMIT_IDENTITAET +
         ["commit", "-m", f"Projekt-Pool: '{name}' gestartet als {neuer_name} (pm/T-0022 Teil 2) "
-                         f"— {HERKUNFT}"],
+                         f"— nach 'Realisiert' verschoben (pm/T-0037) — {HERKUNFT}"],
         capture_output=True, text=True)
     if add2.returncode or commit2.returncode:
         open(pool_pfad, "w", encoding="utf-8", newline="\n").write(pool_text)  # Rücknahme nur hier
         return {"ok": True, "kandidat": name, "projekt": neuer_name, "ticket": "T-0001", "ref": ref,
-                "meldung": grundmeldung + " ACHTUNG: der Kandidat konnte NICHT aus dem Pool "
-                          "entfernt werden (Git-Commit fehlgeschlagen: " +
+                "meldung": grundmeldung + " ACHTUNG: der Kandidat konnte NICHT im Pool "
+                          "nachgeführt werden (Git-Commit fehlgeschlagen: " +
                           (add2.stderr + commit2.stderr + commit2.stdout).strip()[:200] +
                           ") — bitte die Zeile manuell in pm/management/projekt-pool.md prüfen."}
 
     return {"ok": True, "kandidat": name, "projekt": neuer_name, "ticket": "T-0001", "ref": ref,
-            "meldung": grundmeldung + " Aus dem Pool entfernt, committet."}
+            "meldung": grundmeldung + " Im Pool nach „Realisiert“ verschoben, committet."}

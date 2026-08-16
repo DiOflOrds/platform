@@ -7,8 +7,10 @@ Verifiziert: nur Technik-Kandidaten (Team-Kandidaten werden mit Verweis auf die
 Team-Gründung abgelehnt), Projekt-Nummer über dieselbe Discovery wie Board/
 Matrix/Preflight (Top-Level UND Sammel-Repo `projects/`), Ordner + gültiger
 G0-Decision-Request (T-0001) + BOARD.md in einem Commit im Repo `projects`,
-Rücknahme (kompletter Ordner weg) bei gescheitertem Commit, Kandidat wird aus
-dem Pool entfernt (zweiter Commit im Repo `pm`) — bleibt aber stehen, wenn nur
+Rücknahme (kompletter Ordner weg) bei gescheitertem Commit, Kandidat wird im
+Pool nachgeführt — nach „Realisiert" verschoben statt gelöscht, und das
+Decision-Log entsteht mit Tabellenkopf (beides pm/T-0037 nach Befund B051) —
+(zweiter Commit im Repo `pm`) — bleibt aber stehen, wenn nur
 dieser zweite Commit scheitert (das bereits sichtbare Projekt wird nicht
 zurückgenommen), Ablehnung unbekannter Kandidaten und verbotener Zeichen,
 HTTP-Anbindung inkl. PIN-Schreibschutz (SWR-048).
@@ -24,7 +26,7 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from backend import pool, server  # noqa: E402
+from backend import aggregation, pool, server  # noqa: E402
 import board  # noqa: E402 (platform/scripts, via pool.py's sys.path-Eintrag)
 
 POOL_TEXT = (
@@ -95,7 +97,12 @@ class Basis(unittest.TestCase):
 
 
 class TestStartenTechnik(Basis):
-    """SWR-089: Happy Path — Ordner, G0-Antrag, BOARD.md, Pool-Entfernung."""
+    """SWR-089: Happy Path — Ordner, G0-Antrag, BOARD.md, Pool-Nachführung.
+
+    pm/T-0037 (B051): „Nachführung" statt „Entfernung" — der Kandidat wird aus der
+    Kandidatentabelle nach „Realisiert" verschoben, und das Decision-Log entsteht
+    mit Tabellenkopf.
+    """
 
     def test_technik_kandidat_wird_gestartet(self):
         erg = pool.kandidat_starten(self.wurzel, "JS-Frontend-Tests")
@@ -130,10 +137,80 @@ class TestStartenTechnik(Basis):
         self.assertIn("T-0001", board_text)
         self.assertIn("open", board_text)
 
-    def test_kandidat_aus_pool_entfernt(self):
+    def test_kandidat_aus_kandidatentabelle_entfernt(self):
+        """pm/T-0037: aus der Technik-Tabelle heraus — aber nicht aus der Datei.
+
+        Vorher pruefte dieser Test `assertNotIn` ueber die ganze Datei; genau das
+        hat das spurlose Loeschen (B051/B029) mitgetragen.
+        """
         pool.kandidat_starten(self.wurzel, "JS-Frontend-Tests")
-        self.assertNotIn("JS-Frontend-Tests", self.pool_text())
-        self.assertIn("mail_digest", self.pool_text())  # anderer Kandidat bleibt unberuehrt
+        text = self.pool_text()
+        technik = text.split("## Technik-Kandidaten")[1].split("\n## ")[0]
+        self.assertNotIn("JS-Frontend-Tests", technik)
+        self.assertIn("mail_digest", technik)  # anderer Kandidat bleibt unberuehrt
+
+    def test_kandidat_steht_unter_realisiert(self):
+        """pm/T-0037 (B051, Befund 1): verschoben statt geloescht — mit Wohin und Beleg."""
+        pool.kandidat_starten(self.wurzel, "JS-Frontend-Tests")
+        text = self.pool_text()
+        self.assertIn("## Realisiert", text)
+        realisiert = text.split("## Realisiert")[1]
+        self.assertIn("JS-Frontend-Tests", realisiert)
+        self.assertIn("P3-R1", realisiert)          # Quelle aus der Kandidatenzeile
+        self.assertIn("projects/p11", realisiert)   # Wohin
+        self.assertIn("p11/T-0001", realisiert)     # Beleg
+        zeile = next(z for z in realisiert.splitlines() if "JS-Frontend-Tests" in z)
+        self.assertTrue(zeile.strip().startswith("| 7 |"), zeile)  # Nummer bleibt erhalten
+        self.assertEqual(zeile.count("|"), 5)       # vier Spalten, Tabelle nicht gesprengt
+
+    def test_realisiert_abschnitt_wird_angelegt_wenn_er_fehlt(self):
+        """Bestandsdateien ohne den (von Hand eingefuehrten) Abschnitt: anlegen statt scheitern."""
+        self.assertNotIn("## Realisiert", self.pool_text())  # Gegenprobe: Fixture hat ihn nicht
+        pool.kandidat_starten(self.wurzel, "JS-Frontend-Tests")
+        text = self.pool_text()
+        self.assertIn("## Realisiert", text)
+        self.assertIn("| # | Kandidat | Wohin | Beleg |", text)
+
+    def test_zweiter_start_haengt_an_bestehende_realisiert_tabelle_an(self):
+        """Zweiter Lauf legt keinen zweiten Abschnitt an, sondern haengt an."""
+        pool.kandidat_starten(self.wurzel, "JS-Frontend-Tests")
+        pool.kandidat_starten(self.wurzel, "mail_digest → Katalog-Produkt")
+        text = self.pool_text()
+        self.assertEqual(text.count("## Realisiert"), 1)
+        realisiert = text.split("## Realisiert")[1]
+        self.assertIn("JS-Frontend-Tests", realisiert)
+        self.assertIn("mail_digest", realisiert)
+
+    def test_decision_log_hat_tabellenkopf(self):
+        """pm/T-0037 (B051, Befund 2): der Kopf steht, der Platzhaltersatz ist weg.
+
+        Ohne Kopfzeile ist die von `inbox.entscheide` angehaengte D000-Zeile keine
+        Tabelle, sondern Pipe-Text (so geschehen bei P12).
+        """
+        pool.kandidat_starten(self.wurzel, "JS-Frontend-Tests")
+        log = open(os.path.join(self.projects_repo, "p11", "management", "decisions",
+                                "decision-log.md"), encoding="utf-8").read()
+        self.assertIn("| ID | Datum | Entscheider | Entscheidung | Optionen | Begründung "
+                      "| Betroffene Artefakte |", log)
+        self.assertIn("|---|---|---|---|---|---|---|", log)
+        self.assertNotIn("Noch keine Entscheidung", log)
+        # Der Kopf ist die letzte Zeile: eine angehaengte Zeile ist damit die erste Datenzeile.
+        zeilen = [z for z in log.splitlines() if z.strip()]
+        self.assertTrue(zeilen[-1].startswith("|---"), zeilen[-1])
+
+    def test_angehaengte_entscheidungszeile_steht_unter_gueltigem_kopf(self):
+        """Gegenprobe zum eigentlichen Schaden: D000 muss als Tabellenzeile lesbar sein."""
+        pool.kandidat_starten(self.wurzel, "JS-Frontend-Tests")
+        pfad = os.path.join(self.projects_repo, "p11", "management", "decisions",
+                            "decision-log.md")
+        with open(pfad, "a", encoding="utf-8", newline="\n") as f:
+            f.write("| D000 | 2026-08-16 18:04 | Mensch (E. John, via Inbox) | **G0a** "
+                    "| lt. T-0001 | — | T-0001 |\n")
+        tabellen = aggregation.parse_md_tabellen(open(pfad, encoding="utf-8").read())
+        self.assertEqual(len(tabellen), 1, "ohne Kopf erkennt der Parser keine Tabelle")
+        self.assertEqual(tabellen[0]["spalten"][0], "ID")
+        self.assertEqual(len(tabellen[0]["zeilen"]), 1)
+        self.assertEqual(tabellen[0]["zeilen"][0][0], "D000")
 
     def test_zwei_commits_mit_herkunft(self):
         pool.kandidat_starten(self.wurzel, "JS-Frontend-Tests")
@@ -254,14 +331,18 @@ class TestCommitRuecknahme(Basis):
         finally:
             pool.subprocess.run = echt
         # Projekt bleibt bestehen und ist committet — nur der Pool-Eintrag konnte
-        # nicht entfernt werden (kein Datenverlust, sichtbare Warnung statt B038).
+        # nicht nachgefuehrt werden (kein Datenverlust, sichtbare Warnung statt B038).
         self.assertTrue(erg["ok"])
-        self.assertIn("NICHT aus dem Pool entfernt", erg["meldung"])
+        self.assertIn("NICHT im Pool nachgeführt", erg["meldung"])
         self.assertTrue(os.path.isfile(
             os.path.join(self.projects_repo, "p11", "tickets", "T-0001.md")))
         self.assertEqual(len(self.commits(self.projects_repo)), 2)  # init + Projekt-Commit
         self.assertEqual(len(self.commits(self.pm_repo)), 1)  # nur init, Pool-Commit scheiterte
-        self.assertIn("JS-Frontend-Tests", self.pool_text())  # Arbeitskopie zurueckgenommen
+        # Arbeitskopie vollstaendig zurueckgenommen: Kandidat steht wieder in der
+        # Technik-Tabelle, und es ist KEIN halber "Realisiert"-Abschnitt entstanden (pm/T-0037).
+        text = self.pool_text()
+        self.assertIn("JS-Frontend-Tests", text.split("## Technik-Kandidaten")[1])
+        self.assertNotIn("## Realisiert", text)
 
 
 class HttpTest(unittest.TestCase):
