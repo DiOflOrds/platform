@@ -278,14 +278,51 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
       return karte;
 }
 
+// SWR-102 (pm/T-0040, Briefe pm/N-0032+N-0033): "2026-08-16T20:55:38+02:00" -> "2026-08-16 20:55".
+function sessionZeit(iso) {
+  var m = String(iso || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+  return m ? m[1] + " " + m[2] : "";
+}
+
+// SWR-102: Kachel "Letzte Session" — zeigt den Block "Das Wichtigste" aus
+// pm/management/session-agenda.md. Kein zweiter Text: dieselbe Datei, die die
+// Session ohnehin schreibt. Der Zeitstempel kommt aus dem Git-Commit, nicht aus
+// dem Text — sonst sähe ein alter Stand nach einem ausgefallenen Lauf frisch aus
+// (T-0040 Befund c, B038).
+function sessionKachel(s) {
+  var karte = el("div", { "class": "karte" });
+  var kopf = el("div", { "class": "zeile" }, el("h3", { style: "margin:0" }, "Letzte Session"),
+    pille(sessionZeit(s.stand) || "Zeitpunkt unbekannt", s.veraltet ? "in_progress" : "done"));
+  if (s.fortschreibungen_heute) {
+    kopf.appendChild(pille(s.fortschreibungen_heute + "× heute fortgeschrieben"));
+  }
+  karte.appendChild(kopf);
+  if (s.veraltet && s.hinweis) {
+    karte.appendChild(el("div", { "class": "meldung fehler" },
+      s.hinweis + " — der geplante Lauf ist ausgefallen oder Cowork ist zu."));
+  }
+  karte.appendChild(s.text ? mdRender(s.text)
+    : el("p", { "class": "leer" }, "Kein Block „Das Wichtigste“ in " + s.quelle + "."));
+  karte.appendChild(el("div", { "class": "zeile" },
+    "Quelle: " + s.quelle + " · Zeitstempel aus dem Git-Commit, nicht aus dem Text."));
+  return karte;
+}
+
 function ladeUebersicht() {  // SWR-046 + P9 SWR-067: Org-Cockpit mit Gruppen
-  return api("/api/cockpit").then(function (u) {
+  // SWR-102: Die Session-Kachel darf das Cockpit nicht mitreissen — faellt ihr
+  // Endpunkt aus, fehlt die Kachel, nicht die Uebersicht.
+  return Promise.all([api("/api/cockpit"),
+                      api("/api/session").catch(function () { return null; })
+                     ]).then(function (beide) {
+    var u = beide[0], sitzung = beide[1];
     document.getElementById("stand").textContent = u.projekte.length + " Projekt(e)";
     var gruppen = { "festes-team": [], "projekt-team": [], "aktiv": [], "abgeschlossen": [] };
     u.projekte.forEach(function (p) {
       (gruppen[p.gruppe || "aktiv"] || gruppen.aktiv).push(p);
     });
     var teile = [];
+    // SWR-102: ganz oben, ohne Scrollen sichtbar (T-0040 DoD 2).
+    if (sitzung) teile.push(sessionKachel(sitzung));
     [["festes-team", "Feste Teams"], ["projekt-team", "Projekt-Teams"],
      ["aktiv", "Aktive Projekte"]].forEach(function (g) {
       if (!gruppen[g[0]].length) return;
@@ -676,7 +713,13 @@ function ladeChat() {  // SWR-050/051 (P4): Briefkasten-Konversation mit dem Tea
         leeren(meldung);
         meldung.appendChild(el("div", { "class": "meldung ok" },
           "Gesendet als " + e.brief + " — die nächste Session antwortet hier."));
-        text.value = ""; knopf.disabled = false;
+        text.value = "";
+        // SWR-102 / pm/T-0040 Punkt 6 (Nebenbefund B055): Der Knopf bleibt gesperrt,
+        // bis der Verlauf neu gezeichnet ist und ihn ersetzt. Vorher gab er sich
+        // sofort wieder frei und lud erst 900 ms spaeter neu — ein zweiter Klick in
+        // dieses Fenster erzeugte einen zweiten Brief (N-0028/N-0029, N-0032/N-0033).
+        // Kein Filter, keine stille Unterdrueckung (B050): der Klick wird verhindert,
+        // nicht der Brief verschluckt. Im Fehlerfall unten wird wieder freigegeben.
         setTimeout(lade, 900);
       }).catch(function (fehler) {
         leeren(meldung);
