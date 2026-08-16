@@ -99,6 +99,23 @@ class MultiProjektBoardCheckTest(unittest.TestCase):
                 subprocess.run(["git", "-C", repo, "init", "-q"], check=True)
             self.assertGreaterEqual(preflight.preflight(root, skip_tests=True), 1)
 
+    def test_kaputtes_ticket_im_sammelrepo_ist_befund(self):
+        """Ein Projektordner in projects/ läuft mit durch den Board-Check und fällt bei
+        kaputtem Ticket auf. Verifiziert: SWR-070."""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            p0 = os.path.join(root, "p0")
+            os.makedirs(os.path.join(p0, "tickets"))
+            subprocess.run(["git", "-C", p0, "init", "-q"], check=True)
+            sammel = os.path.join(root, "projects")
+            nested = os.path.join(sammel, "p10", "tickets")
+            os.makedirs(nested)
+            open(os.path.join(nested, "T-0001.md"), "w",
+                 encoding="utf-8").write("---\nid: T-0001\n---\n\nkaputt\n")
+            subprocess.run(["git", "-C", sammel, "init", "-q"], check=True)
+            self.assertGreaterEqual(preflight.preflight(root, skip_tests=True), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

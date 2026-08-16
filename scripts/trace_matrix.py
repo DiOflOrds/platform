@@ -18,18 +18,24 @@ import re
 import sys
 from datetime import date
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import board  # noqa: E402  — gemeinsame Projekt-Discovery (SWR-070, p9/T-0007)
+
 SWR_RE = re.compile(r"SWR-\d{3}")
 PRODUKTE_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
                             "orchestrator", "config", "produkte.yaml")
 
 
 def swr_quellen_alle_projekte(wurzel):
-    """T-0010(p1): SWR-Dokumente aller Projekte per Discovery (tickets/ + requirements)."""
+    """T-0010(p1): SWR-Dokumente aller Projekte per Discovery (tickets/ + requirements).
+
+    SWR-070/p9-T-0007: nutzt dieselbe Discovery wie Board und Cockpit — damit zählen
+    auch Projektordner im Sammel-Repo `projects/` (pm/D003, ab P10) zur Matrix."""
     quellen = []
-    for d in sorted(os.listdir(wurzel)):
-        pfad = os.path.join(wurzel, d, "requirements", "software",
+    for _name, basis in board.projekt_pfade(wurzel):
+        pfad = os.path.join(basis, "requirements", "software",
                             "software-requirements.md")
-        if os.path.isdir(os.path.join(wurzel, d, "tickets")) and os.path.exists(pfad):
+        if os.path.exists(pfad):
             quellen.append(pfad)
     return quellen
 

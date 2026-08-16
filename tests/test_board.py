@@ -301,5 +301,42 @@ class SetzeStatusTest(unittest.TestCase):
         self.assertEqual(board.main([self.repo, "status", "T-0001", "done"]), 1)
 
 
+class ProjektDiscoveryTest(unittest.TestCase):
+    """p9/T-0007: gemeinsame Projekt-Auflösung für Board-Werkzeuge, Preflight und Matrix."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="discovery-")
+        self.addCleanup(__import__("shutil").rmtree, self.root, ignore_errors=True)
+
+    def _projekt(self, *teile):
+        pfad = os.path.join(self.root, *teile)
+        os.makedirs(os.path.join(pfad, "tickets"))
+        return pfad
+
+    def test_findet_top_level_und_verschachtelte_projekte(self):
+        """Projektordner in projects/ zählen wie Top-Level-Repos. Verifiziert: SWR-070."""
+        self._projekt("p9")
+        self._projekt("projects", "p10")
+        os.makedirs(os.path.join(self.root, "nur-ein-ordner"))
+        gefunden = dict(board.projekt_pfade(self.root))
+        self.assertIn("p9", gefunden)
+        self.assertIn("p10", gefunden)
+        self.assertNotIn("nur-ein-ordner", gefunden)
+        self.assertTrue(gefunden["p10"].endswith(os.path.join("projects", "p10")))
+
+    def test_top_level_gewinnt_bei_namensgleichheit(self):
+        """Gleicher Name oben und im Sammel-Repo: das Bestandsrepo bleibt maßgeblich.
+        Verifiziert: SWR-070."""
+        self._projekt("p9")
+        self._projekt("projects", "p9")
+        gefunden = dict(board.projekt_pfade(self.root))
+        self.assertEqual(gefunden["p9"], os.path.join(self.root, "p9"))
+
+    def test_fehlender_wurzelordner_ist_leer(self):
+        """Eine nicht lesbare Wurzel liefert eine leere Liste statt eines Absturzes.
+        Verifiziert: SWR-070."""
+        self.assertEqual(board.projekt_pfade(os.path.join(self.root, "gibtsnicht")), [])
+
+
 if __name__ == "__main__":
     unittest.main()

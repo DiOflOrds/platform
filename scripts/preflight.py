@@ -21,6 +21,9 @@ import platform as _platform
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import board  # noqa: E402  — gemeinsame Projekt-Discovery (SWR-070, p9/T-0007)
+
 REPOS = ["process", "platform", "p0"]
 
 
@@ -139,17 +142,17 @@ def preflight(root, skip_tests=False, keep_locks=False):
             print(f"[{name}] Arbeitskopie nicht sauber ({len(dirty)} Datei(en)) — {tracking}")
         else:
             print(f"[{name}] sauber — {tracking}")
-    # SWR-029: board-check über ALLE Projekt-Repos (Discovery-Konvention, ADR-004).
-    projekt_namen = [n for n in repos_im_root(root)
-                     if os.path.isdir(os.path.join(root, n, "tickets"))] or ["p0"]
-    for name in projekt_namen:
-        ok, meldung = board_check(os.path.join(root, name))
+    # SWR-029: board-check über ALLE Projekte (Discovery-Konvention, ADR-004);
+    # SWR-070/p9-T-0007: inkl. Projektordner im Sammel-Repo projects/ (pm/D003).
+    projekte = board.projekt_pfade(root) or [("p0", os.path.join(root, "p0"))]
+    for name, pfad in projekte:
+        ok, meldung = board_check(pfad)
         print(f"[{name}] board-check: {'OK' if ok else 'FEHLER — ' + meldung}")
         if not ok:
             befunde += 1
     # SWR-051 (P4): Session-Routine "Briefkasten zuerst" — offene Briefe anzeigen (informativ)
-    for name in projekt_namen:
-        verz = os.path.join(root, name, "management", "briefkasten")
+    for name, pfad in projekte:
+        verz = os.path.join(pfad, "management", "briefkasten")
         if os.path.isdir(verz):
             offen = sum(1 for d in os.listdir(verz) if d.endswith(".md") and
                         "status: offen" in open(os.path.join(verz, d), encoding="utf-8").read(300))

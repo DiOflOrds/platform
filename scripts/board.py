@@ -48,6 +48,38 @@ UEBERGAENGE = {
     "rejected": ["open"],
 }
 
+# Sammel-Repo für neue Projekte ab P10 (pm/D003) — Projekte sind dort Ordner statt Repos.
+SAMMEL_REPO = "projects"
+
+
+def projekt_pfade(wurzel):
+    """SWR-025/ADR-004 + SWR-070: alle Projekte unter `wurzel` als (name, pfad).
+
+    Ein Projekt ist ein Ordner mit `tickets/` — entweder direkt im Wurzelordner
+    (Bestandsrepos p0–p9, pm, team-mail …) oder im Sammel-Repo `projects/`
+    (pm/D003, ab P10). p9/T-0007: dieselbe Auflösung nutzen preflight (board-check
+    je Projekt) und trace_matrix (SWR-Quellen), damit verschachtelte Projekte nicht
+    still durch die Gates fallen.
+    """
+    gefunden, namen = [], set()
+    try:
+        eintraege = sorted(os.listdir(wurzel))
+    except OSError:
+        return gefunden
+    for d in eintraege:
+        pfad = os.path.join(wurzel, d)
+        if os.path.isdir(os.path.join(pfad, "tickets")):
+            gefunden.append((d, pfad))
+            namen.add(d)
+    sammel = os.path.join(wurzel, SAMMEL_REPO)
+    if os.path.isdir(sammel):
+        for d in sorted(os.listdir(sammel)):
+            pfad = os.path.join(sammel, d)
+            if os.path.isdir(os.path.join(pfad, "tickets")) and d not in namen:
+                gefunden.append((d, pfad))
+                namen.add(d)
+    return gefunden
+
 
 def parse_frontmatter(text):
     """Frontmatter eines Tickets parsen. Gibt (dict, fehler) zurück."""

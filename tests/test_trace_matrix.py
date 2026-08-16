@@ -182,5 +182,35 @@ class ProduktCfgTest(unittest.TestCase):
         self.assertEqual(erg["id_muster"], "SWR-D\\d{2}")
 
 
+class SwrQuellenDiscoveryTest(unittest.TestCase):
+    """p9/T-0007: Die Matrix sieht auch Projekte im Sammel-Repo projects/."""
+
+    def _projekt(self, root, *teile):
+        basis = os.path.join(root, *teile)
+        os.makedirs(os.path.join(basis, "tickets"))
+        req = os.path.join(basis, "requirements", "software")
+        os.makedirs(req)
+        open(os.path.join(req, "software-requirements.md"), "w",
+             encoding="utf-8").write(ANFORDERUNGEN)
+        return basis
+
+    def test_verschachteltes_projekt_liefert_swr_quelle(self):
+        """Ein Projektordner in projects/ steuert seine SWRs zur Matrix bei — sonst
+        fielen die Anforderungen still durch das Lücken-Gate. Verifiziert: SWR-070."""
+        with tempfile.TemporaryDirectory() as root:
+            self._projekt(root, "p9")
+            self._projekt(root, "projects", "p10")
+            quellen = trace_matrix.swr_quellen_alle_projekte(root)
+            self.assertEqual(len(quellen), 2)
+            self.assertTrue(any(os.path.join("projects", "p10") in q for q in quellen))
+
+    def test_projekt_ohne_anforderungsdokument_wird_uebersprungen(self):
+        """Ein Projektordner ohne software-requirements.md liefert keine Quelle.
+        Verifiziert: SWR-070."""
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "projects", "p11", "tickets"))
+            self.assertEqual(trace_matrix.swr_quellen_alle_projekte(root), [])
+
+
 if __name__ == "__main__":
     unittest.main()
