@@ -177,6 +177,7 @@ def lade_board(root, projekt="p0"):
                    ("id", "titel", "typ", "prozess", "rolle", "sprint", "prio", "blocked_by",
                     "takt",       # SWR-074: wiederkehrend vs. einmalig
                     "geändert")}  # SWR-075: Alter erledigter Aufgaben
+        eintrag["labels"] = board.parse_liste(t.get("labels"))  # SWR-079 (P10)
         eintrag["veraltet"] = ist_altlast(t)  # SWR-075 (pm/N-0013)
         eintrag["ref"] = ref(projekt, t.get("id"))  # SWR-087 (platform/N-0003)
         gruppen.setdefault(t.get("status", "unbekannt"), []).append(eintrag)
@@ -189,6 +190,7 @@ def lade_ticket(root, projekt="p0", ticket_id=""):
     for t in tickets:
         if t.get("id") == ticket_id:
             felder = {k: v for k, v in t.items() if not k.startswith("_")}
+            felder["labels"] = board.parse_liste(t.get("labels"))  # SWR-079 (P10)
             felder["body"] = t.get("_body", "")
             felder["projekt"] = projekt
             felder["ref"] = ref(projekt, t.get("id"))  # SWR-087 (platform/N-0003)

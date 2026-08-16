@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend import aggregation, briefkasten, inbox, mailer, teams  # noqa: E402
+from backend import aggregation, briefkasten, inbox, mailer, teams, tickets  # noqa: E402
 
 
 def schreibschutz_pruefen(client_ip, pin_header):
@@ -204,6 +204,12 @@ class Api(BaseHTTPRequestHandler):
             if pfad == "/api/ticket":  # SWR-040 (P3): Einzelticket für die Detailansicht
                 tid = (parse_qs(teile.query).get("id") or [""])[0]
                 return self._json(200, aggregation.lade_ticket(wurzel, projekt, tid))
+            if pfad == "/api/ticket/editor":  # SWR-077/081 (P10): Formularzustand, PIN-frei
+                tid = (parse_qs(teile.query).get("id") or [""])[0]
+                try:
+                    return self._json(200, tickets.editor_daten(wurzel, projekt, tid))
+                except tickets.TicketFehler as e:
+                    return self._json(e.code, {"fehler": str(e)})
             if pfad == "/api/inbox/historie":  # SWR-042 (P3): entschiedene DRs
                 return self._json(200, inbox.historie(wurzel))
             if pfad == "/api/version":  # SWR-047 (P3): Prozess- vs. Code-Stand
@@ -276,6 +282,13 @@ class Api(BaseHTTPRequestHandler):
                 erg = teams.konfiguration_schreiben(type(self).wurzel,
                                                     daten.get("projekt", ""), daten)
             except teams.TeamFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
+        if self.path == "/api/ticket":  # SWR-077/078/081 (P10): Ticket ändern (PIN oben geprüft)
+            try:
+                erg = tickets.speichere(type(self).wurzel, daten.get("projekt", ""),
+                                        daten.get("id", ""), daten)
+            except tickets.TicketFehler as e:
                 return self._json(e.code, {"fehler": str(e)})
             return self._json(200, erg)
         if self.path == "/api/briefkasten":  # SWR-050 (P4): Nachricht ans Team

@@ -6,7 +6,6 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime
 
 _SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 if _SCRIPTS not in sys.path:
@@ -35,8 +34,12 @@ def entscheidungszeitpunkt(jetzt=None):
     Tag (Regelfall seit dem 30-Minuten-Takt) war die Reihenfolge nicht mehr aus
     dem Log ablesbar. Ortszeit des Servers, Minutengenauigkeit; eine Quelle für
     Decision-Log-Zeile und Ticket-Vermerk.
+
+    P10: Die Formatierung liegt seit SWR-081 in `board.zeitpunkt` — Entscheidungen
+    und Ticket-Änderungen datieren aus derselben Quelle. Diese Funktion bleibt als
+    sprechender Name im Entscheidungspfad stehen und delegiert nur noch.
     """
-    return (jetzt or datetime.now()).strftime("%Y-%m-%d %H:%M")
+    return board.zeitpunkt(jetzt)
 
 
 def _dr_tickets(p0):

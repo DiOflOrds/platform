@@ -10,6 +10,7 @@ schichten:
       - {id: server, name: "server.py — HTTP-API + Static"}
       - {id: aggregation, name: "aggregation.py — Lese-Sichten"}
       - {id: inbox, name: "inbox.py — Entscheidungen"}
+      - {id: tickets, name: "tickets.py — Ticket-Editor (ADR-007)"}
       - {id: mailer, name: "mailer.py — SMTP"}
   - name: "Orchestrierung & Skript-Route"
     komponenten:
@@ -25,6 +26,9 @@ beziehungen:
   - {von: teamnode, nach: skripte, label: "abschluss-Gates"}
   - {von: server, nach: aggregation}
   - {von: server, nach: inbox}
+  - {von: server, nach: tickets, label: "PIN-Schreibpfad"}
+  - {von: tickets, nach: skripte, label: "board.aktualisiere"}
+  - {von: tickets, nach: repos, label: "Commit"}
   - {von: server, nach: mailer, label: "DR-Mails"}
   - {von: tick, nach: gateway}
   - {von: aggregation, nach: repos, label: "liest"}

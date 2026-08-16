@@ -1,7 +1,9 @@
-# Software-Architektur Plattform — Backend/Frontend (v1.4, P7 Sprint 1; v1.3 P4; v1.2 P3; v1.1 P1; v1 Sprint 3, T-0031)
+# Software-Architektur Plattform — Backend/Frontend (v1.5, P10 Sprint 1; v1.4 P7; v1.3 P4; v1.2 P3; v1.1 P1; v1 Sprint 3, T-0031)
 
 *Rolle ARCH (SWE.2). Basis: SWR-020–024 (reviewed, T-0030) + SWR-025–029 (p1-req-v1.0, T-0004). Leitplanke (P0 Kap. 5): verteilungsfähig — API-first, kein Zustand außerhalb von Git/Hub. Entscheidungen: siehe `adr/`.*
 
+> **Delta v1.5 (P10 Sprint 1, p10/T-0003, SWR-077–081):** Tickets sind nicht mehr nur lesbar — zweiter Schreibpfad neben der Skript-Route (**ADR-007**). Die Regeln bleiben in `scripts/board.py` (`aktualisiere`, `fingerprint`, `zeitpunkt`, Label-Validierung); neu ist die Fassade `backend/tickets.py` mit `GET /api/ticket/editor` (PIN-frei, Formularzustand) und `POST /api/ticket` (PIN über den vorhandenen Schreibschutz, ADR-006). Konflikte gegen die parallele Routine-Session werden über einen Inhalts-Fingerabdruck erkannt, ein gescheiterter Commit nimmt Ticket **und** BOARD.md zurück. Frontend: Editor-Ansicht im Ticket-Detail, Label-Pillen und Label-Filter im Board. Unverändert: BOARD.md-Format (Labels bewusst nur im HMI, siehe ADR-007 Punkt 8).
+>
 > **Delta v1.3 (P4 Sprint 0, p4/T-0004, SWR-048–052):** LAN-Betrieb mit PIN-Schutz (localhost frei, remote nur mit `MC_PIN`-Header; sicherer Default: ohne PIN keine Remote-Schreibzugriffe) und Briefkasten-Chat (versionierte Briefe je Projekt, Antwort in derselben Datei, Commit sofort). Entscheidung: ADR-006. Leitplanke: nur LAN, kein Internet-Expose.
 > **Delta v1.4 (P7 Sprint 1, p7/T-0005, SWR-053–057):** Team-Ansichten — Modul `teams.py` (Steckbrief/Konfiguration/Charta/Digests aus Team-Repos mit `team.yaml`), Endpunkte `/api/team*` mit **PIN-Lesegate** (ADR-006-Delta), Konfigurations-Schreibpfad mit Sofort-Commit (Identität „Mensch via HMI", Konten = Klasse A ausgenommen), Cockpit-Team-Kachel, Frontend-Tab „Team" mit Konfigurator.
 >
@@ -20,6 +22,7 @@ Der Mensch steuert das Team heute über Git-Rohartefakte (BOARD.md, Reports, Dec
 | **BCK-Server** | `platform/backend/server.py` | HTTP-Endpunkte (JSON-API + statisches Frontend); kein eigener Zustand | SWR-020, 022, 024 |
 | **BCK-Aggregation** | `platform/backend/aggregation.py` | Lesen/Parsen: Tickets/BOARD, Sprint-Reports, Run-Registry (Kosten/KPI) | SWR-022 |
 | **BCK-Inbox** | `platform/backend/inbox.py` | Offene DRs listen; Entscheidung annehmen → Decision-Log-Zeile + Ticket-Notiz + Git-Commit | SWR-020, 024 |
+| **BCK-Tickets** | `platform/backend/tickets.py` | Schreibfassade für Tickets (ADR-007): Formularzustand + Fingerabdruck lesen, Änderung an `board.aktualisiere` übergeben, Commit „Mensch via HMI", Rücknahme bei Fehlschlag | SWR-077–081 |
 | **BCK-Mailer** | `platform/backend/mailer.py` | E-Mail-Benachrichtigung via SMTP (env-Konfiguration); ausfalltolerant | SWR-023 |
 | **FRT-PWA** | `platform/backend/static/` | No-build-Frontend (Board, Reports, KPI, Inbox); nur API-Aufrufe | SWR-021 |
 
@@ -62,3 +65,4 @@ SWR-020 → BCK-Server + BCK-Inbox · SWR-021 → FRT-PWA · SWR-022 → BCK-Agg
 - ADR-004: Multi-Projekt — Discovery per Konvention (tickets/ + .git)
 - ADR-005: Hash-Routing im Frontend + skriptgeneriertes Architektur-SVG (P3)
 - ADR-006: LAN-Betrieb mit PIN-Schutz + Briefkasten-Ablage (P4)
+- ADR-007: Zweiter Schreibpfad auf Tickets — HMI-Editor, Regeln in board.py, Fingerabdruck statt Sperre (P10)

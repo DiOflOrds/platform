@@ -16,11 +16,12 @@ Exit-Codes: 0 = ok, 1 = Validierung fehlgeschlagen, 2 = Aufruf-/IO-Fehler.
 Importierbar für den Orchestrator:
     from board import lade_tickets, validiere_alle, generiere_board
 """
+import hashlib
 import os
 import re
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime
 
 FELDER = ["id", "titel", "typ", "prozess", "rolle", "sprint", "status", "prio", "erstellt"]
 STATUS = ["open", "in_analysis", "in_progress", "in_review", "blocked", "done", "rejected"]
@@ -34,6 +35,12 @@ TAKTE = {"je-session": "je Session", "taeglich": "täglich", "woechentlich": "w�
          "monatlich": "monatlich", "quartalsweise": "quartalsweise", "jaehrlich": "jährlich"}
 ID_MUSTER = re.compile(r"^T-\d{4}$")
 DATUM_MUSTER = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# SWR-079 (P10, pm/N-0013): frei gewählte Mehrfach-Labels. Bewusst konservativer
+# Zeichensatz — Labels landen in einer Kommaliste im Frontmatter, in BOARD.md-Zellen
+# und in Git-Commit-Nachrichten; Komma, eckige Klammer, Pipe und Zeilenumbruch
+# würden genau dort das Format sprengen. Feld optional; ohne Feld bleibt alles wie bisher.
+LABEL_MUSTER = re.compile(r"^[0-9A-Za-zÄÖÜäöüß][0-9A-Za-zÄÖÜäöüß _.+/-]{0,39}$")
+LABEL_MAX = 12
 # T-0051: Bestands-DRs vor Sprint 5 (Freitext-Optionen) — neue DRs brauchen `optionen`.
 DR_BESTAND = {"T-0022", "T-0035", "T-0041"}
 
@@ -50,6 +57,41 @@ UEBERGAENGE = {
 
 # Sammel-Repo für neue Projekte ab P10 (pm/D003) — Projekte sind dort Ordner statt Repos.
 SAMMEL_REPO = "projects"
+
+# SWR-077 (P10): Was ein Mensch über den zweiten Schreibpfad (HMI) ändern darf.
+# `id`, `prozess`, `erstellt`, `repo` und `blocked_by` bleiben draußen: Identität und
+# Abhängigkeitsgraph gehören der Skript-/Session-Route, sonst entsteht ein zweiter
+# Weg für Dinge, die genau einen haben müssen (ADR-007).
+EDITIERBARE_FELDER = ("titel", "typ", "prio", "rolle", "sprint", "status",
+                      "takt", "labels", "reviewer", "frist")
+GESCHLOSSEN = ("done", "rejected")  # SWR-077: Archiv — nur Wiedereröffnung
+
+
+def zeitpunkt(jetzt=None):
+    """SWR-084: Zeitstempel `JJJJ-MM-TT HH:MM` — EINE Quelle für alle Vermerke.
+
+    Entscheidungen (inbox.py) und Ticket-Änderungen (SWR-081) datieren identisch;
+    eine zweite Implementierung wäre nach der Lesson vom 16.08. (B025) ein
+    künftiger Befund und keine Bequemlichkeit.
+    """
+    return (jetzt or datetime.now()).strftime("%Y-%m-%d %H:%M")
+
+
+def fingerprint(text):
+    """SWR-080 (P10): Inhalts-Fingerabdruck einer Ticketdatei.
+
+    Zeilenenden werden vorher vereinheitlicht — sonst meldete ein Windows-Editor
+    einen Konflikt, wo inhaltlich nichts passiert ist. Gekürzt auf 16 Zeichen:
+    Kollisionsschutz genügt hier, der Wert läuft durch URLs und Formulare.
+    """
+    roh = str(text or "").replace("\r\n", "\n")
+    return hashlib.sha256(roh.encode("utf-8")).hexdigest()[:16]
+
+
+class KonfliktFehler(ValueError):
+    """SWR-080: Die Datei auf der Platte ist nicht mehr die, aus der das Formular
+    geladen wurde (parallele Routine-Session). Eigener Typ, damit der Aufrufer
+    409 statt 400 melden kann — es ist kein Eingabefehler des Menschen."""
 
 
 def projekt_pfade(wurzel):
@@ -163,6 +205,13 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
         fehler.append(f"ungültiges Datum erstellt: {t['erstellt']}")
     if t.get("takt") and t["takt"] not in TAKTE:  # SWR-074: optional, aber wenn, dann gültig
         fehler.append(f"ungültiger takt: {t['takt']} (erlaubt: {', '.join(TAKTE)})")
+    labels = parse_liste(t.get("labels"))  # SWR-079: optional, frei gewählt, aber prüfbar
+    if len(labels) > LABEL_MAX:
+        fehler.append(f"zu viele labels: {len(labels)} (erlaubt: höchstens {LABEL_MAX})")
+    for lab in labels:
+        if not LABEL_MUSTER.match(lab):
+            fehler.append(f"ungültiges label: {lab} (erlaubt: Buchstaben, Ziffern, "
+                          f"Leerzeichen und _ . + / -, höchstens 40 Zeichen)")
     bb = parse_liste(t.get("blocked_by"))
     for ref in bb:
         if ref == tid:
@@ -278,6 +327,141 @@ def setze_status(repo, tid, neu, reviewer=None, notiz=None):
         raise ValueError("Ticket-Update invalide: " + "; ".join(probleme))
     open(os.path.join(repo, "BOARD.md"), "w", encoding="utf-8", newline="\n").write(
         generiere_board(tickets))
+
+
+def ticket_pfad(repo, tid):
+    return os.path.join(repo, "tickets", f"{tid}.md")
+
+
+def lies_ticket(repo, tid):
+    """(text, frontmatter-dict) eines Tickets. Wirft ValueError, wenn es fehlt."""
+    pfad = ticket_pfad(repo, tid)
+    if not ID_MUSTER.match(str(tid or "")) or not os.path.exists(pfad):
+        raise ValueError(f"unbekanntes Ticket: {tid}")
+    text = open(pfad, encoding="utf-8").read().replace("\r\n", "\n")
+    t, err = parse_frontmatter(text)
+    if err:
+        raise ValueError(f"{tid}: {err}")
+    t["_datei"] = f"{tid}.md"
+    return text, t
+
+
+OPTIONALE_FELDER = ("takt", "labels", "reviewer", "frist")  # leer = Zeile entfällt
+
+
+def _feld_schreiben(text, feld, wert):
+    """Frontmatter-Feld setzen, einfügen oder (bei leerem optionalem Wert) entfernen.
+
+    Eingefügt wird vor `erstellt:` — dieselbe Stelle, die `setze_status` benutzt,
+    damit die Dateien unabhängig vom Schreibweg gleich aussehen.
+    """
+    vorhanden = re.search(rf"(?m)^{re.escape(feld)}:.*$", text)
+    if wert == "" and feld in OPTIONALE_FELDER:
+        return re.sub(rf"(?m)^{re.escape(feld)}:.*\n", "", text, count=1) if vorhanden else text
+    zeile = f"{feld}: {wert}"
+    if vorhanden:
+        return re.sub(rf"(?m)^{re.escape(feld)}:.*$", zeile, text, count=1)
+    return re.sub(r"(?m)^erstellt:", f"{zeile}\nerstellt:", text, count=1)
+
+
+def _wert_normieren(feld, wert):
+    """Formularwert in die Frontmatter-Schreibweise bringen (Liste -> '[a, b]')."""
+    if feld == "labels":
+        roh = wert if isinstance(wert, (list, tuple)) else parse_liste(wert)
+        sauber = [str(x).strip() for x in roh if str(x).strip()]
+        return f"[{', '.join(sauber)}]" if sauber else ""
+    wert = "" if wert is None else str(wert).strip()
+    if feld == "titel":
+        return f'"{wert}"'
+    return wert
+
+
+def _anzeigewert(feld, roh):
+    """Aktueller Wert eines Feldes in derselben Schreibweise wie `_wert_normieren`."""
+    return _wert_normieren(feld, roh if roh is not None else "")
+
+
+def aktualisiere(repo, tid, aenderungen, body=None, erwarteter_fingerprint=None,
+                 herkunft="Mensch via HMI", jetzt=None):
+    """SWR-077/078/080/081 (P10, ADR-007): zweiter Schreibpfad auf Tickets.
+
+    Absichtlich hier und nicht im Backend: Validierung, Status-Übergänge und die
+    BOARD.md-Regeneration sind die Regeln der Skript-Route — ein Nachbau im Server
+    wäre die zweite Kopie derselben Logik (Lesson 16.08.) und würde genau das
+    Auseinanderlaufen erzeugen, das Risiko R2 des Sprint-0-Plans beschreibt.
+
+    Reihenfolge (bewusst): Konflikt -> Editierbarkeit -> Übergang -> Vollvalidierung
+    -> erst dann schreiben. Bis zur letzten Zeile ist die Arbeitskopie unberührt;
+    jeder Abbruch lässt sie exakt so zurück, wie sie war (SWR-078).
+
+    Gibt {"fingerprint", "geaendert", "status"} zurück; wirft KonfliktFehler
+    (SWR-080) bzw. ValueError mit den Meldungen, die auch `board.py` ausgibt.
+    """
+    text, t = lies_ticket(repo, tid)
+    ist_fingerprint = fingerprint(text)
+    if erwarteter_fingerprint and erwarteter_fingerprint != ist_fingerprint:
+        raise KonfliktFehler(
+            f"{tid} wurde inzwischen von einer anderen Stelle geändert (sehr wahrscheinlich "
+            f"die laufende Routine-Session). Deine Eingaben wurden NICHT gespeichert, damit "
+            f"nichts still überschrieben wird — bitte das Ticket neu laden und die Änderung "
+            f"erneut eintragen.")
+    unbekannt = [f for f in aenderungen if f not in EDITIERBARE_FELDER]
+    if unbekannt:
+        raise ValueError(f"Feld nicht über das HMI änderbar: {', '.join(sorted(unbekannt))} "
+                         f"(änderbar: {', '.join(EDITIERBARE_FELDER)})")
+    alt_status = t.get("status")
+    neu_status = str(aenderungen.get("status", alt_status) or "").strip()
+    # SWR-077: erledigte/abgelehnte Tickets sind Archiv — nur die Wiedereröffnung
+    # über den erlaubten Übergang, und dabei nichts anderes nebenbei.
+    if alt_status in GESCHLOSSEN:
+        andere = [f for f in aenderungen if f != "status"]
+        if andere or neu_status == alt_status:
+            raise ValueError(
+                f"{tid} ist {alt_status} und damit Archiv — änderbar ist hier nur die "
+                f"Wiedereröffnung (Status {alt_status} -> "
+                f"{', '.join(UEBERGAENGE.get(alt_status, [])) or 'kein Übergang'}).")
+    if neu_status != alt_status and neu_status not in UEBERGAENGE.get(alt_status, []):
+        raise ValueError(f"unzulässiger Status-Übergang: {alt_status} -> {neu_status} "
+                         f"(erlaubt: {', '.join(UEBERGAENGE.get(alt_status, []))})")
+    geaendert = []
+    neu_text = text
+    for feld in EDITIERBARE_FELDER:
+        if feld not in aenderungen:
+            continue
+        wert = _wert_normieren(feld, aenderungen[feld])
+        if "\n" in wert or '"' in wert.strip('"'):
+            raise ValueError(f"{feld} darf weder Anführungszeichen noch Zeilenumbrüche "
+                             f"enthalten")
+        if wert == _anzeigewert(feld, t.get(feld)):
+            continue
+        neu_text = _feld_schreiben(neu_text, feld, wert)
+        geaendert.append(feld)
+    neuer_body = t.get("_body", "") if body is None else str(body).replace("\r\n", "\n").strip()
+    if body is not None and neuer_body != t.get("_body", ""):
+        geaendert.append("Fließtext")
+    if not geaendert:
+        raise ValueError(f"{tid}: keine Änderung — die Felder tragen bereits diese Werte.")
+    stempel = zeitpunkt(jetzt)
+    neu_text = _feld_schreiben(neu_text, "geändert", (jetzt or datetime.now()).date().isoformat())
+    kopf = re.match(r"^---\n.*?\n---\n", neu_text, re.S).group(0)
+    # SWR-081: Historie im Ticket selbst — unabhängig von Git lesbar, auch am Handy.
+    vermerk = f"**Bearbeitet ({stempel}, {herkunft}):** {', '.join(geaendert)}"
+    neu_text = kopf + "\n" + (neuer_body + "\n\n" if neuer_body else "") + vermerk + "\n"
+    # Vollvalidierung mit GENAU den Regeln der Skript-Route (SWR-077).
+    tickets, probleme = lade_tickets(repo)
+    entwurf, err = parse_frontmatter(neu_text)
+    if err:
+        raise ValueError(f"{tid}: {err}")
+    entwurf["_datei"] = f"{tid}.md"
+    tickets = [entwurf if x.get("id") == tid else x for x in tickets]
+    probleme += validiere_alle(tickets, repo, git_pruefen=False)
+    if probleme:
+        raise ValueError("; ".join(probleme))
+    open(ticket_pfad(repo, tid), "w", encoding="utf-8", newline="\n").write(neu_text)
+    open(os.path.join(repo, "BOARD.md"), "w", encoding="utf-8", newline="\n").write(
+        generiere_board(tickets))
+    return {"fingerprint": fingerprint(neu_text), "geaendert": geaendert,
+            "status": entwurf.get("status"), "zeitpunkt": stempel}
 
 
 def _status_cli(argv):

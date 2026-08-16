@@ -16,7 +16,8 @@ var projektEl = document.getElementById("projektwahl");
 var aktiv = "uebersicht";
 var projekt = "p0";
 var detailId = "";
-var boardFilter = { sprint: "", rolle: "", typ: "" };
+var boardFilter = { sprint: "", rolle: "", typ: "", label: "" };  // SWR-079 (P10): Label-Filter
+var editorOffen = false;  // SWR-077 (P10): Ticket-Detail zeigt Formular statt Ansicht
 
 window.onerror = function (meldung, quelle, zeile) {
   var kasten = document.createElement("div");
@@ -72,6 +73,10 @@ function parseHash() {
   var teile = h.split("/");
   aktiv = teile[0] || "uebersicht";
   if (teile[1]) { projekt = teile[1]; }
+  // SWR-077 (P10): Der Editor gehört zu genau einem Ticket — wer wegnavigiert oder
+  // ein anderes Ticket öffnet, bekommt wieder die Ansicht (kein Formular mit
+  // Werten des Vorgängers, kein versehentliches Speichern am falschen Ticket).
+  if (aktiv !== "ticket" || (teile[2] || "") !== detailId) editorOffen = false;
   detailId = teile[2] || "";
 }
 
@@ -311,12 +316,19 @@ function ladeBoard() {  // SWR-041: Jira-like — Statusspalten, Filter, Karte -
         if (v && werte[k].indexOf(v) < 0) werte[k].push(v);
       });
     });
+    // SWR-079 (P10): Filter über die tatsächlich vergebenen Labels — die Liste kommt
+    // aus den Tickets, nicht aus einer gepflegten Aufzählung (Labels sind frei).
+    var labels = [];
+    alle.forEach(function (t) {
+      (t.labels || []).forEach(function (l) { if (labels.indexOf(l) < 0) labels.push(l); });
+    });
     // SWR-075 (pm/N-0013): länger erledigte Aufgaben verstopfen das Board nicht mehr
     var veraltet = alle.filter(function (t) { return t.veraltet; }).length;
     var filterzeile = el("div", { "class": "karte filterzeile" },
       filterSelect("sprint", werte.sprint.sort(), "Sprint"),
       filterSelect("rolle", werte.rolle.sort(), "Rolle"),
       filterSelect("typ", werte.typ.sort(), "Typ"));
+    if (labels.length) filterzeile.appendChild(filterSelect("label", labels.sort(), "Label"));
     if (veraltet) {
       var altBox = el("input", { type: "checkbox", style: "width:auto;margin:0" });
       altBox.checked = boardFilter.alteZeigen === true;
@@ -333,20 +345,27 @@ function ladeBoard() {  // SWR-041: Jira-like — Statusspalten, Filter, Karte -
         return (!boardFilter.sprint || String(t.sprint) === boardFilter.sprint) &&
                (!boardFilter.rolle || t.rolle === boardFilter.rolle) &&
                (!boardFilter.typ || String(t.typ || "") === boardFilter.typ) &&
-               (boardFilter.alteZeigen === true || !t.veraltet);  // SWR-075
+               (!boardFilter.label || (t.labels || []).indexOf(boardFilter.label) >= 0) &&
+               (boardFilter.alteZeigen === true || !t.veraltet);  // SWR-075/079
       });
       if (!gruppe.length) return;
       var spalte = el("div", { "class": "spalte" },
         el("h3", {}, status + " (" + gruppe.length + ")"));
       gruppe.forEach(function (t) {
-        spalte.appendChild(el("div", { "class": "karte klick", onclick: function () {
+        var karte = el("div", { "class": "karte klick", onclick: function () {
           gehe("ticket", projekt, t.id);
         } },
           // SWR-087 (platform/N-0003): eindeutige Kennung <projekt>/T-xxxx statt bloßer Nummer
           el("div", { "class": "zeile" }, pille(t.ref || t.id, t._status), String(t.titel).slice(0, 90)),
           // SWR-074 (pm/N-0012): Takt-Aufgaben sind absichtlich dauerhaft offen
           el("div", { "class": "zeile" }, pille(t.rolle + " · S" + t.sprint + " · " + t.prio),
-             t.takt ? pille("wiederkehrend: " + TAKT_TEXT(t.takt), "in_progress") : "")));
+             t.takt ? pille("wiederkehrend: " + TAKT_TEXT(t.takt), "in_progress") : ""));
+        if (t.labels && t.labels.length) {  // SWR-079 (P10, pm/N-0013)
+          var lz = el("div", { "class": "zeile" });
+          t.labels.forEach(function (l) { lz.appendChild(pille(l, "in_review")); });
+          karte.appendChild(lz);
+        }
+        spalte.appendChild(karte);
       });
       spalten.appendChild(spalte);
     });
@@ -354,7 +373,134 @@ function ladeBoard() {  // SWR-041: Jira-like — Statusspalten, Filter, Karte -
   });
 }
 
+// ---------- P10 (ADR-007): Ticket-Editor — zweiter Schreibpfad neben der Skript-Route ----------
+function feldZeile(beschriftung, eingabe) {
+  return el("div", { "class": "zeile" }, el("label", { style: "min-width:8rem" }, beschriftung),
+            eingabe);
+}
+
+function auswahlFeld(werte, wert) {
+  var s = el("select", { style: "width:auto" });
+  werte.forEach(function (w) {
+    var o = el("option", { value: w }, w);
+    if (String(wert) === String(w)) o.selected = true;
+    s.appendChild(o);
+  });
+  return s;
+}
+
+function ladeEditor() {  // SWR-077/079/080/081 (P10)
+  return api("/api/ticket/editor?projekt=" + encodeURIComponent(projekt) +
+             "&id=" + encodeURIComponent(detailId)).then(function (e) {
+    var f = e.felder, v = e.vokabular;
+    var meldung = el("div", {});
+    var kopf = el("div", { "class": "karte" },
+      el("h3", {}, "Bearbeiten: " + (e.ref || e.id)),
+      el("div", { "class": "zeile leer" },
+        "Geprüft wird mit denselben Regeln wie in der Skript-Route (board.py); " +
+        "jede Änderung wird sofort committet (Herkunft „Mensch via HMI\") und " +
+        "gegen eine parallel laufende Routine-Session abgesichert."));
+
+    if (!e.bearbeitbar) {  // Archiv: nur die Wiedereröffnung, nichts sonst
+      var wiederKnopf = el("button", { "class": "knopf" }, "Wiedereröffnen");
+      kopf.appendChild(el("div", { "class": "zeile" }, pille(f.status, f.status), e.grund));
+      wiederKnopf.addEventListener("click", function () {
+        wiederKnopf.disabled = true;
+        speichern({ status: (v.status_moeglich[1] || "in_progress") }, null, meldung, wiederKnopf);
+      });
+      kopf.appendChild(el("div", { "class": "btnreihe" }, wiederKnopf,
+        el("button", { "class": "knopf zweit", onclick: function () {
+          editorOffen = false; lade();
+        } }, "Abbrechen")));
+      kopf.appendChild(meldung);
+      zeige([kopf]);
+      return;
+    }
+
+    var titel = el("input", { type: "text", maxlength: "160" });
+    titel.value = f.titel || "";
+    var typ = auswahlFeld(v.typen, f.typ);
+    var prio = auswahlFeld(v.prios, f.prio);
+    var status = auswahlFeld(v.status_moeglich, f.status);
+    var rolle = el("input", { type: "text", style: "width:auto" });
+    rolle.value = f.rolle || "";
+    var sprint = el("input", { type: "text", style: "width:auto" });
+    sprint.value = f.sprint || "";
+    var taktWerte = [""], taktNamen = { "": "einmalig" };
+    Object.keys(v.takte).forEach(function (k) { taktWerte.push(k); taktNamen[k] = v.takte[k]; });
+    var takt = el("select", { style: "width:auto" });
+    taktWerte.forEach(function (w) {
+      var o = el("option", { value: w }, taktNamen[w]);
+      if (String(f.takt || "") === w) o.selected = true;
+      takt.appendChild(o);
+    });
+    var reviewer = el("input", { type: "text", style: "width:auto" });
+    reviewer.value = f.reviewer || "";
+    // SWR-079: freie Mehrfach-Labels — Komma trennt, der Server validiert den Zeichensatz.
+    var labels = el("input", { type: "text",
+      placeholder: "z. B. team-pm, neues-projekt, bug (Komma trennt, max. " + v.label_max + ")" });
+    labels.value = (f.labels || []).join(", ");
+    var body = el("textarea", { rows: "12" });
+    body.value = e.body || "";
+
+    var speichernKnopf = el("button", { "class": "knopf" }, "Speichern (PIN bei Netzwerk-Zugriff)");
+    speichernKnopf.addEventListener("click", function () {
+      speichernKnopf.disabled = true;
+      speichern({ titel: titel.value, typ: typ.value, prio: prio.value, status: status.value,
+                  rolle: rolle.value, sprint: sprint.value, takt: takt.value,
+                  reviewer: reviewer.value,
+                  labels: labels.value.split(",").map(function (x) { return x.trim(); })
+                    .filter(function (x) { return x; }) },
+                body.value, meldung, speichernKnopf);
+    });
+
+    function speichern(felder, text, ziel, ausloeser) {
+      leeren(ziel);
+      var last = { projekt: projekt, id: e.id, fingerprint: e.fingerprint, felder: felder };
+      if (text !== null && text !== undefined) last.body = text;
+      api("/api/ticket", { method: "POST", headers: { "Content-Type": "application/json" },
+                           body: JSON.stringify(last) })
+        .then(function (r) {
+          ziel.appendChild(el("div", { "class": "meldung ok" },
+            r.meldung + " Commit " + r.commit + "."));
+          editorOffen = false;
+          setTimeout(lade, 800);
+        }).catch(function (fehler) {
+          if (ausloeser) ausloeser.disabled = false;
+          var grund = String(fehler.message || fehler);
+          ziel.appendChild(el("div", { "class": "meldung fehler" }, grund));
+          // SWR-080: Ein Konflikt ist kein Tippfehler — statt „nochmal versuchen"
+          // gibt es genau den Weg, der hilft: neu laden und erneut eintragen.
+          if (grund.indexOf("Routine-Session") >= 0) {
+            ziel.appendChild(el("div", { "class": "btnreihe" },
+              el("button", { "class": "knopf", onclick: function () { lade(); } },
+                 "Ticket neu laden")));
+          }
+        });
+    }
+
+    kopf.appendChild(feldZeile("Titel", titel));
+    kopf.appendChild(feldZeile("Typ", typ));
+    kopf.appendChild(feldZeile("Priorität", prio));
+    kopf.appendChild(feldZeile("Status", status));
+    kopf.appendChild(feldZeile("Rolle", rolle));
+    kopf.appendChild(feldZeile("Sprint", sprint));
+    kopf.appendChild(feldZeile("Takt", takt));
+    kopf.appendChild(feldZeile("Reviewer", reviewer));
+    kopf.appendChild(feldZeile("Labels", labels));
+    kopf.appendChild(el("div", { "class": "zeile" }, "Fließtext:"));
+    kopf.appendChild(body);
+    kopf.appendChild(el("div", { "class": "btnreihe" }, speichernKnopf,
+      el("button", { "class": "knopf zweit", onclick: function () {
+        editorOffen = false; lade();
+      } }, "Abbrechen")));
+    kopf.appendChild(meldung);
+    zeige([kopf]);
+  });
+}
+
 function ladeTicket() {  // SWR-040: Detailansicht
+  if (editorOffen) return ladeEditor();  // SWR-077 (P10)
   return api("/api/ticket?projekt=" + encodeURIComponent(projekt) +
              "&id=" + encodeURIComponent(detailId)).then(function (t) {
     var kopf = el("div", { "class": "karte" },
@@ -368,6 +514,11 @@ function ladeTicket() {  // SWR-040: Detailansicht
         pille("wiederkehrend: " + TAKT_TEXT(t.takt), "in_progress"),
         " Daueraufgabe — wird " + TAKT_TEXT(t.takt) + " erledigt und bleibt danach offen."));
     }
+    if (t.labels && t.labels.length) {  // SWR-079 (P10, pm/N-0013)
+      var lz = el("div", { "class": "zeile" }, "Labels: ");
+      t.labels.forEach(function (l) { lz.appendChild(pille(l, "in_review")); });
+      kopf.appendChild(lz);
+    }
     if (t.reviewer) kopf.appendChild(el("div", { "class": "zeile" }, "Reviewer: " + t.reviewer));
     if (t.frist) kopf.appendChild(el("div", { "class": "zeile" }, "Frist: " + t.frist +
       (t.default ? " · Default: " + t.default : "")));
@@ -377,9 +528,15 @@ function ladeTicket() {  // SWR-040: Detailansicht
       tlinks(String(bb), projekt).forEach(function (k) { z.appendChild(k); });
       kopf.appendChild(z);
     }
-    kopf.appendChild(el("button", { "class": "knopf", onclick: function () {
-      gehe("board", projekt);
-    } }, "Zurück zum Board"));
+    // SWR-077 (P10, pm/N-0014): offene Aufgaben sind hier nicht mehr nur lesbar.
+    var geschlossen = t.status === "done" || t.status === "rejected";
+    kopf.appendChild(el("div", { "class": "btnreihe" },
+      el("button", { "class": "knopf", onclick: function () {
+        editorOffen = true; lade();
+      } }, geschlossen ? "Wiedereröffnen" : "Bearbeiten"),
+      el("button", { "class": "knopf zweit", onclick: function () {
+        gehe("board", projekt);
+      } }, "Zurück zum Board")));
     zeige([kopf, el("div", { "class": "karte" }, preMitLinks(t.body, projekt))]);
   });
 }
