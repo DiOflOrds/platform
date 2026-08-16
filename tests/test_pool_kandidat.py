@@ -109,10 +109,38 @@ class TestAnlegenTeam(Basis):
                                   {"Nutzen": "x", "Voraussetzung": ""})
         self.assertEqual(ctx.exception.code, 400)
 
-    def test_zeilenumbruch_abgelehnt(self):
-        with self.assertRaises(pool.PoolFehler):
-            pool.kandidat_anlegen(self.wurzel, "team", "team-urlaub", "Zeile1\nZeile2",
+    def test_zeilenumbruch_wird_zu_leerzeichen(self):
+        """pm/N-0023: Zeilenumbrüche (Copy/Paste, KI-Text) werden normalisiert
+        statt die Eingabe abzulehnen — die Pool-Zeile bleibt eine Tabellenzeile."""
+        erg = pool.kandidat_anlegen(self.wurzel, "team", "team-urlaub", "Zeile1\nZeile2",
+                                    {"Nutzen": "x", "Voraussetzung": "x"})
+        self.assertTrue(erg["ok"])
+        neu = self.text()
+        self.assertIn("Zeile1 Zeile2", neu)
+        self.assertNotIn("\n", neu.split("Zeile1 Zeile2")[1].split("|")[0])
+
+    def test_langer_text_wird_akzeptiert(self):
+        """pm/N-0023: 'lang' im Sinne von deutlich über den früheren 200 Zeichen —
+        typisch für einen mehrsätzigen, auch KI-formulierten Kandidatentext."""
+        lang = "Ein ausführlich begründeter Kandidatentext. " * 10  # > 200 Zeichen
+        self.assertGreater(len(lang), 200)
+        erg = pool.kandidat_anlegen(self.wurzel, "team", "team-lang", lang,
+                                    {"Nutzen": "x", "Voraussetzung": "x"})
+        self.assertTrue(erg["ok"])
+        self.assertIn(lang.strip(), self.text())
+
+    def test_zu_langer_text_bleibt_abgelehnt(self):
+        with self.assertRaises(pool.PoolFehler) as ctx:
+            pool.kandidat_anlegen(self.wurzel, "team", "team-zulang", "x" * (pool.FELD_MAX + 1),
                                   {"Nutzen": "x", "Voraussetzung": "x"})
+        self.assertEqual(ctx.exception.code, 400)
+
+    def test_pipe_im_text_abgelehnt(self):
+        """'|' bleibt hart verboten — würde die Markdown-Tabelle sprengen."""
+        with self.assertRaises(pool.PoolFehler) as ctx:
+            pool.kandidat_anlegen(self.wurzel, "team", "team-urlaub", "Text mit | Pipe",
+                                  {"Nutzen": "x", "Voraussetzung": "x"})
+        self.assertEqual(ctx.exception.code, 400)
 
     def test_doppelter_kandidat_abgelehnt(self):
         with self.assertRaises(pool.PoolFehler) as ctx:
@@ -137,6 +165,16 @@ class TestAnlegenTechnik(Basis):
         with self.assertRaises(pool.PoolFehler) as ctx:
             pool.kandidat_anlegen(self.wurzel, "technik", "CSV-Export", "", {"Quelle": ""})
         self.assertEqual(ctx.exception.code, 400)
+
+    def test_langer_technik_text_wird_akzeptiert_und_umbrueche_normalisiert(self):
+        """pm/N-0023: der Kandidat-Text TRÄGT bei Technik-Kandidaten die ganze
+        Aufgabe (keine separate Kurzbeschreibung) — muss also lang sein dürfen,
+        auch mit Zeilenumbrüchen aus KI-generiertem Text."""
+        lang = "Zeile eins der Aufgabe.\nZeile zwei mit weiterer Begründung. " * 5
+        self.assertGreater(len(lang), 200)
+        erg = pool.kandidat_anlegen(self.wurzel, "technik", lang, "", {"Quelle": "KI-Vorschlag"})
+        self.assertTrue(erg["ok"])
+        self.assertNotIn("\n", self.text().split("KI-Vorschlag")[0].splitlines()[-1])
 
     def test_doppelter_kandidat_abgelehnt_technik(self):
         with self.assertRaises(pool.PoolFehler) as ctx:

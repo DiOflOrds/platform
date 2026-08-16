@@ -816,19 +816,31 @@ function poolFormular() {  // SWR-088 (pm/T-0022, Teil "Anlegen")
   var kategorie = el("select", {},
     el("option", { value: "team" }, "Team-Kandidat"),
     el("option", { value: "technik" }, "Technik-Kandidat"));
-  var kandidat = el("input", { type: "text",
+  // pm/N-0023: Technik-Kandidaten tragen die ganze Aufgabe im Kandidat-Feld
+  // (keine eigene Kurzbeschreibung) — dafür ein echtes Textfeld statt einer
+  // einzeiligen Eingabe, damit lange (auch KI-formulierte) Texte lesbar
+  // bleiben. Team-Kandidaten behalten das einzeilige Feld (kurzer Name, wie
+  // ein künftiger Team-Ordner) — beide Felder teilen sich `.value`, es wird
+  // beim Kategoriewechsel synchronisiert, nicht dupliziert gepflegt.
+  var kandidatInput = el("input", { type: "text",
     placeholder: "Kandidat, z. B. team-urlaub (Kleinbuchstaben/Ziffern/Bindestrich)" });
+  var kandidatText = el("textarea", { rows: "3",
+    placeholder: "Kandidat, z. B. 'CSV-Export für Reports' — auch lange Texte möglich" });
+  kandidatText.style.display = "none";
+  var kandidatZeile = el("div", { "class": "zeile" }, kandidatInput, kandidatText);
   var kurzZeile = el("div", { "class": "zeile" },
-    el("input", { type: "text", placeholder: "Kurzbeschreibung (nur Team-Kandidaten)" }));
+    el("textarea", { rows: "3",
+      placeholder: "Kurzbeschreibung (nur Team-Kandidaten) — auch lange Texte möglich" }));
   var kurz = kurzZeile.firstChild;
   var extra1 = el("input", { type: "text", placeholder: "Nutzen" });
   var extra2 = el("input", { type: "text", placeholder: "Voraussetzung" });
   var extra2Zeile = el("div", { "class": "zeile" }, extra2);
+  function kandidatFeld() { return kategorie.value === "technik" ? kandidatText : kandidatInput; }
   kategorie.addEventListener("change", function () {
     var technik = kategorie.value === "technik";
-    kandidat.placeholder = technik
-      ? "Kandidat, z. B. 'CSV-Export für Reports' (freier Titel)"
-      : "Kandidat, z. B. team-urlaub (Kleinbuchstaben/Ziffern/Bindestrich)";
+    kandidatText.value = kandidatInput.value = technik ? kandidatInput.value : kandidatText.value;
+    kandidatInput.style.display = technik ? "none" : "";
+    kandidatText.style.display = technik ? "" : "none";
     kurzZeile.style.display = technik ? "none" : "";
     extra1.placeholder = technik ? "Quelle" : "Nutzen";
     extra2Zeile.style.display = technik ? "none" : "";
@@ -841,12 +853,12 @@ function poolFormular() {  // SWR-088 (pm/T-0022, Teil "Anlegen")
     var felder = technik ? { "Quelle": extra1.value } : { "Nutzen": extra1.value, "Voraussetzung": extra2.value };
     api("/api/pool", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kategorie: kategorie.value, kandidat: kandidat.value,
+      body: JSON.stringify({ kategorie: kategorie.value, kandidat: kandidatFeld().value,
                              kurzbeschreibung: kurz.value, felder: felder })
     }).then(function (e) {
       leeren(meldung);
       meldung.appendChild(el("div", { "class": "meldung ok" }, e.meldung));
-      kandidat.value = ""; kurz.value = ""; extra1.value = ""; extra2.value = "";
+      kandidatInput.value = ""; kandidatText.value = ""; kurz.value = ""; extra1.value = ""; extra2.value = "";
       knopf.disabled = false;
       setTimeout(lade, 900);
     }).catch(function (fehler) {
@@ -858,7 +870,7 @@ function poolFormular() {  // SWR-088 (pm/T-0022, Teil "Anlegen")
   return el("div", { "class": "karte" },
     el("h3", {}, "Neuen Kandidaten anlegen"),
     el("div", { "class": "zeile" }, kategorie),
-    el("div", { "class": "zeile" }, kandidat),
+    kandidatZeile,
     kurzZeile,
     el("div", { "class": "zeile" }, extra1),
     extra2Zeile,

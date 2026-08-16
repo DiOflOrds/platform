@@ -45,7 +45,26 @@ COMMIT_IDENTITAET = ["-c", f"user.name={HERKUNFT}", "-c", "user.email=mensch@hmi
 # (Bestand: "B4 Integrationsstrategie · B8 …", "JS-Frontend-Tests" — kein
 # Kebab-Zwang, das wären keine echten Kandidatennamen).
 NAME_MUSTER = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
-FELD_MAX = 200
+# pm/N-0023 (2026-08-16): 200 Zeichen war für eine "Aufgabe" (Kurzbeschreibung
+# bzw. bei Technik-Kandidaten der Kandidat-Text selbst) zu knapp — das gilt
+# ausdrücklich auch für Kandidaten, die eine KI vorschlägt (typischerweise
+# mehrsätzig). Deutlich angehoben statt entfernt: die Zeile bleibt EINE Zeile
+# einer Markdown-Tabelle (Speicherformat, siehe `_zeile_bauen`), ein Vielfaches
+# an Text ist aber möglich. Nur `|` bleibt hart verboten (sprengt die Tabelle);
+# Zeilenumbrüche werden ab jetzt normalisiert statt abgelehnt (`_text_bereinigen`).
+FELD_MAX = 4000
+
+
+def _text_bereinigen(wert):
+    """pm/N-0023: Freitext für die Markdown-Tabellenzeile mehrheitsfähig machen.
+
+    Zeilenumbrüche (Copy/Paste aus mehrsätzigem, auch KI-generiertem Text)
+    werden zu Leerzeichen statt das Feld abzulehnen — die Zeile bleibt eine
+    einzelne Tabellenzeile, aber der Mensch muss den Text nicht mehr selbst
+    umformatieren. Mehrfache Leerzeichen dabei entstehend werden zusammengezogen.
+    """
+    ohne_umbrueche = re.sub(r"\s*[\r\n]+\s*", " ", str(wert or ""))
+    return re.sub(r" {2,}", " ", ohne_umbrueche).strip()
 
 KATEGORIEN = {
     "team": {"ueberschrift": "Team-Kandidaten", "extra_spalten": ["Nutzen", "Voraussetzung"]},
@@ -116,16 +135,34 @@ def kandidat_anlegen(root, kategorie, kandidat, kurzbeschreibung, werte):
         if not (2 <= len(name) <= 40) or not NAME_MUSTER.fullmatch(name):
             raise PoolFehler(400, "Kandidat (Team): nur Kleinbuchstaben/Ziffern/Bindestrich, "
                                   "2-40 Zeichen, z. B. 'team-urlaub'")
-        if not kurz or "\n" in kurz or len(kurz) > FELD_MAX:
-            raise PoolFehler(400, f"Kurzbeschreibung: 1-{FELD_MAX} Zeichen, keine Zeilenumbrüche")
+        if "|" in kurz:
+            raise PoolFehler(400, "Kurzbeschreibung: '|' ist nicht erlaubt (sprengt die "
+                                  "Pool-Tabelle) — bitte umformulieren.")
+        kurz = _text_bereinigen(kurz)
+        if not kurz or len(kurz) > FELD_MAX:
+            raise PoolFehler(400, f"Kurzbeschreibung: 1-{FELD_MAX} Zeichen (Zeilenumbrüche "
+                                  "werden automatisch zu Leerzeichen).")
     else:
-        if not name or "\n" in name or len(name) > FELD_MAX:
-            raise PoolFehler(400, f"Kandidat: 1-{FELD_MAX} Zeichen, keine Zeilenumbrüche")
+        if "|" in name:
+            raise PoolFehler(400, "Kandidat: '|' ist nicht erlaubt (sprengt die Pool-Tabelle) "
+                                  "— bitte umformulieren.")
+        name = _text_bereinigen(name)
+        if not name or len(name) > FELD_MAX:
+            raise PoolFehler(400, f"Kandidat: 1-{FELD_MAX} Zeichen (Zeilenumbrüche werden "
+                                  "automatisch zu Leerzeichen).")
         kurz = ""
+    werte_bereinigt = {}
     for feld in kat["extra_spalten"]:
         wert = str((werte or {}).get(feld, "")).strip()
-        if not wert or "\n" in wert or len(wert) > FELD_MAX:
-            raise PoolFehler(400, f"{feld}: 1-{FELD_MAX} Zeichen, keine Zeilenumbrüche")
+        if "|" in wert:
+            raise PoolFehler(400, f"{feld}: '|' ist nicht erlaubt (sprengt die Pool-Tabelle) "
+                                  "— bitte umformulieren.")
+        wert = _text_bereinigen(wert)
+        if not wert or len(wert) > FELD_MAX:
+            raise PoolFehler(400, f"{feld}: 1-{FELD_MAX} Zeichen (Zeilenumbrüche werden "
+                                  "automatisch zu Leerzeichen).")
+        werte_bereinigt[feld] = wert  # bereinigt weiterreichen (_zeile_bauen liest daraus)
+    werte = werte_bereinigt
 
     pfad = os.path.join(root, *aggregation.POOL_DATEI)
     if not os.path.isfile(pfad):
