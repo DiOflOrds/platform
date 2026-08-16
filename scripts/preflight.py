@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Session-/Tick-Preflight (T-0024, Retro-CR 1/3 aus Sprint 2).
+"""Session-/Tick-Preflight (p0/T-0024, Retro-CR 1/3 aus Sprint 2).
 
 Ein Lauf je Session-/Tick-Start:
   1. Verwaiste Git-Lock-Artefakte erkennen (index.lock, HEAD.lock,
@@ -13,7 +13,7 @@ Ein Lauf je Session-/Tick-Start:
   4. Unit-Tests (platform/tests) — für Ticks per --skip-tests abwählbar.
 
 Exit 0 = startklar; Exit 1 = mindestens ein Befund.
-Erwartungswert (T-0024): 0 Analyse-Blöcke durch Mount-Artefakte je Sprint.
+Erwartungswert (p0/T-0024): 0 Analyse-Blöcke durch Mount-Artefakte je Sprint.
 """
 import argparse
 import glob
@@ -45,16 +45,33 @@ def repos_im_root(root):
 
 
 def git_prozess_aktiv():
-    """True, wenn auf diesem Gerät gerade ein Git-Prozess läuft (plattformübergreifend)."""
+    """True, wenn auf diesem Gerät gerade ein Git-Prozess läuft (plattformübergreifend).
+
+    `errors="replace"` ist kein Schönheitsfehler-Ausgleich, sondern der Fix zu pm/T-0024:
+    `tasklist` antwortet in der OEM-Konsolen-Codepage (850/437), Python decodierte mit
+    `text=True` per Default in cp1252. Ein einziges Byte 0x81 (in CP850 das 'ü' aus
+    „ausgeführt") ließ den Reader-Thread von subprocess mit UnicodeDecodeError sterben.
+    Der Fehler landete unten im `except` und kam als „Git-Prozess aktiv" heraus — die
+    Lock-Räumung unterblieb, obwohl gar kein Git lief. Der Prozessname selbst ist ASCII,
+    für die Entscheidung geht durch das Ersetzen also nichts verloren.
+    """
     try:
         if _platform.system() == "Windows":
             out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq git.exe"],
-                                 capture_output=True, text=True, timeout=10)
+                                 capture_output=True, text=True, timeout=10,
+                                 errors="replace")
             return "git.exe" in out.stdout
-        out = subprocess.run(["pgrep", "-x", "git"], capture_output=True, text=True, timeout=10)
+        out = subprocess.run(["pgrep", "-x", "git"], capture_output=True, text=True,
+                             timeout=10, errors="replace")
         return out.returncode == 0
-    except Exception:
-        return True  # im Zweifel: nichts löschen
+    except Exception as fehler:
+        # Im Zweifel nichts löschen — aber nicht schweigend. Ein stiller Fallback auf
+        # „aktiv" sieht im Protokoll aus wie eine korrekte Beobachtung und kostete drei
+        # Auto-Push-Läufe, bis jemand nachsah (pm/T-0024).
+        print(f"    [hinweis] Prozess-Abfrage nicht auswertbar "
+              f'({type(fehler).__name__}: {fehler}) — vorsichtshalber als „Git läuft“ '
+              f"gewertet, es wird nichts entfernt.")
+        return True
 
 
 def finde_lock_artefakte(repo):

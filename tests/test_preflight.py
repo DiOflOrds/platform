@@ -1,7 +1,10 @@
-"""Tests Preflight-Skript (T-0024). Bezug: CR T-0024 (Prozess-Tooling, kein SWR)."""
+"""Tests Preflight-Skript (p0/T-0024). Bezug: CR p0/T-0024 (Prozess-Tooling, kein SWR)."""
+import contextlib
+import io
 import os
 import sys
 import tempfile
+import types
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
@@ -20,7 +23,7 @@ def _fake_git(root, *artefakte):
 
 
 class TestLockArtefakte(unittest.TestCase):
-    """Lock-Erkennung findet alle bekannten Artefakt-Klassen. Bezug: CR T-0024."""
+    """Lock-Erkennung findet alle bekannten Artefakt-Klassen. Bezug: CR p0/T-0024."""
 
     def test_findet_bekannte_artefakte(self):
         """index.lock, HEAD.lock, maintenance.lock, tmp_obj_*, refs-Locks werden erkannt."""
@@ -65,6 +68,21 @@ class TestLockParkplatz(unittest.TestCase):
     Commit der Session schlug fehl — eine komplette Session verlor am
     2026-08-16 ihre Verbuchung, obwohl die Arbeit fertig war.
     """
+
+    def setUp(self):
+        """Hermetik (pm/T-0024): `git_prozess_aktiv()` fragt das GANZE Gerät ab.
+
+        Ein beliebiger laufender git.exe — Auto-Push-Wächter, HMI-Commit, IDE — ließ
+        `test_nur_locks_laesst_repos_unberuehrt` rot werden und riss damit `abschluss.cmd`
+        mit: kein Push, keine GitHub-Actions, und zwei pm-Tickets warteten auf einen
+        grünen Lauf, der nicht mehr stattfinden konnte. Das Fake-Repo in %TEMP% hat mit
+        laufenden Git-Prozessen nichts zu tun; die Abfrage gehört hier festgenagelt.
+        """
+        self._echte_abfrage = preflight.git_prozess_aktiv
+        preflight.git_prozess_aktiv = lambda: False
+
+    def tearDown(self):
+        preflight.git_prozess_aktiv = self._echte_abfrage
 
     @staticmethod
     def _ohne_unlink(pfade):
@@ -149,8 +167,81 @@ class TestLockParkplatz(unittest.TestCase):
             self.assertEqual(len(os.listdir(os.path.join(g, preflight.PARKPLATZ))), 3)
 
 
+class TestProzessAbfrage(unittest.TestCase):
+    """Die Prozess-Abfrage darf nie zur Blockade werden. Bezug: pm/T-0024 (SUP.9).
+
+    Befund vom 2026-08-16: Drei Auto-Push-Läufe hintereinander brachen ab, 21 Commits
+    und zwei Baseline-Tags blieben lokal liegen — Ursache war ein Decodier-Fehler beim
+    Auslesen der Windows-Prozessliste, der sich als „Git-Prozess aktiv" tarnte.
+    """
+
+    @staticmethod
+    def _mit_fake_run(rohbytes, system="Windows"):
+        """Stellt nach, was subprocess mit text=True tut: mit dem übergebenen Codec decodieren."""
+        echt_run, echt_system = preflight.subprocess.run, preflight._platform.system
+
+        def fake_run(cmd, **kw):
+            text = rohbytes.decode(kw.get("encoding") or "cp1252",
+                                   kw.get("errors") or "strict")
+            return types.SimpleNamespace(stdout=text, stderr="", returncode=0)
+
+        preflight.subprocess.run = fake_run
+        preflight._platform.system = lambda: system
+        try:
+            return preflight.git_prozess_aktiv()
+        finally:
+            preflight.subprocess.run, preflight._platform.system = echt_run, echt_system
+
+    def test_fremde_codepage_bricht_die_abfrage_nicht(self):
+        """Regression: 'ü' aus der OEM-Codepage 850 ist Byte 0x81 und in cp1252 undefiniert.
+
+        Genau diese Antwort gibt `tasklist`, wenn KEIN git.exe läuft ('… ausgeführt.') —
+        die Abfrage scheiterte also ausgerechnet im harmlosen Normalfall und meldete
+        das Gegenteil. Gegen den alten Code (ohne errors=) scheitert dieser Test.
+        """
+        ohne_treffer = "INFO: Es wird kein Task mit den angegebenen Kriterien ausgeführt."
+        self.assertFalse(self._mit_fake_run(ohne_treffer.encode("cp850")))
+
+    def test_treffer_wird_trotz_ersatzzeichen_erkannt(self):
+        """Der Prozessname ist ASCII — durch das Ersetzen geht die Aussage nicht verloren."""
+        mit_treffer = "Abbildname   PID Sitzungsname\ngit.exe   4711 Konsole   ausgeführt\n"
+        self.assertTrue(self._mit_fake_run(mit_treffer.encode("cp850")))
+
+    def test_unklare_abfrage_bleibt_vorsichtig_und_meldet_sich(self):
+        """Bei echtem Fehler weiter „aktiv" (nichts löschen) — aber sichtbar, nicht stumm."""
+        echt_run, echt_system = preflight.subprocess.run, preflight._platform.system
+
+        def kaputt(cmd, **kw):
+            raise OSError("Prozessliste nicht verfügbar")
+
+        preflight.subprocess.run = kaputt
+        preflight._platform.system = lambda: "Windows"
+        puffer = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(puffer):
+                aktiv = preflight.git_prozess_aktiv()
+        finally:
+            preflight.subprocess.run, preflight._platform.system = echt_run, echt_system
+        self.assertTrue(aktiv)
+        self.assertIn("Prozess-Abfrage nicht auswertbar", puffer.getvalue())
+
+    def test_laufender_git_prozess_schuetzt_den_lock_weiterhin(self):
+        """Die Schutzfunktion bleibt: solange Git läuft, wird kein Lock angefasst."""
+        echt = preflight.git_prozess_aktiv
+        preflight.git_prozess_aktiv = lambda: True
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                _fake_git(os.path.join(d, "p0"), "index.lock")
+                befunde = preflight.raeume_locks(d)
+                self.assertEqual(befunde, 1)
+                self.assertTrue(os.path.exists(
+                    os.path.join(d, "p0", ".git", "index.lock")))
+        finally:
+            preflight.git_prozess_aktiv = echt
+
+
 class TestPreflightGesamt(unittest.TestCase):
-    """Gesamtlauf meldet fehlende Repos als Befund. Bezug: CR T-0024."""
+    """Gesamtlauf meldet fehlende Repos als Befund. Bezug: CR p0/T-0024."""
 
     def test_fehlende_repos_sind_befunde(self):
         """Leere Wurzel: 3 fehlende Repos + board-check-Fehler = 4 Befunde."""
