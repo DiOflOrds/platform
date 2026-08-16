@@ -21,7 +21,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 
 FELDER = ["id", "titel", "typ", "prozess", "rolle", "sprint", "status", "prio", "erstellt"]
 STATUS = ["open", "in_analysis", "in_progress", "in_review", "blocked", "done", "rejected"]
@@ -33,8 +33,17 @@ PRIO_RANG = {p: i for i, p in enumerate(PRIOS)}
 # dass das Absicht ist und nicht Liegenbleiben. Feld optional; leer = einmalige Aufgabe.
 TAKTE = {"je-session": "je Session", "taeglich": "täglich", "woechentlich": "wöchentlich",
          "monatlich": "monatlich", "quartalsweise": "quartalsweise", "jaehrlich": "jährlich"}
+# SWR-104 (pm/T-0032 Teil 2, Brief pm/N-0025): Uhrzeit-Takt. NUR `taeglich` und
+# `woechentlich` dürfen eine Uhrzeit tragen — für `monatlich`/`quartalsweise`/`jaehrlich`
+# gibt es keinen Wunsch und damit keine Regel, was „der Tag" wäre; sie stillschweigend
+# zuzulassen hieße raten (B038). Die Trennlinie aus T-0032 Teil 1: der Uhrzeit-Takt ist
+# KEIN Scheduler, sondern eine Fälligkeitsfrage, die die ohnehin laufende Session stellt.
+TAKTE_MIT_UHRZEIT = ("taeglich", "woechentlich")
+WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]  # Index = date.weekday()
+UHRZEIT_MUSTER = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 ID_MUSTER = re.compile(r"^T-\d{4}$")
 DATUM_MUSTER = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+ZEITPUNKT_MUSTER = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]([01]\d|2[0-3]):([0-5]\d)$")
 # SWR-079 (P10, pm/N-0013): frei gewählte Mehrfach-Labels. Bewusst konservativer
 # Zeichensatz — Labels landen in einer Kommaliste im Frontmatter, in BOARD.md-Zellen
 # und in Git-Commit-Nachrichten; Komma, eckige Klammer, Pipe und Zeilenumbruch
@@ -63,7 +72,7 @@ SAMMEL_REPO = "projects"
 # Abhängigkeitsgraph gehören der Skript-/Session-Route, sonst entsteht ein zweiter
 # Weg für Dinge, die genau einen haben müssen (ADR-007).
 EDITIERBARE_FELDER = ("titel", "typ", "prio", "rolle", "sprint", "status",
-                      "takt", "labels", "reviewer", "frist")
+                      "takt", "labels", "reviewer", "frist", "zuletzt_erledigt")
 GESCHLOSSEN = ("done", "rejected")  # SWR-077: Archiv — nur Wiedereröffnung
 
 
@@ -189,23 +198,74 @@ def ist_datum(wert):
     return True
 
 
+def als_moment(wert):
+    """SWR-104: Termin-Angabe -> Moment. Ein reines Datum endet am TAGESENDE.
+
+    Bis SWR-104 war die Ampel eine reine Tagesregel. Ein Uhrzeit-Takt
+    (`taeglich@14:00`) liefert aber einen Termin MIT Uhrzeit, und „heute 14:00"
+    ist um 15:00 verstrichen, obwohl der Tag es nicht ist — eine Tagesregel
+    hätte ihn als „gelb, heute fällig" ausgewiesen statt als überfällig. Genau
+    dieses Zusammenfalten zweier Fakten war der Befund B057.
+
+    Die Umstellung auf Momente lässt reine Datumsfristen unverändert: ein
+    Termin „2026-08-19" ist am 19.08. den ganzen Tag nicht verstrichen und ab
+    dem 20.08. rot — dasselbe, was `f < heute` gesagt hat. Deshalb Tagesende
+    und nicht Tagesbeginn; ein Test vergleicht beide Fassungen Tag für Tag.
+    """
+    if isinstance(wert, datetime):
+        return wert
+    if isinstance(wert, date):
+        return datetime.combine(wert, time.max)
+    s = str(wert or "").strip()
+    if ZEITPUNKT_MUSTER.match(s):
+        try:
+            return datetime.fromisoformat(s.replace("T", " "))
+        except ValueError:
+            return None
+    return datetime.combine(date.fromisoformat(s), time.max) if ist_datum(s) else None
+
+
+def _jetzt_moment(heute=None):
+    """SWR-104: Bezugsmoment der Ampel.
+
+    `heute` als `date` (der Bestandsaufruf) heißt „irgendwann an diesem Tag" —
+    gerechnet wird dann mit dem TAGESENDE. Für Datumsfristen ist das die alte
+    Rechnung; für einen Uhrzeit-Termin desselben Tages bedeutet es „im Zweifel
+    verstrichen". Diese Richtung ist Absicht: dieselbe Vorsichtsregel wie bei
+    `zuletzt_erledigt` und bei `session.stille` — im Zweifel fällig, nie frisch
+    (B038).
+    """
+    if isinstance(heute, datetime):
+        return heute
+    if isinstance(heute, date):
+        return datetime.combine(heute, time.max)
+    if heute is None:
+        return datetime.now()
+    return als_moment(heute) or datetime.now()
+
+
 def frist_ampel(frist, heute=None):
-    """SWR-091 (pm/T-0030): Frist -> Ampel. EINE Quelle für alle Ansichten.
+    """SWR-091 (pm/T-0030), erweitert um SWR-104: Termin -> Ampel.
+    EINE Quelle für alle Ansichten.
 
     rot = überschritten, gelb = <= 2 Tage, gruen = später, grau = keine/ungültige
-    Frist. Die Regel stand bis hierher inline in `aggregation.cockpit` und galt
+    Frist. Die Regel stand bis SWR-091 inline in `aggregation.cockpit` und galt
     nur für Decision-Requests; sie ein zweites Mal für Backlog-Tickets zu
     schreiben wäre genau die Falle aus B033 („Welche Regel wäre ich versucht,
     hier noch einmal zu schreiben — und wo steht sie schon?").
+
+    SWR-104 schickt den aus einem Uhrzeit-Takt ABGELEITETEN Termin durch
+    dieselbe Funktion — eine Ampelregel, zwei Quellen. Verglichen wird dafür
+    auf Momentebene statt auf Tagesebene; die Aussage für reine Datumsfristen
+    bleibt Tag für Tag dieselbe (siehe `als_moment`).
     """
-    try:
-        f = date.fromisoformat(str(frist or "").strip())
-    except ValueError:
+    m = als_moment(frist)
+    if m is None:
         return "grau"
-    heute = heute or date.today()
-    if f < heute:
+    jetzt = _jetzt_moment(heute)
+    if m < jetzt:
         return "rot"
-    return "gelb" if (f - heute).days <= 2 else "gruen"
+    return "gelb" if (m.date() - jetzt.date()).days <= 2 else "gruen"
 
 
 def ist_ueberfaellig(t, heute=None):
@@ -219,6 +279,133 @@ def ist_ueberfaellig(t, heute=None):
     if t.get("status") in GESCHLOSSEN:
         return False
     return frist_ampel(t.get("frist"), heute) == "rot"
+
+
+def parse_takt(wert):
+    """SWR-104: Takt zerlegen -> (basis, wochentag|None, uhrzeit|None), sonst None.
+
+    `je-session` -> ("je-session", None, None) — Bestand unverändert.
+    `taeglich@14:00` -> ("taeglich", None, "14:00")
+    `woechentlich@Mo-14:00` -> ("woechentlich", 0, "14:00")
+
+    Eine Uhrzeit ist nur für `taeglich` und `woechentlich` erlaubt. Für
+    `monatlich@…` gäbe es keine Regel, welcher Tag gemeint ist — sie zu erfinden
+    wäre Raten, sie stillschweigend zu schlucken wäre ein Feld, das aussieht als
+    täte es etwas (B038). Also: Fehler bei der Validierung.
+    """
+    s = str(wert or "").strip()
+    if not s:
+        return None
+    if "@" not in s:
+        return (s, None, None) if s in TAKTE else None
+    basis, _, rest = s.partition("@")
+    if basis not in TAKTE_MIT_UHRZEIT:
+        return None
+    if basis == "taeglich":
+        return (basis, None, rest) if UHRZEIT_MUSTER.match(rest) else None
+    tag, _, uhr = rest.partition("-")
+    if tag not in WOCHENTAGE or not UHRZEIT_MUSTER.match(uhr):
+        return None
+    return (basis, WOCHENTAGE.index(tag), uhr)
+
+
+def takt_klartext(wert):
+    """SWR-074/104: Takt in Klartext für Board und Ansichten ("einmalig" ohne Takt).
+
+    Kein Formatwechsel am BOARD.md — dieselbe Spalte, nur trägt sie bei einem
+    Uhrzeit-Takt auch die Uhrzeit. Bestandstickets ergeben Zeichen für Zeichen
+    denselben Text wie vorher (Board-Formatänderungen haben am 16.08. alle
+    Prüf-Workflows rot gemacht, B053 — diese hier ist keine).
+    """
+    zerlegt = parse_takt(wert)
+    if not zerlegt:
+        return "einmalig"
+    basis, wochentag, uhrzeit = zerlegt
+    if uhrzeit is None:
+        return TAKTE[basis]
+    if wochentag is None:
+        return f"{TAKTE[basis]} {uhrzeit}"
+    return f"{TAKTE[basis]} {WOCHENTAGE[wochentag]} {uhrzeit}"
+
+
+def erledigt_moment(wert):
+    """SWR-104: `zuletzt_erledigt` -> Moment. Ein reines Datum beginnt am TAGESBEGINN.
+
+    Gegenrichtung zu `als_moment`, und aus demselben Grund: ein Termin ohne
+    Uhrzeit ist erst am Tagesende verstrichen, eine Erledigung ohne Uhrzeit
+    beweist nur den Tagesbeginn. Beide Regeln zeigen damit in dieselbe
+    Richtung — **im Zweifel fällig, nie frisch**. Fehlt das Feld oder ist es
+    unlesbar, gilt das Ticket als nie erledigt (Entscheidung 2 aus T-0032
+    Teil 1, dieselbe Vorsicht wie `session.stille`).
+    """
+    if isinstance(wert, datetime):
+        return wert
+    if isinstance(wert, date):
+        return datetime.combine(wert, time.min)
+    s = str(wert or "").strip()
+    if ZEITPUNKT_MUSTER.match(s):
+        try:
+            return datetime.fromisoformat(s.replace("T", " "))
+        except ValueError:
+            return None
+    return datetime.combine(date.fromisoformat(s), time.min) if ist_datum(s) else None
+
+
+def _takt_termin_vor(jetzt, wochentag, uhrzeit):
+    """Letzter Zeitpunkt <= `jetzt`, an dem dieser Takt gelaufen ist."""
+    stunde, minute = (int(x) for x in uhrzeit.split(":"))
+    kandidat = jetzt.replace(hour=stunde, minute=minute, second=0, microsecond=0)
+    if wochentag is None:
+        return kandidat if kandidat <= jetzt else kandidat - timedelta(days=1)
+    kandidat -= timedelta(days=(jetzt.weekday() - wochentag) % 7)
+    return kandidat if kandidat <= jetzt else kandidat - timedelta(days=7)
+
+
+def takt_termin(t, jetzt=None):
+    """SWR-104: Abgeleiteter Termin eines Uhrzeit-Takts -> (moment, faellig).
+
+    `None`, wenn das Ticket keinen Uhrzeit-Takt trägt (Bestand unverändert) oder
+    geschlossen ist. Ist es fällig, ist der Moment der ÜBERSPRUNGENE Termin —
+    die Anzeige sagt dann „überfällig seit HH:MM" und nicht „erledigt". Läuft
+    keine Session, feuert nichts; das ist die ehrliche Grenze dieser Umsetzung
+    (T-0032 Teil 1, Entscheidung 4) und keine stille Falschaussage (B038).
+
+    Der Takt ist KEIN Scheduler: er startet nichts, er beantwortet nur die
+    Frage „ist dieses Ticket seit seiner letzten Erledigung über seine Uhrzeit
+    gelaufen?" — gestellt von der ohnehin laufenden Routine-Session.
+    """
+    if t.get("status") in GESCHLOSSEN:
+        return None
+    zerlegt = parse_takt(t.get("takt"))
+    if not zerlegt or zerlegt[2] is None:
+        return None
+    basis, wochentag, uhrzeit = zerlegt
+    jetzt = _jetzt_moment(jetzt)
+    letzter = _takt_termin_vor(jetzt, wochentag, uhrzeit)
+    zul = erledigt_moment(t.get("zuletzt_erledigt"))
+    if zul is None or zul < letzter:
+        return letzter, True
+    return letzter + timedelta(days=7 if basis == "woechentlich" else 1), False
+
+
+def ist_takt_faellig(t, jetzt=None):
+    """SWR-104: Ist dieses Takt-Ticket seit der letzten Erledigung über seine Uhrzeit?"""
+    tm = takt_termin(t, jetzt)
+    return bool(tm and tm[1])
+
+
+def takt_ampel(t, jetzt=None):
+    """SWR-104: Ampel des abgeleiteten Takt-Termins — durch `frist_ampel`, nicht daneben.
+
+    Eine zweite Ampelrechnung wäre B033 (Entscheidung 3 aus T-0032 Teil 1).
+    Fälligkeit und Ampel sind dabei zwei Aussagen, nicht eine: genau in der
+    Minute des Termins ist ein nie erledigtes Ticket bereits **fällig**, sein
+    Termin aber noch nicht **verstrichen** (gelb). Beides zusammenzufalten wäre
+    der Fehler aus B057; die Kachel listet deshalb nach Fälligkeit, nicht nach
+    Farbe.
+    """
+    tm = takt_termin(t, jetzt)
+    return frist_ampel(tm[0], jetzt) if tm else "grau"
 
 
 def status_in_head(repo, datei):
@@ -254,8 +441,19 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
         fehler.append(f"ungültige prio: {t.get('prio')}")
     if t.get("erstellt") and not ist_datum(t["erstellt"]):
         fehler.append(f"ungültiges Datum erstellt: {t['erstellt']}")
-    if t.get("takt") and t["takt"] not in TAKTE:  # SWR-074: optional, aber wenn, dann gültig
-        fehler.append(f"ungültiger takt: {t['takt']} (erlaubt: {', '.join(TAKTE)})")
+    if t.get("takt") and not parse_takt(t["takt"]):  # SWR-074/104: optional, aber wenn, dann gültig
+        fehler.append(f"ungültiger takt: {t['takt']} (erlaubt: {', '.join(TAKTE)}; "
+                      f"mit Uhrzeit nur {'/'.join(TAKTE_MIT_UHRZEIT)}, "
+                      f"z. B. taeglich@14:00 oder woechentlich@Mo-14:00)")
+    # SWR-104: `zuletzt_erledigt` ist der Fortschritt eines Takt-Tickets — ohne Takt
+    # gibt es nichts, worauf es sich bezieht. Ein Feld, das dasteht und nichts bewirkt,
+    # ist die stille Falschaussage aus B038; deshalb Fehler statt schweigend ignorieren.
+    if t.get("zuletzt_erledigt"):
+        if erledigt_moment(t["zuletzt_erledigt"]) is None:
+            fehler.append(f"ungültiges zuletzt_erledigt: {t['zuletzt_erledigt']} "
+                          f"(erwartet JJJJ-MM-TT oder JJJJ-MM-TT HH:MM)")
+        elif not t.get("takt"):
+            fehler.append("zuletzt_erledigt ohne takt: das Feld bezieht sich auf einen Takt")
     # SWR-091 (pm/T-0030): `frist` ist ab jetzt für JEDEN Typ zulässig und wird für
     # jeden Typ geprüft. Bis hierher galt die Datumsprüfung nur für Decision-Requests —
     # ein Tippfehler in der Frist eines CR wäre stillschweigend als „keine Frist"
@@ -341,7 +539,7 @@ def generiere_board(tickets, stand=None):
         zeilen.append("|---|---|---|---|---|---|---|---|")
         for t in sorted(gruppe, key=lambda x: (PRIO_RANG.get(x.get("prio"), 99), x.get("id", ""))):
             bb = ", ".join(parse_liste(t.get("blocked_by"))) or "—"
-            takt = TAKTE.get(t.get("takt"), "einmalig")
+            takt = takt_klartext(t.get("takt"))  # SWR-074/104
             zeilen.append(f"| [{t['id']}](tickets/{t['id']}.md) | {t['titel']} | {t['typ']} "
                           f"| {takt} | {t['rolle']} | {t['prio']} | {t['sprint']} | {bb} |")
     return "\n".join(zeilen) + "\n"
@@ -402,7 +600,8 @@ def lies_ticket(repo, tid):
     return text, t
 
 
-OPTIONALE_FELDER = ("takt", "labels", "reviewer", "frist")  # leer = Zeile entfällt
+OPTIONALE_FELDER = ("takt", "labels", "reviewer", "frist",
+                    "zuletzt_erledigt")  # leer = Zeile entfällt
 
 
 def _feld_schreiben(text, feld, wert):

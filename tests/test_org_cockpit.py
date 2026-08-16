@@ -203,6 +203,71 @@ class UeberfaelligTest(RepoWelt):
         self.assertEqual(dr["ampel"], "gruen")
 
 
+class TaktFaelligTest(RepoWelt):
+    """pm/T-0032 Teil 2 (Brief pm/N-0025): Uhrzeit-Takte in der Kachel. SWR-104.
+
+    Ein Takt-Ticket trägt keine `frist` — es wäre für `ueberfaellig` und für den
+    „ohne Frist"-Zähler gleichermaßen unsichtbar, obwohl sein Termin ableitbar ist.
+    """
+
+    ABENDS = __import__("datetime").datetime(2026, 8, 16, 15, 0)
+    MITTAGS = __import__("datetime").datetime(2026, 8, 16, 12, 0)
+
+    _ticket = UeberfaelligTest._ticket
+
+    def test_faelliger_uhrzeit_takt_steht_in_der_kachel(self):
+        """SWR-104: Ein Takt-Ticket, dessen Uhrzeit seit der letzten Erledigung
+        vorbei ist, erscheint eigenständig — mit dem übersprungenen Termin im
+        Klartext („überfällig seit"), nicht als „erledigt" (B038)."""
+        basis = self._repo("pm-takt", team_typ="pm")
+        os.remove(os.path.join(basis, "tickets", "T-0001.md"))
+        self._ticket(basis, "T-0001", typ="task", takt="taeglich@14:00",
+                     zuletzt_erledigt="2026-08-15 14:30")
+        self._ticket(basis, "T-0002", typ="task", takt="taeglich@14:00",
+                     zuletzt_erledigt="2026-08-16 14:30")
+        c = aggregation.cockpit(self.root, "pm-takt", jetzt=self.ABENDS)
+        self.assertEqual([u["id"] for u in c["takt_faellig"]], ["T-0001"])
+        self.assertEqual(c["takt_faellig"][0]["seit"], "2026-08-16 14:00")
+        self.assertEqual(c["takt_faellig"][0]["takt_klartext"], "täglich 14:00")
+        self.assertEqual(c["takt_faellig"][0]["ampel"], "rot")
+
+    def test_takt_ohne_uhrzeit_bleibt_aus_der_liste(self):
+        """SWR-104: `je-session` sagt „bei jedem Lauf", nicht „zu einer Uhrzeit" —
+        stünde es hier, meldete die Kachel dauerhaft Alarm und die Zahl verlöre
+        ihre Bedeutung (derselbe Grund wie beim „ohne Frist"-Zähler)."""
+        basis = self._repo("pm-takt-alt", team_typ="pm")
+        os.remove(os.path.join(basis, "tickets", "T-0001.md"))
+        self._ticket(basis, "T-0001", typ="task", takt="je-session")
+        self._ticket(basis, "T-0002", typ="task", takt="woechentlich")
+        c = aggregation.cockpit(self.root, "pm-takt-alt", jetzt=self.ABENDS)
+        self.assertEqual(c["takt_faellig"], [])
+        self.assertEqual(c["unterminiert"], 0)
+
+    def test_der_moment_entscheidet_nicht_der_tag(self):
+        """SWR-104/B057: Derselbe Bestand, derselbe TAG, zwei verschiedene Momente —
+        um 12:00 ist der 14:00-Takt von heute noch nicht fällig, um 15:00 schon.
+        Ein Cockpit, das nur den Tag kennt, könnte diese Frage nicht beantworten;
+        genau deshalb hat `cockpit` seit SWR-104 zwei Bezüge statt eines."""
+        basis = self._repo("pm-takt-moment", team_typ="pm")
+        os.remove(os.path.join(basis, "tickets", "T-0001.md"))
+        self._ticket(basis, "T-0001", typ="task", takt="taeglich@14:00",
+                     zuletzt_erledigt="2026-08-16 09:00")
+        mittags = aggregation.cockpit(self.root, "pm-takt-moment", jetzt=self.MITTAGS)
+        abends = aggregation.cockpit(self.root, "pm-takt-moment", jetzt=self.ABENDS)
+        self.assertEqual(mittags["takt_faellig"], [])
+        self.assertEqual([u["id"] for u in abends["takt_faellig"]], ["T-0001"])
+
+    def test_ohne_nachweis_gilt_der_takt_als_faellig(self):
+        """SWR-104: Fehlt `zuletzt_erledigt`, gilt das Ticket als nie erledigt —
+        nie als frisch. Dieselbe Vorsichtsregel wie `session.stille`."""
+        basis = self._repo("pm-takt-neu", team_typ="pm")
+        os.remove(os.path.join(basis, "tickets", "T-0001.md"))
+        self._ticket(basis, "T-0001", typ="task", takt="taeglich@14:00")
+        c = aggregation.cockpit(self.root, "pm-takt-neu", jetzt=self.ABENDS)
+        self.assertEqual([u["id"] for u in c["takt_faellig"]], ["T-0001"])
+        self.assertEqual(c["takt_faellig"][0]["zuletzt_erledigt"], "")
+
+
 def _ersetze_feld(text, feld, wert):
     import re as _re
     return _re.sub(rf"(?m)^{feld}: .*$", f"{feld}: {wert}", text)

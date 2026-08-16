@@ -5,7 +5,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import board  # noqa: E402
@@ -426,6 +426,195 @@ class FristTest(unittest.TestCase):
         tickets, _ = board.lade_tickets(repo)
         probleme = board.validiere_alle(tickets, git_pruefen=False)
         self.assertTrue(any("frist" in p for p in probleme), probleme)
+
+
+class TaktUhrzeitTest(unittest.TestCase):
+    """pm/T-0032 Teil 2 (Brief pm/N-0025): echter Uhrzeit-Takt. Verifiziert: SWR-104.
+
+    Der Takt ist KEIN dritter Scheduler, sondern eine Fälligkeitsfrage: „ist dieses
+    Ticket seit seiner letzten Erledigung über seine Uhrzeit gelaufen?" — gestellt von
+    der ohnehin laufenden Session (Abgrenzung aus T-0032 Teil 1).
+    """
+
+    HEUTE = date(2026, 8, 16)          # ein Sonntag
+    MITTAGS = datetime(2026, 8, 16, 12, 0)
+    ABENDS = datetime(2026, 8, 16, 15, 0)
+
+    def takt_ticket(self, takt, zuletzt=None, status="open"):
+        t = {"id": "T-0001", "titel": "Takt", "status": status, "takt": takt}
+        if zuletzt is not None:
+            t["zuletzt_erledigt"] = zuletzt
+        return t
+
+    # --- Syntax -----------------------------------------------------------------
+
+    def test_bestandstakt_ohne_uhrzeit_unveraendert(self):
+        """Der Bestand kennt keine Uhrzeit und darf davon nichts merken.
+        Verifiziert: SWR-104."""
+        self.assertEqual(board.parse_takt("je-session"), ("je-session", None, None))
+        self.assertEqual(board.takt_klartext("je-session"), "je Session")
+        self.assertEqual(board.takt_klartext("woechentlich"), "wöchentlich")
+        self.assertEqual(board.takt_klartext(""), "einmalig")
+        self.assertIsNone(board.takt_termin(self.takt_ticket("je-session"), self.MITTAGS))
+
+    def test_uhrzeit_syntax_wird_zerlegt(self):
+        """Verifiziert: SWR-104."""
+        self.assertEqual(board.parse_takt("taeglich@14:00"), ("taeglich", None, "14:00"))
+        self.assertEqual(board.parse_takt("woechentlich@Mo-14:00"), ("woechentlich", 0, "14:00"))
+        self.assertEqual(board.parse_takt("woechentlich@So-07:30"), ("woechentlich", 6, "07:30"))
+        self.assertEqual(board.takt_klartext("taeglich@14:00"), "täglich 14:00")
+        self.assertEqual(board.takt_klartext("woechentlich@Mo-14:00"), "wöchentlich Mo 14:00")
+
+    def test_ungueltige_uhrzeit_takte_werden_abgelehnt(self):
+        """Eine Uhrzeit nur dort, wo es eine Regel dafür gibt — `monatlich@14:00` ließe
+        offen, welcher Tag gemeint ist; sie zu erfinden wäre Raten (B038).
+        Verifiziert: SWR-104."""
+        for schlecht in ("taeglich@24:00", "taeglich@14:60", "taeglich@9:00", "taeglich@",
+                         "monatlich@14:00", "jaehrlich@Mo-14:00", "woechentlich@Xx-14:00",
+                         "woechentlich@14:00", "taeglich@14:00:00", "jeden-tag@14:00"):
+            self.assertIsNone(board.parse_takt(schlecht), schlecht)
+
+    def test_validierung_meldet_ungueltigen_uhrzeit_takt(self):
+        """Verifiziert: SWR-104."""
+        repo = tempfile.mkdtemp(prefix="takt-")
+        self.addCleanup(__import__("shutil").rmtree, repo, ignore_errors=True)
+        schreibe(repo, "T-0001", extra="takt: monatlich@14:00\n")
+        schreibe(repo, "T-0002", extra="takt: taeglich@14:00\n")
+        tickets, _ = board.lade_tickets(repo)
+        probleme = board.validiere_alle(tickets, git_pruefen=False)
+        self.assertTrue(any("T-0001" in p and "takt" in p for p in probleme), probleme)
+        self.assertFalse([p for p in probleme if "T-0002" in p], probleme)
+
+    def test_zuletzt_erledigt_wird_geprueft_und_braucht_einen_takt(self):
+        """Ein Feld, das dasteht und nichts bewirkt, ist die stille Falschaussage aus
+        B038 — `zuletzt_erledigt` ohne `takt` bezieht sich auf nichts.
+        Verifiziert: SWR-104."""
+        repo = tempfile.mkdtemp(prefix="takt-zul-")
+        self.addCleanup(__import__("shutil").rmtree, repo, ignore_errors=True)
+        schreibe(repo, "T-0001", extra="takt: taeglich@14:00\nzuletzt_erledigt: 2026-13-01\n")
+        schreibe(repo, "T-0002", extra="zuletzt_erledigt: 2026-08-15 14:00\n")
+        schreibe(repo, "T-0003", extra="takt: taeglich@14:00\n"
+                                       "zuletzt_erledigt: 2026-08-15 14:00\n")
+        tickets, _ = board.lade_tickets(repo)
+        probleme = board.validiere_alle(tickets, git_pruefen=False)
+        self.assertTrue(any("T-0001" in p and "zuletzt_erledigt" in p for p in probleme), probleme)
+        self.assertTrue(any("T-0002" in p and "ohne takt" in p for p in probleme), probleme)
+        self.assertFalse([p for p in probleme if "T-0003" in p], probleme)
+
+    # --- Fälligkeit -------------------------------------------------------------
+
+    def test_ohne_zuletzt_erledigt_gilt_das_ticket_als_faellig(self):
+        """Fehlt der Nachweis, gilt das Ticket als nie erledigt — nie als frisch.
+        Dieselbe Vorsichtsregel wie `session.stille` (B038).
+        Verifiziert: SWR-104."""
+        t = self.takt_ticket("taeglich@14:00")
+        self.assertTrue(board.ist_takt_faellig(t, self.ABENDS))
+        self.assertTrue(board.ist_takt_faellig(t, self.MITTAGS))
+        self.assertEqual(board.takt_termin(t, self.ABENDS)[0], datetime(2026, 8, 16, 14, 0))
+        # mittags ist der letzte 14:00-Termin der von GESTERN
+        self.assertEqual(board.takt_termin(t, self.MITTAGS)[0], datetime(2026, 8, 15, 14, 0))
+
+    def test_erledigung_nach_dem_termin_macht_frisch_bis_zum_naechsten(self):
+        """Verifiziert: SWR-104."""
+        t = self.takt_ticket("taeglich@14:00", "2026-08-16 14:05")
+        termin, faellig = board.takt_termin(t, self.ABENDS)
+        self.assertFalse(faellig)
+        self.assertEqual(termin, datetime(2026, 8, 17, 14, 0))  # der nächste, nicht der alte
+        # eine Minute vor dem Termin erledigt heißt: der Termin steht noch aus
+        t_frueh = self.takt_ticket("taeglich@14:00", "2026-08-16 13:59")
+        self.assertTrue(board.ist_takt_faellig(t_frueh, self.ABENDS))
+
+    def test_sessionausfall_fuehrt_zu_ueberfaellig_statt_erledigt(self):
+        """Die ehrliche Grenze der Umsetzung: läuft keine Session, feuert nichts — und
+        die Anzeige nennt den ÜBERSPRUNGENEN Termin, statt Erledigung zu behaupten
+        (Entscheidung 4 aus T-0032 Teil 1, B038). Verifiziert: SWR-104."""
+        t = self.takt_ticket("taeglich@14:00", "2026-08-13 14:01")  # drei Tage her
+        termin, faellig = board.takt_termin(t, self.ABENDS)
+        self.assertTrue(faellig)
+        self.assertEqual(termin, datetime(2026, 8, 16, 14, 0))
+        self.assertEqual(board.takt_ampel(t, self.ABENDS), "rot")  # nicht „gelb, heute"
+
+    def test_erledigung_ohne_uhrzeit_gilt_ab_tagesbeginn(self):
+        """Gegenrichtung zur Frist: ein Termin ohne Uhrzeit endet am Tagesende, eine
+        Erledigung ohne Uhrzeit beweist nur den Tagesbeginn. Beide Regeln zeigen in
+        dieselbe Richtung — im Zweifel fällig. Verifiziert: SWR-104."""
+        t = self.takt_ticket("taeglich@14:00", "2026-08-16")
+        self.assertTrue(board.ist_takt_faellig(t, self.ABENDS))
+        self.assertEqual(board.erledigt_moment("2026-08-16"), datetime(2026, 8, 16, 0, 0))
+        self.assertEqual(board.als_moment("2026-08-16").date(), date(2026, 8, 16))
+        self.assertGreater(board.als_moment("2026-08-16"), board.erledigt_moment("2026-08-16"))
+
+    def test_wochentakt_zaehlt_den_richtigen_wochentag(self):
+        """Verifiziert: SWR-104."""
+        mittwoch = datetime(2026, 8, 19, 10, 0)
+        t = self.takt_ticket("woechentlich@Mo-14:00")
+        self.assertEqual(board.takt_termin(t, mittwoch)[0], datetime(2026, 8, 17, 14, 0))
+        # am Takttag selbst, aber vor der Uhrzeit: der Termin der Vorwoche zählt
+        montag_frueh = datetime(2026, 8, 17, 9, 0)
+        self.assertEqual(board.takt_termin(t, montag_frueh)[0], datetime(2026, 8, 10, 14, 0))
+        erledigt = self.takt_ticket("woechentlich@Mo-14:00", "2026-08-17 14:30")
+        termin, faellig = board.takt_termin(erledigt, mittwoch)
+        self.assertFalse(faellig)
+        self.assertEqual(termin, datetime(2026, 8, 24, 14, 0))  # +7 Tage, nicht +1
+
+    def test_geschlossenes_takt_ticket_ist_nie_faellig(self):
+        """Wie bei `ist_ueberfaellig`: ein erledigtes Ticket trägt seinen Takt als
+        Historie, nicht als Vorwurf. Verifiziert: SWR-104."""
+        for status in ("done", "rejected"):
+            t = self.takt_ticket("taeglich@14:00", status=status)
+            self.assertIsNone(board.takt_termin(t, self.ABENDS))
+            self.assertFalse(board.ist_takt_faellig(t, self.ABENDS))
+            self.assertEqual(board.takt_ampel(t, self.ABENDS), "grau")
+
+    # --- eine Ampelregel, zwei Quellen ------------------------------------------
+
+    def test_ampel_kommt_aus_frist_ampel(self):
+        """Entscheidung 3 aus T-0032 Teil 1: der abgeleitete Termin geht durch DIESELBE
+        Funktion wie eine Frist. Eine zweite Ampelrechnung wäre B033.
+        Verifiziert: SWR-104."""
+        t = self.takt_ticket("taeglich@14:00", "2026-08-16 14:05")
+        termin, faellig = board.takt_termin(t, self.ABENDS)
+        self.assertFalse(faellig)
+        self.assertEqual(board.takt_ampel(t, self.ABENDS),
+                         board.frist_ampel(termin, self.ABENDS))
+
+    def test_ampel_bleibt_fuer_datumsfristen_tag_fuer_tag_dieselbe(self):
+        """Gegenprobe zur Umstellung von der Tages- auf die Momentregel: für reine
+        Datumsfristen muss die neue Fassung über einen ganzen Monat exakt dasselbe
+        sagen wie die alte `f < heute`-Rechnung — sonst hat SWR-104 die Bedeutung von
+        SWR-091 verschoben statt sie zu erweitern. Verifiziert: SWR-104."""
+        for bezug in range(1, 32):
+            heute = date(2026, 8, bezug)
+            for tag in range(1, 32):
+                frist = date(2026, 8, tag)
+                alt = ("rot" if frist < heute
+                       else ("gelb" if (frist - heute).days <= 2 else "gruen"))
+                self.assertEqual(board.frist_ampel(frist.isoformat(), heute), alt,
+                                 f"Abweichung {frist} @ {heute}")
+
+    def test_uhrzeit_termin_desselben_tages_ist_nachmittags_rot(self):
+        """Der Kern der Umstellung: „heute 14:00" ist um 15:00 verstrichen, obwohl der
+        TAG es nicht ist. Die alte Tagesregel hätte „gelb — heute fällig" gesagt und
+        damit zwei Fakten zu einem gefaltet (B057). Verifiziert: SWR-104."""
+        self.assertEqual(board.frist_ampel("2026-08-16 14:00", self.ABENDS), "rot")
+        self.assertEqual(board.frist_ampel("2026-08-16 16:00", self.ABENDS), "gelb")
+        self.assertEqual(board.frist_ampel("2026-08-16", self.ABENDS), "gelb")
+
+    def test_tag_statt_moment_als_bezug_zaehlt_als_verstrichen(self):
+        """Wird nur ein TAG als Bezug übergeben, ist die Uhrzeit unbekannt — dann gilt
+        der Termin als verstrichen, nicht als frisch. Verifiziert: SWR-104."""
+        self.assertEqual(board.frist_ampel("2026-08-16 14:00", self.HEUTE), "rot")
+
+    def test_board_spalte_zeigt_die_uhrzeit_und_bricht_das_format_nicht(self):
+        """Kein Formatwechsel am BOARD.md (B053) — dieselbe Spalte, nur mit Uhrzeit.
+        Verifiziert: SWR-104."""
+        basis = {"id": "T-0001", "titel": "A", "typ": "task", "rolle": "cm", "prio": "hoch",
+                 "sprint": "1", "status": "open"}
+        ohne = board.generiere_board([dict(basis)], stand="2026-08-16")
+        mit = board.generiere_board([dict(basis, takt="taeglich@14:00")], stand="2026-08-16")
+        self.assertIn("| einmalig |", ohne)
+        self.assertIn("| täglich 14:00 |", mit)
+        self.assertEqual(ohne.count("|"), mit.count("|"))  # gleiche Spaltenzahl
 
 
 if __name__ == "__main__":

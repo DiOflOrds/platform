@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from datetime import date as _datum  # Fristarithmetik: board.frist_ampel (SWR-091)
+from datetime import datetime as _zeit  # Uhrzeit-Takt: board.takt_termin (SWR-104)
 
 _SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 if _SCRIPTS not in sys.path:
@@ -312,11 +313,19 @@ def lade_verifikation(root, projekt="p0"):
     return _md_dateien(os.path.join(projekt_pfad(root, projekt), "verification"))
 
 
-def cockpit(root, projekt="p0", heute=None):
+def cockpit(root, projekt="p0", heute=None, jetzt=None):
     """SWR-046 (P3): alle relevanten Projektinfos auf einen Blick — Status-Zahlen,
     offene DRs mit Frist-Ampel (rot=überschritten, gelb=<=2 Tage, gruen=später,
-    grau=ohne Frist), letzte Baseline, KPI-Kurzfassung."""
-    heute = heute or _datum.today()
+    grau=ohne Frist), letzte Baseline, KPI-Kurzfassung.
+
+    SWR-104: **Tag und Moment sind zwei Fakten** (B057). Die Fristarithmetik rechnet
+    in Tagen, der Uhrzeit-Takt in Minuten — deshalb zwei Parameter statt eines
+    überladenen. Ohne Angabe: heutiger Tag und aktueller Moment. Einen Tag zum
+    Moment zu machen hieße hier, `taeglich@23:00` schon morgens als fällig zu
+    melden; das wäre nicht Vorsicht, sondern eine falsche Aussage.
+    """
+    jetzt = jetzt or (heute if isinstance(heute, _zeit) else None) or _zeit.now()
+    heute = heute.date() if isinstance(heute, _zeit) else (heute or _datum.today())
     pfad = projekt_pfad(root, projekt)
     tickets, _ = board.lade_tickets(pfad)
     status_zahlen = {}
@@ -373,6 +382,19 @@ def cockpit(root, projekt="p0", heute=None):
                      "typ": t.get("typ", ""), "prio": t.get("prio", ""),
                      "tage": (heute - _datum.fromisoformat(t["frist"])).days}
                     for t in offene if board.ist_ueberfaellig(t, heute)]
+    # SWR-104 (pm/T-0032): Takt-Tickets mit Uhrzeit tragen keine `frist` und sind damit für
+    # `ueberfaellig` unsichtbar — ihr Termin wird abgeleitet, nicht eingetragen. Sie stehen
+    # deshalb daneben, nach derselben Regel sichtbar: eigene Liste, vor den Statuszahlen.
+    # Gelistet wird nach FÄLLIGKEIT, nicht nach Ampelfarbe — in der Minute des Termins ist
+    # ein nie erledigtes Ticket fällig, sein Termin aber noch nicht verstrichen (B057).
+    takt_faellig = [{"id": t.get("id"), "ref": ref(projekt, t.get("id")),
+                     "titel": t.get("titel", ""), "takt": t.get("takt", ""),
+                     "takt_klartext": board.takt_klartext(t.get("takt")),
+                     "typ": t.get("typ", ""), "prio": t.get("prio", ""),
+                     "zuletzt_erledigt": t.get("zuletzt_erledigt", ""),
+                     "seit": board.takt_termin(t, jetzt)[0].strftime("%Y-%m-%d %H:%M"),
+                     "ampel": board.takt_ampel(t, jetzt)}
+                    for t in offene if board.ist_takt_faellig(t, jetzt)]
     # Ohne Frist ist ein offenes Backlog-Ticket nicht „in Ordnung", sondern unterminiert —
     # Takt-Tickets ausgenommen, die tragen ihr Zeitkonzept im Feld `takt` (SWR-074).
     unterminiert = sum(1 for t in offene
@@ -386,14 +408,15 @@ def cockpit(root, projekt="p0", heute=None):
             "aufgaben_offen": len(offene), "aufgaben": aufgaben,
             "aufgaben_wiederkehrend": wiederkehrend,  # SWR-074 (pm/N-0012)
             "ueberfaellig": ueberfaellig,  # SWR-091 (pm/T-0030, Brief pm/N-0025)
+            "takt_faellig": takt_faellig,  # SWR-104 (pm/T-0032, Brief pm/N-0025)
             "unterminiert": unterminiert,  # SWR-091
             "kpi": {"laeufe": kpi.get("laeufe", 0),
                     "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}}
 
 
-def cockpit_alle(root, heute=None):
+def cockpit_alle(root, heute=None, jetzt=None):
     """SWR-046: Cockpits aller entdeckten Projekte (eine Antwort fürs Frontend)."""
-    return {"projekte": [cockpit(root, name, heute) for name in projekte(root)]}
+    return {"projekte": [cockpit(root, name, heute, jetzt) for name in projekte(root)]}
 
 
 def lade_baselines(root):

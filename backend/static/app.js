@@ -196,7 +196,14 @@ var AMPEL_KLASSE = { rot: "rejected", gelb: "in_progress", gruen: "done", grau: 
 // SWR-074 (pm/N-0012): Takt-Aufgaben bleiben absichtlich offen — Klartext statt Rätselraten.
 var TAKT_NAMEN = { "je-session": "je Session", taeglich: "täglich", woechentlich: "wöchentlich",
                    monatlich: "monatlich", quartalsweise: "quartalsweise", jaehrlich: "jährlich" };
-function TAKT_TEXT(t) { return TAKT_NAMEN[t] || t; }
+// SWR-104 (pm/T-0032): Takte dürfen eine Uhrzeit tragen (`taeglich@14:00`,
+// `woechentlich@Mo-14:00`). Ohne diese Zerlegung fiele der Klartext auf den Rohwert
+// zurück — lesbar, aber deutschsprachig falsch („taeglich@14:00" statt „täglich 14:00").
+function TAKT_TEXT(t) {
+  var teile = String(t || "").split("@");
+  if (teile.length !== 2) { return TAKT_NAMEN[t] || t; }
+  return (TAKT_NAMEN[teile[0]] || teile[0]) + " " + teile[1].replace("-", " ");
+}
 
 function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
       var fertig = (p.status_zahlen.done || 0) + (p.status_zahlen.rejected || 0);
@@ -237,6 +244,22 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
           karte.appendChild(el("div", { "class": "zeile" },
             pille("Frist " + u.frist + " (" + u.tage + " Tag" + (u.tage === 1 ? "" : "e") +
                   " über)", AMPEL_KLASSE.rot),
+            el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + u.id },
+               u.ref || u.id),
+            " " + u.titel));
+        });
+      }
+      // SWR-104 (pm/T-0032, Brief pm/N-0025): fällige Uhrzeit-Takte stehen neben den
+      // überfälligen Fristen — sie tragen keine `frist` und wären dort sonst unsichtbar.
+      // „überfällig seit HH:MM" statt „erledigt": läuft keine Session, feuert nichts,
+      // und die Anzeige sagt das (B038) statt so zu tun, als sei es getan.
+      if (p.takt_faellig && p.takt_faellig.length) {
+        karte.appendChild(el("div", { "class": "zeile" },
+          pille(p.takt_faellig.length + " Takt fällig", AMPEL_KLASSE.rot)));
+        p.takt_faellig.forEach(function (u) {
+          karte.appendChild(el("div", { "class": "zeile" },
+            pille("überfällig seit " + u.seit, AMPEL_KLASSE[u.ampel] || AMPEL_KLASSE.rot),
+            pille(u.takt_klartext, "in_progress"),
             el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + u.id },
                u.ref || u.id),
             " " + u.titel));
