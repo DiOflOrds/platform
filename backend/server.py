@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend import aggregation, briefkasten, inbox, mailer, teams, tickets  # noqa: E402
+from backend import aggregation, briefkasten, inbox, mailer, pool, teams, tickets  # noqa: E402
 
 
 def schreibschutz_pruefen(client_ip, pin_header):
@@ -289,6 +289,15 @@ class Api(BaseHTTPRequestHandler):
                 erg = tickets.speichere(type(self).wurzel, daten.get("projekt", ""),
                                         daten.get("id", ""), daten)
             except tickets.TicketFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
+        if self.path == "/api/pool":  # SWR-088 (pm/T-0022, Teil "Anlegen"; PIN oben geprüft)
+            try:
+                erg = pool.kandidat_anlegen(type(self).wurzel, daten.get("kategorie", ""),
+                                            daten.get("kandidat", ""),
+                                            daten.get("kurzbeschreibung", ""),
+                                            daten.get("felder") or {})
+            except pool.PoolFehler as e:
                 return self._json(e.code, {"fehler": str(e)})
             return self._json(200, erg)
         if self.path == "/api/briefkasten":  # SWR-050 (P4): Nachricht ans Team

@@ -812,6 +812,59 @@ function ladeRequirements() {  // SWR-030 + SWR-043 (Tabellen) + SWR-085 (Filter
   });
 }
 
+function poolFormular() {  // SWR-088 (pm/T-0022, Teil "Anlegen")
+  var kategorie = el("select", {},
+    el("option", { value: "team" }, "Team-Kandidat"),
+    el("option", { value: "technik" }, "Technik-Kandidat"));
+  var kandidat = el("input", { type: "text",
+    placeholder: "Kandidat, z. B. team-urlaub (Kleinbuchstaben/Ziffern/Bindestrich)" });
+  var kurzZeile = el("div", { "class": "zeile" },
+    el("input", { type: "text", placeholder: "Kurzbeschreibung (nur Team-Kandidaten)" }));
+  var kurz = kurzZeile.firstChild;
+  var extra1 = el("input", { type: "text", placeholder: "Nutzen" });
+  var extra2 = el("input", { type: "text", placeholder: "Voraussetzung" });
+  var extra2Zeile = el("div", { "class": "zeile" }, extra2);
+  kategorie.addEventListener("change", function () {
+    var technik = kategorie.value === "technik";
+    kandidat.placeholder = technik
+      ? "Kandidat, z. B. 'CSV-Export für Reports' (freier Titel)"
+      : "Kandidat, z. B. team-urlaub (Kleinbuchstaben/Ziffern/Bindestrich)";
+    kurzZeile.style.display = technik ? "none" : "";
+    extra1.placeholder = technik ? "Quelle" : "Nutzen";
+    extra2Zeile.style.display = technik ? "none" : "";
+  });
+  var meldung = el("div", {});
+  var knopf = el("button", { "class": "knopf" }, "Kandidat anlegen");
+  knopf.addEventListener("click", function () {
+    knopf.disabled = true;
+    var technik = kategorie.value === "technik";
+    var felder = technik ? { "Quelle": extra1.value } : { "Nutzen": extra1.value, "Voraussetzung": extra2.value };
+    api("/api/pool", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kategorie: kategorie.value, kandidat: kandidat.value,
+                             kurzbeschreibung: kurz.value, felder: felder })
+    }).then(function (e) {
+      leeren(meldung);
+      meldung.appendChild(el("div", { "class": "meldung ok" }, e.meldung));
+      kandidat.value = ""; kurz.value = ""; extra1.value = ""; extra2.value = "";
+      knopf.disabled = false;
+      setTimeout(lade, 900);
+    }).catch(function (fehler) {
+      leeren(meldung);
+      meldung.appendChild(el("div", { "class": "meldung fehler" }, String(fehler.message || fehler)));
+      knopf.disabled = false;
+    });
+  });
+  return el("div", { "class": "karte" },
+    el("h3", {}, "Neuen Kandidaten anlegen"),
+    el("div", { "class": "zeile" }, kategorie),
+    el("div", { "class": "zeile" }, kandidat),
+    kurzZeile,
+    el("div", { "class": "zeile" }, extra1),
+    extra2Zeile,
+    knopf, meldung);
+}
+
 function ladePool() {  // SWR-086 (pm/N-0020): Projekt-Pool als Backlog-Bereich
   return api("/api/pool").then(function (p) {
     if (!p.vorhanden) {
@@ -823,12 +876,13 @@ function ladePool() {  // SWR-086 (pm/N-0020): Projekt-Pool als Backlog-Bereich
       el("h3", {}, "Projekt-Pool — Kandidaten für neue Projekte und Teams"),
       el("div", { "class": "zeile leer" },
         "Quelle: " + p.quelle + " (gepflegt vom PM-Team, pm/D005). " +
-        "Ein Kandidat startet per Zuruf im Briefkasten — die Freigabe bleibt " +
+        "Ein Start läuft weiterhin per Zuruf im Briefkasten — die Freigabe bleibt " +
         "als G0-Entscheidung bei dir."),
       el("div", { "class": "zeile" },
         pille("Anzeigen: da", "done"),
-        pille("Anlegen/Starten per Knopf: noch nicht", "in_progress")));
-    var karten = [kopf];
+        pille("Anlegen: da", "done"),
+        pille("Starten per Knopf: noch nicht", "in_progress")));
+    var karten = [kopf, poolFormular()];
     (p.abschnitte || []).forEach(function (a) {
       var karte = el("div", { "class": "karte" }, el("h3", {}, a.titel || "Kandidaten"));
       a.tabellen.forEach(function (t) { karte.appendChild(tabelle(t)); });
