@@ -317,6 +317,22 @@ class TestHistorieUndEditorDaten(Basis):
         self.assertNotIn("done", e["vokabular"]["status_moeglich"])
         self.assertEqual(e["ref"], "p0/T-0100")
 
+    def test_editor_bietet_den_eigenen_uhrzeit_takt_an(self):
+        """SWR-104/B059: Das Formular baut aus `vokabular.takte` ein `<select>`. Ein
+        Uhrzeit-Takt steht nicht im festen Vokabular — ohne den eigenen Wert in der
+        Liste fiele der Browser auf „einmalig" zurück, und das Speichern eines
+        BELIEBIGEN anderen Feldes hätte den Takt stillschweigend gelöscht (B051/B038).
+        Neue Uhrzeit-Takte bietet das HMI bewusst nicht an; es erhält sie nur."""
+        board.aktualisiere(self.repo, "T-0100", {"takt": "taeglich@14:00"},
+                           erwarteter_fingerprint=self.fp())
+        e = tickets.editor_daten(self.wurzel, "p0", "T-0100")
+        self.assertEqual(e["felder"]["takt"], "taeglich@14:00")
+        self.assertIn("taeglich@14:00", e["vokabular"]["takte"])
+        self.assertEqual(e["vokabular"]["takte"]["taeglich@14:00"], "täglich 14:00")
+        # ein Bestandsticket ohne Uhrzeit-Takt bekommt kein zusätzliches Angebot
+        f = tickets.editor_daten(self.wurzel, "p0", "T-0101")
+        self.assertEqual(set(f["vokabular"]["takte"]), set(board.TAKTE))
+
     def test_editor_daten_erklaeren_archiv(self):
         e = tickets.editor_daten(self.wurzel, "p0", "T-0101")
         self.assertFalse(e["bearbeitbar"])

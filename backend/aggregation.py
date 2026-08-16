@@ -380,7 +380,14 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
     ueberfaellig = [{"id": t.get("id"), "ref": ref(projekt, t.get("id")),
                      "titel": t.get("titel", ""), "frist": t.get("frist", ""),
                      "typ": t.get("typ", ""), "prio": t.get("prio", ""),
-                     "tage": (heute - _datum.fromisoformat(t["frist"])).days}
+                     # SWR-104/B059: Der Filter daneben (`ist_ueberfaellig`) liest die Frist
+                     # seit SWR-104 über `board.als_moment` und akzeptiert damit auch eine
+                     # Uhrzeit. Diese Zeile parste weiter nur ein reines Datum — ein Ticket
+                     # mit `frist: 2026-08-15 14:00` kam durch den Filter und ließ die
+                     # Wertberechnung mit ValueError platzen, und zwar erst NACH Ablauf des
+                     # Termins und für das GESAMTE Cockpit (`cockpit_alle`). Eine geteilte
+                     # Regel zu erweitern heißt, ihre Nachbarn mitzuziehen.
+                     "tage": (heute - board.als_moment(t["frist"]).date()).days}
                     for t in offene if board.ist_ueberfaellig(t, heute)]
     # SWR-104 (pm/T-0032): Takt-Tickets mit Uhrzeit tragen keine `frist` und sind damit für
     # `ueberfaellig` unsichtbar — ihr Termin wird abgeleitet, nicht eingetragen. Sie stehen

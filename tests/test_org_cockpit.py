@@ -257,6 +257,20 @@ class TaktFaelligTest(RepoWelt):
         self.assertEqual(mittags["takt_faellig"], [])
         self.assertEqual([u["id"] for u in abends["takt_faellig"]], ["T-0001"])
 
+    def test_frist_mit_uhrzeit_laesst_die_kachel_nicht_platzen(self):
+        """SWR-104/B059: Regression. `ist_ueberfaellig` akzeptiert seit SWR-104 auch
+        eine Frist MIT Uhrzeit — die Tage-über-Rechnung daneben parste weiter nur ein
+        reines Datum und riss mit `ValueError` das **gesamte** Cockpit mit
+        (`cockpit_alle` läuft über alle Projekte), und zwar erst NACH Ablauf des
+        Termins. Vor SWR-104 fiel derselbe Wert harmlos auf „grau"."""
+        basis = self._repo("pm-frist-uhrzeit", team_typ="pm")
+        os.remove(os.path.join(basis, "tickets", "T-0001.md"))
+        self._ticket(basis, "T-0001", typ="change-request", frist="2026-08-15 14:00")
+        c = aggregation.cockpit(self.root, "pm-frist-uhrzeit",
+                                heute=__import__("datetime").date(2026, 8, 16))
+        self.assertEqual([u["id"] for u in c["ueberfaellig"]], ["T-0001"])
+        self.assertEqual(c["ueberfaellig"][0]["tage"], 1)
+
     def test_ohne_nachweis_gilt_der_takt_als_faellig(self):
         """SWR-104: Fehlt `zuletzt_erledigt`, gilt das Ticket als nie erledigt —
         nie als frisch. Dieselbe Vorsichtsregel wie `session.stille`."""

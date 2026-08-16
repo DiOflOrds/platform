@@ -49,6 +49,27 @@ def _historie(body):
     return [z.strip() for z in str(body or "").splitlines() if z.strip().startswith(marke)]
 
 
+def _takt_vokabular(eigener):
+    """SWR-104/B059: Auswahlliste für das Takt-Feld — inklusive des Werts, den DIESES
+    Ticket schon trägt.
+
+    Das Formular baut aus dieser Liste ein `<select>`. Ein Uhrzeit-Takt
+    (`taeglich@14:00`) steht nicht im festen Vokabular; ohne diesen Zusatz fände der
+    Browser keine passende Option, fiele auf den ersten Eintrag („einmalig") zurück und
+    das **Speichern eines beliebigen anderen Feldes** hätte den Takt stillschweigend
+    gelöscht. Ein zweiter Schreibpfad, der Daten wegwirft, die der erste erlaubt, ist
+    genau die Falle aus B051 — und still tut er es obendrein (B038).
+
+    Bewusst nicht enthalten: ein Uhrzeit-Wähler. Neue Uhrzeit-Takte werden über die
+    Skript-/Session-Route gesetzt; das HMI **erhält** sie, es erzeugt sie nicht.
+    """
+    vokabular = dict(board.TAKTE)
+    wert = str(eigener or "").strip()
+    if wert and wert not in vokabular and board.parse_takt(wert):
+        vokabular[wert] = board.takt_klartext(wert)
+    return vokabular
+
+
 def editor_daten(root, projekt, ticket_id):
     """SWR-077/080/081: Formularzustand eines Tickets — Werte, Fingerabdruck,
     Vokabulare und die Auskunft, ob (und warum nicht) es bearbeitbar ist.
@@ -75,7 +96,7 @@ def editor_daten(root, projekt, ticket_id):
         "historie": _historie(t.get("_body", "")),
         "vokabular": {
             "typen": list(board.TYPEN), "prios": list(board.PRIOS),
-            "takte": board.TAKTE, "status": list(board.STATUS),
+            "takte": _takt_vokabular(t.get("takt")), "status": list(board.STATUS),
             "status_moeglich": [status] + list(board.UEBERGAENGE.get(status, [])),
             "editierbar": list(board.EDITIERBARE_FELDER),
             "label_max": board.LABEL_MAX,
