@@ -7,12 +7,20 @@ Schreiben ändert ausschließlich die drei freigegebenen Eckparameter
 (zeitraum_tage 1/7/30, abschnitt_rechnungen, zustellung_mail) in
 konfiguration.yaml mit sofortigem Commit (Identität "Mensch via HMI") —
 Konten sind Klasse A und werden hier nie verändert (SWR-056).
+
+P8-E4 (CRs pm/T-0006/T-0007): zusätzlich wählbar sind das Ollama-Modell
+(SWR-071, Liste live vom LOKALEN Ollama) und ein freier KI-Hinweis für den
+Prompt (SWR-072).
 """
+import json
 import os
 import re
 import subprocess
+import urllib.request
 
 GUELTIGE_ZEITRAEUME = (1, 7, 30)
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+HINWEIS_MAX = 200  # SWR-072: Freitext bleibt einzeilig und kurz
 _COMMIT_IDENT = ["-c", "user.name=Mensch via HMI", "-c", "user.email=mensch@hmi.local"]
 _DIGEST_NAME = re.compile(r"^[\w][\w.-]*\.md$")
 
@@ -63,7 +71,8 @@ def lade_steckbrief(root, projekt):
 def lade_konfiguration(root, projekt):
     """konfiguration.yaml → Eckparameter (Konten nur Namen, nie Zugangsdaten)."""
     cfg = {"zeitraum_tage": 1, "takte": [], "konten": [], "abschnitt_rechnungen": True,
-           "zustellung_mail": False, "vorhanden": False}
+           "zustellung_mail": False, "ollama_modell": "", "ki_hinweis": "",
+           "vorhanden": False}
     pfad = _pfad(root, projekt, "konfiguration.yaml")
     if not os.path.isfile(pfad):
         return cfg
@@ -83,6 +92,8 @@ def lade_konfiguration(root, projekt):
             elif k == "takte":  # SWR-064 (P8): Mehrfachauswahl
                 cfg["takte"] = sorted({int(t) for t in v.strip("[]").split(",")
                                        if t.strip().isdigit()} & set(GUELTIGE_ZEITRAEUME))
+            elif k in ("ollama_modell", "ki_hinweis"):  # SWR-071/072 (P8-E4)
+                cfg[k] = v.strip().strip('"')
             elif k in ("abschnitt_rechnungen", "zustellung_mail"):
                 cfg[k] = v.lower() in ("ja", "true", "yes")
     if not cfg["takte"]:  # rückwärtskompatibel
@@ -131,6 +142,59 @@ def _bool_text(wert):
     return "ja" if wert else "nein"
 
 
+def _ollama_tags(timeout=5):
+    """Installierte Modelle vom LOKALEN Ollama (localhost, nie Cloud — F17/SWR-062)."""
+    with urllib.request.urlopen(OLLAMA_URL + "/api/tags", timeout=timeout) as antwort:
+        daten = json.loads(antwort.read().decode("utf-8"))
+    return [m.get("name", "") for m in daten.get("models", []) if m.get("name")]
+
+
+def ollama_modelle(root, projekt, abruf=_ollama_tags):
+    """SWR-071: Auswahlliste für den Konfigurator + aktuell wirksames Modell.
+
+    `abruf` ist injizierbar (Tests). Ist Ollama nicht erreichbar, bleibt die
+    Antwort gültig — mit leerer Liste und deutschem Grund, damit das Formular
+    weiter bedienbar ist und den konfigurierten Wert behält.
+    """
+    if not ist_team(root, projekt):
+        raise TeamFehler(404, f"'{projekt}' ist kein Team-Projekt (keine team.yaml).")
+    konfiguriert = lade_konfiguration(root, projekt)["ollama_modell"]
+    try:
+        modelle = list(abruf())
+        hinweis = "" if modelle else "Ollama antwortet, hat aber kein Modell installiert."
+    except Exception as e:  # noqa: BLE001 — Ausfall ist ein Normalfall, kein Serverfehler
+        modelle, hinweis = [], ("Ollama auf diesem Rechner nicht erreichbar (" + str(e)[:80]
+                                + ") — gespeicherte Auswahl bleibt unverändert.")
+    aktiv = konfiguriert or (modelle[0] if modelle else "")
+    return {"projekt": projekt, "modelle": modelle, "konfiguriert": konfiguriert,
+            "aktiv": aktiv, "automatisch": not konfiguriert, "hinweis": hinweis}
+
+
+def _pruefe_hinweis(wert):
+    """SWR-072: einzeilig, kurz, ohne '#' (Kommentarzeichen der Konfigurationsdatei)."""
+    text = (wert or "").strip()
+    if not text:
+        return ""
+    if len(text) > HINWEIS_MAX:
+        raise TeamFehler(400, f"KI-Hinweis ist zu lang (max. {HINWEIS_MAX} Zeichen).")
+    if any(z in text for z in ("\n", "\r")):
+        raise TeamFehler(400, "KI-Hinweis muss einzeilig sein (keine Zeilenumbrüche).")
+    if "#" in text or '"' in text:
+        raise TeamFehler(400, "KI-Hinweis darf kein # und keine Anführungszeichen enthalten.")
+    return text
+
+
+def _pruefe_modell(wert):
+    """SWR-071: leer = automatisch; sonst schlichter Modellname ohne Sonderzeichen."""
+    text = (wert or "").strip().strip('"')
+    if not text:
+        return ""
+    if len(text) > 100 or not re.fullmatch(r"[\w./:+-]+", text):
+        raise TeamFehler(400, "Ungültiger Modellname — erlaubt sind Buchstaben, Ziffern "
+                              "und . / : + - _ (leer = automatisch).")
+    return text
+
+
 def konfiguration_schreiben(root, projekt, werte):
     """SWR-056: validieren, konfiguration.yaml neu schreiben (Konten unverändert
     übernehmen), sofort committen. Gibt die neue Konfiguration zurück."""
@@ -152,6 +216,11 @@ def konfiguration_schreiben(root, projekt, werte):
                               "(Playbook Kap. 16) — bitte per Brief/Session beantragen.")
     rechnungen = bool(werte.get("abschnitt_rechnungen", alt["abschnitt_rechnungen"]))
     zustellung = bool(werte.get("zustellung_mail", alt["zustellung_mail"]))
+    # SWR-071/072 (P8-E4): nicht mitgeschickte Felder bleiben unverändert
+    modell = _pruefe_modell(werte["ollama_modell"] if "ollama_modell" in werte
+                            else alt["ollama_modell"])
+    hinweis = _pruefe_hinweis(werte["ki_hinweis"] if "ki_hinweis" in werte
+                              else alt["ki_hinweis"])
 
     zeilen = [
         "# Konfiguration " + projekt + " (Eckparameter des Teams — P5-Prinzip: Teams sind konfigurierbar)",
@@ -169,6 +238,11 @@ def konfiguration_schreiben(root, projekt, werte):
         f"abschnitt_rechnungen: {_bool_text(rechnungen)}    # eigener Digest-Abschnitt Rechnungen/Zahlungen",
         f"zustellung_mail: {_bool_text(zustellung)}         # ja = Digest zusaetzlich per Mail (SWR-058)",
         "",
+        "# leer = erstes installiertes Ollama-Modell (SWR-071)",
+        f"ollama_modell: {modell}",
+        "# freier Zusatz-Auftrag an die KI, z. B. 'achte auf Bewerbungen' (SWR-072)",
+        f"ki_hinweis: {hinweis}",
+        "",
     ]
     pfad = _pfad(root, projekt, "konfiguration.yaml")
     with open(pfad, "w", encoding="utf-8") as f:
@@ -178,7 +252,8 @@ def konfiguration_schreiben(root, projekt, werte):
                    capture_output=True, text=True)
     lauf = subprocess.run(["git", "-C", repo] + _COMMIT_IDENT +
                           ["commit", "-m", f"Konfiguration via HMI: takte={takte}, "
-                           f"rechnungen={_bool_text(rechnungen)}, mail={_bool_text(zustellung)}"],
+                           f"rechnungen={_bool_text(rechnungen)}, mail={_bool_text(zustellung)}, "
+                           f"modell={modell or 'automatisch'}, hinweis={'ja' if hinweis else 'nein'}"],
                           capture_output=True, text=True)
     if lauf.returncode != 0 and "nothing to commit" not in (lauf.stdout + lauf.stderr):
         raise TeamFehler(500, "Konfiguration geschrieben, aber Commit fehlgeschlagen: "

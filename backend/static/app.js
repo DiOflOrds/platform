@@ -652,6 +652,31 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
       rechnungenBox.checked = !!k.abschnitt_rechnungen;
       var mailBox = el("input", { type: "checkbox", style: "width:auto;margin:0" });
       mailBox.checked = !!k.zustellung_mail;
+      // SWR-071 (P8-E4): Modellwahl — Liste live vom lokalen Ollama, "automatisch" bleibt möglich
+      var modellWahl = el("select", { style: "width:auto" });
+      var modellHinweis = el("span", { "class": "leer" }, "");
+      function modellOptionen(namen, gewaehlt) {
+        leeren(modellWahl);
+        modellWahl.appendChild(el("option", { value: "" }, "automatisch (erstes installiertes)"));
+        var kennt = false;
+        (namen || []).forEach(function (n) {
+          if (n === gewaehlt) kennt = true;
+          modellWahl.appendChild(el("option", { value: n }, n));
+        });
+        if (gewaehlt && !kennt) modellWahl.appendChild(el("option", { value: gewaehlt }, gewaehlt + " (konfiguriert, nicht installiert)"));
+        modellWahl.value = gewaehlt || "";
+      }
+      modellOptionen([], k.ollama_modell || "");
+      api("/api/team/ollama-modelle?projekt=" + encodeURIComponent(projekt)).then(function (m) {
+        modellOptionen(m.modelle, k.ollama_modell || "");
+        modellHinweis.textContent = m.hinweis || ("aktiv: " + (m.aktiv || "—") + (m.automatisch ? " (automatisch)" : ""));
+      }).catch(function (f) {
+        modellHinweis.textContent = "Modellliste nicht abrufbar: " + String(f.message || f);
+      });
+      // SWR-072 (P8-E4): freier Zusatz-Auftrag an die KI
+      var hinweisFeld = el("input", { type: "text", maxlength: "200",
+        placeholder: "z. B. achte auf Bewerbungen — eigene Kategorie anlegen" });
+      hinweisFeld.value = k.ki_hinweis || "";
       var meldung = el("div", {});
       var speichern = el("button", { "class": "knopf", onclick: function () {
         speichern.disabled = true;
@@ -662,7 +687,9 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ projekt: projekt, takte: takte,
             abschnitt_rechnungen: rechnungenBox.checked,
-            zustellung_mail: mailBox.checked })
+            zustellung_mail: mailBox.checked,
+            ollama_modell: modellWahl.value,   // SWR-071
+            ki_hinweis: hinweisFeld.value })   // SWR-072
         }).then(function () {
           speichern.disabled = false;
           meldung.appendChild(el("div", { "class": "meldung ok" },
@@ -675,6 +702,8 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
       konfigKarte.appendChild(taktZeile);
       konfigKarte.appendChild(el("label", { "class": "zeile" }, rechnungenBox, " Rechnungs-Abschnitt im Digest"));
       konfigKarte.appendChild(el("label", { "class": "zeile" }, mailBox, " Digest zusätzlich per Mail (SWR-058)"));
+      konfigKarte.appendChild(el("div", { "class": "zeile" }, "KI-Modell: ", modellWahl, " ", modellHinweis));
+      konfigKarte.appendChild(el("div", { "class": "zeile" }, "KI-Hinweis: ", hinweisFeld));
       var konten = el("div", { "class": "zeile" }, "Konten (Klasse A — Änderung per Brief/Session): ");
       (k.konten || []).forEach(function (konto) { konten.appendChild(pille(konto.name, "open")); });
       konfigKarte.appendChild(konten);

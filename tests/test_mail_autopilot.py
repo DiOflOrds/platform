@@ -64,6 +64,26 @@ class MailAutopilotTest(unittest.TestCase):
         self.assertIsNone(self.md.verdichte(mails, cfg, "tag", ollama=kaputt))
         self.assertIsNone(self.md.verdichte(mails, cfg, "tag", ollama=lambda m, p: "kein markdown"))
 
+    def test_ki_hinweis_im_prompt(self):
+        """SWR-072: konfigurierter Hinweis landet als Zusatz-Auftrag im Prompt; leer = wie bisher.
+        SWR-071: ollama_modell wird aus der Konfiguration gelesen."""
+        self._konfig("takte: [1]\nollama_modell: llama3.1:8b\n"
+                     "ki_hinweis: achte auf Bewerbungen\n")
+        cfg = self.md.lade_konfiguration(self.basis)
+        self.assertEqual(cfg["ollama_modell"], "llama3.1:8b")
+        self.assertEqual(cfg["ki_hinweis"], "achte auf Bewerbungen")
+        mails = [{"von": "a", "betreff": "b", "zeit": "z", "link": ""}]
+        gesehen = []
+        self.md.verdichte(mails, cfg, "tag",
+                          ollama=lambda m, p: gesehen.append((m, p)) or "## Auf einen Blick\nOK")
+        modell, prompt = gesehen[0]
+        self.assertEqual(modell, "llama3.1:8b")
+        self.assertIn("achte auf Bewerbungen", prompt)
+        self.assertIn("ZUSATZ-AUFTRAG", prompt)
+        self.assertIn("## Auf einen Blick", prompt)  # feste Struktur bleibt erhalten
+        ohne = self.md._prompt(mails, "tag", True, "")
+        self.assertNotIn("ZUSATZ-AUFTRAG", ohne)
+
     def test_lauf_takt_schreibt_und_stellt_zu(self):
         """SWR-062/065: Lauf schreibt Digest-Datei mit Takt-Namen und stellt genau einmal zu."""
         heute = datetime.date(2026, 8, 16)

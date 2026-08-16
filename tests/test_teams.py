@@ -103,6 +103,59 @@ class TeamsTest(unittest.TestCase):
         self.assertEqual(k.exception.code, 400)
         self.assertIn("Klasse A", str(k.exception))
 
+    def test_modellwahl_und_ki_hinweis_rundlauf(self):
+        """SWR-071/072: Modell + Hinweis werden geschrieben, wieder gelesen und bleiben
+        bei Teil-Änderungen erhalten; leer = automatisch (Altverhalten)."""
+        alt = teams.lade_konfiguration(self.root, "team-x")
+        self.assertEqual((alt["ollama_modell"], alt["ki_hinweis"]), ("", ""))
+        erg = teams.konfiguration_schreiben(self.root, "team-x", {
+            "takte": [1], "ollama_modell": "llama3.1:8b",
+            "ki_hinweis": "achte auf Bewerbungen"})
+        neu = erg["konfiguration"]
+        self.assertEqual(neu["ollama_modell"], "llama3.1:8b")
+        self.assertEqual(neu["ki_hinweis"], "achte auf Bewerbungen")
+        # Feld nicht mitgeschickt → unverändert (Konfigurator sendet nur, was er kennt)
+        wieder = teams.konfiguration_schreiben(self.root, "team-x", {"takte": [7]})["konfiguration"]
+        self.assertEqual(wieder["ollama_modell"], "llama3.1:8b")
+        self.assertEqual(wieder["ki_hinweis"], "achte auf Bewerbungen")
+        self.assertEqual(wieder["takte"], [7])
+        # zurück auf automatisch
+        leer = teams.konfiguration_schreiben(self.root, "team-x", {
+            "takte": [1], "ollama_modell": "", "ki_hinweis": ""})["konfiguration"]
+        self.assertEqual((leer["ollama_modell"], leer["ki_hinweis"]), ("", ""))
+
+    def test_modellwahl_und_hinweis_validierung(self):
+        """SWR-071/072: unsinniger Modellname, zu langer/mehrzeiliger Hinweis → 400."""
+        for kaputt in ({"ollama_modell": "böse; rm -rf"}, {"ollama_modell": "x" * 101},
+                       {"ki_hinweis": "a" * 201}, {"ki_hinweis": "zwei\nzeilen"},
+                       {"ki_hinweis": "kommentar # kaputt"}):
+            werte = dict({"takte": [1]}, **kaputt)
+            with self.assertRaises(teams.TeamFehler) as k:
+                teams.konfiguration_schreiben(self.root, "team-x", werte)
+            self.assertEqual(k.exception.code, 400)
+
+    def test_ollama_modelle_liste(self):
+        """SWR-071: Liste per injiziertem Abruf; Ollama nicht erreichbar → gültige Antwort
+        mit leerer Liste, deutschem Hinweis und unverändertem konfiguriertem Wert."""
+        erg = teams.ollama_modelle(self.root, "team-x", abruf=lambda: ["a:7b", "b:3b"])
+        self.assertEqual(erg["modelle"], ["a:7b", "b:3b"])
+        self.assertEqual(erg["aktiv"], "a:7b")  # ohne Konfiguration: erstes installiertes
+        self.assertTrue(erg["automatisch"])
+        teams.konfiguration_schreiben(self.root, "team-x",
+                                      {"takte": [1], "ollama_modell": "b:3b"})
+
+        def _tot():
+            raise OSError("Verbindung abgelehnt")
+
+        aus = teams.ollama_modelle(self.root, "team-x", abruf=_tot)
+        self.assertEqual(aus["modelle"], [])
+        self.assertEqual(aus["konfiguriert"], "b:3b")
+        self.assertEqual(aus["aktiv"], "b:3b")
+        self.assertIn("nicht erreichbar", aus["hinweis"])
+        with self.assertRaises(teams.TeamFehler) as k:
+            teams.ollama_modelle(self.root, "kein-team", abruf=lambda: [])
+        self.assertEqual(k.exception.code, 404)
+
     def test_digest_jetzt(self):
         """SWR-063: Sofort-Lauf über injizierten Runner; ohne Werkzeug → 404; Fehler → 502."""
         with self.assertRaises(teams.TeamFehler) as k:
