@@ -4,9 +4,14 @@
 # Erwartungswert: 0 manuelle Matrix-Läufe nötig; kein roter Stand erreicht main unbemerkt.
 #
 # VORAUSSETZUNG (Mensch): Fine-grained PAT mit "Contents: Read" für DiOflOrds/p0,
-# p1, p2, p3, p4, p5, pm, p7, p8, p9, process UND produkt-datakonv (bestehende PAT unter
-# github.com/settings/personal-access-tokens editieren, Repos zur Auswahl hinzufügen)
-# als Secret P0_READ_TOKEN in DiOflOrds/platform. Ohne Secret klare Fehlermeldung.
+# p1, p2, p3, p4, p5, pm, p7, p8, p9, process, produkt-datakonv UND projects
+# (bestehende PAT unter github.com/settings/personal-access-tokens editieren, Repos zur
+# Auswahl hinzufügen) als Secret P0_READ_TOKEN in DiOflOrds/platform. Ohne Secret klare
+# Fehlermeldung.
+# ACHTUNG (pm/T-0026): `projects` ist seit dem Monorepo-Beschluss pm/D003 Pflicht — dort
+# liegen Projekte als Ordner (P10 ff.) samt ihrer Anforderungen. Fehlt das Repo im PAT,
+# scheitert der Checkout; fehlt der Checkout, scheitert das Matrix-Gate mit Lücken, die
+# es lokal nicht gibt. Wer ein neues Sammel-Repo einführt, ergänzt diesen Workflow.
 name: CI
 on:
   push:
@@ -82,6 +87,15 @@ jobs:
           repository: DiOflOrds/process
           token: ${{ secrets.P0_READ_TOKEN }}
           path: process
+      # pm/T-0026: Sammel-Repo `projects` (Monorepo-Beschluss pm/D003). Projekte liegen
+      # seit P10 als ORDNER darin; trace_matrix.py findet sie (SWR-070, p9/T-0007), dieser
+      # Workflow tat es nicht — ohne den Checkout sieht das Matrix-Gate 82 statt 87 SWRs
+      # und bricht mit 5 Luecken ab, obwohl lokal alles gruen ist.
+      - uses: actions/checkout@v5
+        with:
+          repository: DiOflOrds/projects
+          token: ${{ secrets.P0_READ_TOKEN }}
+          path: projects
       - uses: actions/checkout@v5
         with:
           repository: DiOflOrds/produkt-datakonv
