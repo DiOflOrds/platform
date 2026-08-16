@@ -191,6 +191,8 @@ class Api(BaseHTTPRequestHandler):
                 return self._json(200, aggregation.lade_kpi(wurzel, projekt))
             if pfad == "/api/requirements":  # SWR-030
                 return self._json(200, aggregation.lade_requirements(wurzel, projekt))
+            if pfad == "/api/pool":  # SWR-086 (pm/N-0020): Projekt-Pool read-only
+                return self._json(200, aggregation.lade_pool(wurzel))
             if pfad == "/api/verifikation":  # SWR-031
                 return self._json(200, aggregation.lade_verifikation(wurzel, projekt))
             if pfad == "/api/baselines":  # SWR-032

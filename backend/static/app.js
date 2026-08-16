@@ -5,7 +5,8 @@
 // Jira-Board mit Filtern (SWR-041), Inbox-Buttons + Historie (SWR-042), Versions-Banner (SWR-047).
 "use strict";
 // P7 (SWR-054): Tab "Team" — Digest-Verlauf, Steckbrief, Konfigurator.
-var TABS = [["uebersicht", "Cockpit"], ["board", "Board"], ["inbox", "Inbox"],
+// SWR-086 (pm/N-0020): "Projekt-Pool" als eigener Backlog-Reiter neben dem Cockpit.
+var TABS = [["uebersicht", "Cockpit"], ["pool", "Projekt-Pool"], ["board", "Board"], ["inbox", "Inbox"],
             ["chat", "Team-Chat"], ["team", "Team"], ["requirements", "Requirements"],
             ["trace", "Traceability"], ["architektur", "Architektur"], ["baselines", "Baselines"],
             ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
@@ -207,7 +208,7 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
         p.aufgaben.forEach(function (a) {
           az.appendChild(el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + a.id,
                                    title: a.titel + (a.takt ? " (wiederkehrend: " +
-                                     TAKT_TEXT(a.takt) + ")" : "") }, a.id));
+                                     TAKT_TEXT(a.takt) + ")" : "") }, a.ref || a.id));  // SWR-087
           // SWR-074 (pm/N-0017): dieselbe Klartext-Pille wie im Board statt eines Symbols —
           // ein "↻" war zwar da, hat aber niemandem gesagt, was es bedeutet.
           if (a.takt) {
@@ -228,7 +229,8 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
         p.offene_drs.forEach(function (dr) {
           karte.appendChild(el("div", { "class": "zeile" },
             pille(dr.ampel === "grau" ? "ohne Frist" : "Frist " + dr.frist, AMPEL_KLASSE[dr.ampel]),
-            el("a", { "class": "tlink", href: "#/inbox/" + p.projekt }, dr.id), " " + dr.titel));
+            el("a", { "class": "tlink", href: "#/inbox/" + p.projekt }, dr.ref || dr.id),  // SWR-087
+            " " + dr.titel));
         });
       }
       if (p.briefe_offen) {  // SWR-051: unbeantwortete Briefe sichtbar
@@ -340,7 +342,8 @@ function ladeBoard() {  // SWR-041: Jira-like — Statusspalten, Filter, Karte -
         spalte.appendChild(el("div", { "class": "karte klick", onclick: function () {
           gehe("ticket", projekt, t.id);
         } },
-          el("div", { "class": "zeile" }, pille(t.id, t._status), String(t.titel).slice(0, 90)),
+          // SWR-087 (platform/N-0003): eindeutige Kennung <projekt>/T-xxxx statt bloßer Nummer
+          el("div", { "class": "zeile" }, pille(t.ref || t.id, t._status), String(t.titel).slice(0, 90)),
           // SWR-074 (pm/N-0012): Takt-Aufgaben sind absichtlich dauerhaft offen
           el("div", { "class": "zeile" }, pille(t.rolle + " · S" + t.sprint + " · " + t.prio),
              t.takt ? pille("wiederkehrend: " + TAKT_TEXT(t.takt), "in_progress") : "")));
@@ -355,7 +358,8 @@ function ladeTicket() {  // SWR-040: Detailansicht
   return api("/api/ticket?projekt=" + encodeURIComponent(projekt) +
              "&id=" + encodeURIComponent(detailId)).then(function (t) {
     var kopf = el("div", { "class": "karte" },
-      el("h3", {}, t.id + " — " + (t.titel || "")),
+      // SWR-087 (platform/N-0003): Ticketnummern sind nur je Repo eindeutig
+      el("h3", {}, (t.ref || t.id) + " — " + (t.titel || "")),
       el("div", { "class": "zeile" }, pille(t.status, t.status), pille(t.typ || "task"),
         pille(t.prozess || "-"), pille("Rolle " + (t.rolle || "-")),
         pille("Sprint " + (t.sprint || "-")), pille(t.prio || "-")));
@@ -388,7 +392,7 @@ function drKarte(dr, entscheider) {  // SWR-042: Buttons statt Freitext, wo Opti
   });
   var meldung = el("div", {});
   var karte = el("div", { "class": "karte" },
-    el("h3", {}, "[" + dr.projekt + "] " + dr.id + " — " + dr.titel),
+    el("h3", {}, (dr.ref || dr.projekt + "/" + dr.id) + " — " + dr.titel),  // SWR-087
     el("div", { "class": "zeile" }, pille(dr.status, dr.status),
       pille(dr.prio + " · Sprint " + dr.sprint),
       dr.frist ? pille("Frist " + dr.frist + (dr.default ? " · Default " + dr.default : ""), "in_review") : el("span", {})),
@@ -446,7 +450,7 @@ function ladeInbox() {
         historie.forEach(function (e) {
           var z = el("div", { "class": "zeile" },
             el("a", { "class": "tlink", href: "#/ticket/" + e.projekt + "/" + e.id },
-              "[" + e.projekt + "] " + e.id), " ", pille(e.status, e.status), " ");
+              e.ref || (e.projekt + "/" + e.id)), " ", pille(e.status, e.status), " ");  // SWR-087
           tlinks(e.entscheidung, e.projekt).forEach(function (k) { z.appendChild(k); });
           h.appendChild(z);
         });
@@ -587,9 +591,93 @@ function dateiKarten(antwort, leerText) {
   }) : [el("p", { "class": "leer" }, leerText)];
 }
 
-function ladeRequirements() {  // SWR-030 + SWR-043 (Tabellen)
-  return api("/api/requirements?projekt=" + encodeURIComponent(projekt)).then(function (a) {
-    zeige(dateiKarten(a, "Keine Requirements-Dokumente in diesem Projekt."));
+// SWR-085 (pm/N-0019): Requirements standardmäßig über ALLE Projekte/Teams, mit
+// Filter nach Projekt und Gruppe. Vorher zeigte die Ansicht nur das oben gewählte
+// Projekt — wer nicht wusste, in welchem Repo eine Anforderung liegt, fand sie nicht.
+var reqFilter = { projekt: "", gruppe: "", wort: "" };
+
+function ladeRequirements() {  // SWR-030 + SWR-043 (Tabellen) + SWR-085 (Filter)
+  return api("/api/requirements?projekt=alle").then(function (a) {
+    var dateien = a.dateien || [];
+    var projekte = [], gruppen = [];
+    dateien.forEach(function (d) {
+      if (d.projekt && projekte.indexOf(d.projekt) < 0) projekte.push(d.projekt);
+      if (d.gruppe && gruppen.indexOf(d.gruppe) < 0) gruppen.push(d.gruppe);
+    });
+    var zeile = el("div", { "class": "karte filterzeile" });
+    var wortFeld = el("input", { type: "text", placeholder: "Volltext (z. B. SWR-085, Label, Digest)" });
+    wortFeld.value = reqFilter.wort;
+
+    function auswahl(schluessel, werte, beschriftung) {
+      var s = el("select", {});
+      s.appendChild(el("option", { value: "" }, beschriftung + ": alle"));
+      werte.sort().forEach(function (w) {
+        var o = el("option", { value: w }, w);
+        if (reqFilter[schluessel] === w) o.selected = true;
+        s.appendChild(o);
+      });
+      s.addEventListener("change", function () { reqFilter[schluessel] = s.value; baue(); });
+      return s;
+    }
+    zeile.appendChild(auswahl("projekt", projekte, "Projekt/Team"));
+    zeile.appendChild(auswahl("gruppe", gruppen, "Gruppe"));
+    wortFeld.addEventListener("input", function () { reqFilter.wort = wortFeld.value; baue(); });
+    zeile.appendChild(wortFeld);
+    var zaehler = el("div", { "class": "zeile leer" });
+    zeile.appendChild(zaehler);
+
+    function baue() {
+      var wort = reqFilter.wort.toLowerCase();
+      var treffer = dateien.filter(function (d) {
+        return (!reqFilter.projekt || d.projekt === reqFilter.projekt) &&
+               (!reqFilter.gruppe || d.gruppe === reqFilter.gruppe) &&
+               (!wort || (d.datei + " " + d.text).toLowerCase().indexOf(wort) >= 0);
+      });
+      zaehler.textContent = treffer.length + " von " + dateien.length +
+        " Dokument(en) aus " + projekte.length + " Projekten/Teams";
+      var karten = treffer.map(function (d) {
+        var karte = el("div", { "class": "karte" },
+          el("h3", {}, (d.projekt ? d.projekt + " · " : "") + d.datei),
+          el("div", { "class": "zeile" }, pille(d.projekt || "?"), pille(d.gruppe || "—")));
+        if (d.tabellen && d.tabellen.length) {
+          d.tabellen.forEach(function (t) { karte.appendChild(tabelle(t)); });
+        } else {
+          karte.appendChild(preMitLinks(d.text, d.projekt || projekt));
+        }
+        return karte;
+      });
+      if (!karten.length) {
+        karten = [el("p", { "class": "leer" }, "Kein Requirements-Dokument passt zum Filter.")];
+      }
+      zeige([zeile].concat(karten));
+    }
+    baue();
+  });
+}
+
+function ladePool() {  // SWR-086 (pm/N-0020): Projekt-Pool als Backlog-Bereich
+  return api("/api/pool").then(function (p) {
+    if (!p.vorhanden) {
+      zeige([el("div", { "class": "karte" }, el("h3", {}, "Projekt-Pool"),
+        el("p", { "class": "leer" }, "Keine Pool-Datei gefunden (" + p.quelle + ")."))]);
+      return;
+    }
+    var kopf = el("div", { "class": "karte" },
+      el("h3", {}, "Projekt-Pool — Kandidaten für neue Projekte und Teams"),
+      el("div", { "class": "zeile leer" },
+        "Quelle: " + p.quelle + " (gepflegt vom PM-Team, pm/D005). " +
+        "Ein Kandidat startet per Zuruf im Briefkasten — die Freigabe bleibt " +
+        "als G0-Entscheidung bei dir."),
+      el("div", { "class": "zeile" },
+        pille("Anzeigen: da", "done"),
+        pille("Anlegen/Starten per Knopf: noch nicht", "in_progress")));
+    var karten = [kopf];
+    (p.abschnitte || []).forEach(function (a) {
+      var karte = el("div", { "class": "karte" }, el("h3", {}, a.titel || "Kandidaten"));
+      a.tabellen.forEach(function (t) { karte.appendChild(tabelle(t)); });
+      karten.push(karte);
+    });
+    zeige(karten);
   });
 }
 
@@ -848,6 +936,7 @@ function lade() {
   zeige([el("p", { "class": "leer" }, "Lade …")]);
   var ansichten = { uebersicht: ladeUebersicht, board: ladeBoard, inbox: ladeInbox,
                     chat: ladeChat, team: ladeTeam, ticket: ladeTicket,
+                    pool: ladePool,  // SWR-086 (pm/N-0020)
                     requirements: ladeRequirements, trace: ladeTrace,
                     architektur: ladeArchitektur, baselines: ladeBaselines,
                     reports: ladeReports, kpi: ladeKpi };

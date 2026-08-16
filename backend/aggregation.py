@@ -46,6 +46,22 @@ def projekt_pfad(root, projekt):
     return os.path.join(root, "projects", projekt)
 
 
+ALLE = "alle"  # SWR-085 (pm/N-0019): Sammelwert statt eines einzelnen Projektnamens
+
+
+def ref(projekt, ticket_id):
+    """SWR-087 (platform/N-0003): eindeutige Kennung einer Aufgabe über die ganze
+    Organisation hinweg.
+
+    Ticketnummern sind nur je Repo eindeutig — `T-0002` gibt es in `pm`, in `p2`
+    und in `p10`. Eindeutig ist erst das Paar aus Repo und Nummer. Diese Funktion
+    ist die EINE Stelle, die daraus eine Kennung macht; jede Ansicht ruft sie auf,
+    damit Board, Cockpit, Inbox und Ticket-Detail nicht auseinanderlaufen
+    (Lesson 2026-08-16, B025).
+    """
+    return f"{projekt}/{ticket_id}" if projekt and ticket_id else str(ticket_id or "")
+
+
 def steckbrief(pfad):
     """SWR-066 (P9): steckbrief.yaml (beschreibung, status) + typ aus team.yaml."""
     info = {"beschreibung": "", "status": "", "typ": ""}
@@ -162,6 +178,7 @@ def lade_board(root, projekt="p0"):
                     "takt",       # SWR-074: wiederkehrend vs. einmalig
                     "geändert")}  # SWR-075: Alter erledigter Aufgaben
         eintrag["veraltet"] = ist_altlast(t)  # SWR-075 (pm/N-0013)
+        eintrag["ref"] = ref(projekt, t.get("id"))  # SWR-087 (platform/N-0003)
         gruppen.setdefault(t.get("status", "unbekannt"), []).append(eintrag)
     return {"gruppen": gruppen, "anzahl": len(tickets), "validierungsprobleme": probleme}
 
@@ -174,6 +191,7 @@ def lade_ticket(root, projekt="p0", ticket_id=""):
             felder = {k: v for k, v in t.items() if not k.startswith("_")}
             felder["body"] = t.get("_body", "")
             felder["projekt"] = projekt
+            felder["ref"] = ref(projekt, t.get("id"))  # SWR-087 (platform/N-0003)
             return felder
     raise ValueError(f"unbekanntes Ticket: {ticket_id} in {projekt}")
 
@@ -221,9 +239,70 @@ def _md_dateien(basis):
     return {"dateien": dateien}
 
 
+def _requirements_eines(root, projekt):
+    """Requirements-Dateien EINES Projekts, je Datei mit Herkunft (SWR-085)."""
+    stufe = einstufung(root, projekt)
+    dateien = _md_dateien(os.path.join(projekt_pfad(root, projekt), "requirements"))["dateien"]
+    for d in dateien:
+        d["projekt"] = projekt
+        d["gruppe"] = stufe["gruppe"]
+    return dateien
+
+
 def lade_requirements(root, projekt="p0"):
-    """SWR-030/043: Requirements-Markdown read-only + geparste Tabellen."""
-    return _md_dateien(os.path.join(projekt_pfad(root, projekt), "requirements"))
+    """SWR-030/043: Requirements-Markdown read-only + geparste Tabellen.
+
+    SWR-085 (pm/N-0019): `projekt=alle` liefert die Requirements ALLER entdeckten
+    Projekte und Teams in einer Antwort — jede Datei trägt ihr Projekt und dessen
+    Cockpit-Gruppe, damit im HMI nach Projekt bzw. Team gefiltert werden kann.
+    Vorher zeigte die Ansicht ausschließlich das oben gewählte Projekt; wer nicht
+    wusste, in welchem Repo eine Anforderung liegt, fand sie nicht.
+    """
+    namen = projekte(root) if projekt == ALLE else [projekt]
+    dateien = []
+    for name in namen:
+        dateien.extend(_requirements_eines(root, name))
+    return {"dateien": dateien, "projekte": namen, "sammel": projekt == ALLE}
+
+
+POOL_DATEI = ("pm", "management", "projekt-pool.md")
+
+
+def pool_abschnitte(text):
+    """SWR-086: Markdown in `##`-Abschnitte zerlegen und je Abschnitt die Tabellen
+    mit dem VORHANDENEN Parser lesen — bewusst keine zweite Tabellenlogik
+    (Lesson 2026-08-16: jede Kopie derselben Logik ist ein künftiger Befund)."""
+    abschnitte, titel, puffer = [], "", []
+
+    def schliessen():
+        tabellen = parse_md_tabellen("\n".join(puffer))
+        if tabellen:
+            abschnitte.append({"titel": titel, "tabellen": tabellen})
+
+    for zeile in (text or "").splitlines():
+        if zeile.startswith("## "):
+            schliessen()
+            titel, puffer = zeile[3:].strip(), []
+        else:
+            puffer.append(zeile)
+    schliessen()
+    return abschnitte
+
+
+def lade_pool(root):
+    """SWR-086 (pm/N-0020): Projekt-Pool des PM-Teams read-only fürs HMI.
+
+    Der Pool (pm/D005) lag bisher nur als Datei im Repo — im HMI war er nirgends
+    zu sehen. Diese Ansicht zeigt die Kandidatenliste; Anlegen und Starten
+    brauchen den Schreibpfad aus P10 und sind ausdrücklich NICHT Teil davon.
+    """
+    pfad = os.path.join(root, *POOL_DATEI)
+    quelle = "/".join(POOL_DATEI)
+    if not os.path.isfile(pfad):
+        return {"vorhanden": False, "quelle": quelle, "text": "", "abschnitte": []}
+    text = open(pfad, encoding="utf-8").read()
+    return {"vorhanden": True, "quelle": quelle, "text": text,
+            "abschnitte": pool_abschnitte(text)}
 
 
 def lade_verifikation(root, projekt="p0"):
@@ -253,7 +332,8 @@ def cockpit(root, projekt="p0", heute=None):
             ampel = "rot" if f < heute else ("gelb" if f <= heute + _zeitspanne(days=2) else "gruen")
         except ValueError:
             pass
-        drs.append({"id": t["id"], "titel": t.get("titel"), "frist": frist,
+        drs.append({"id": t["id"], "ref": ref(projekt, t["id"]),  # SWR-087
+                    "titel": t.get("titel"), "frist": frist,
                     "default": t.get("default", ""), "ampel": ampel})
     tag_text = _tags(pfad)
     tags = [z for z in tag_text.splitlines() if z.strip()]
@@ -279,7 +359,8 @@ def cockpit(root, projekt="p0", heute=None):
     status, gruppe = stufe["status"], stufe["gruppe"]
     offene = sorted((t for t in tickets if t.get("status") not in ("done", "rejected")),
                     key=lambda t: t.get("id", ""))
-    aufgaben = [{"id": t.get("id"), "titel": t.get("titel", ""),
+    aufgaben = [{"id": t.get("id"), "ref": ref(projekt, t.get("id")),  # SWR-087
+                 "titel": t.get("titel", ""),
                  "takt": t.get("takt", "")} for t in offene[:3]]  # SWR-074
     wiederkehrend = sum(1 for t in offene if t.get("takt"))
     return {"projekt": projekt, "status_zahlen": status_zahlen,

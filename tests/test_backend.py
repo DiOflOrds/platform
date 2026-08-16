@@ -778,5 +778,128 @@ class VerbindungsabbruchTest(unittest.TestCase):
             server.ThreadingHTTPServer.handle_error = original
 
 
+class EindeutigeKennungTest(unittest.TestCase):
+    """SWR-087 (platform/N-0003): Ticketnummern sind nur je Repo eindeutig — jede
+    Ansicht liefert deshalb die vollständige Kennung `<projekt>/T-xxxx` mit."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wurzel = _wurzel_bauen(self._tmp.name)
+        _p1_dazu(self.wurzel)
+        # Dieselbe Nummer in zwei Repos — genau der Fall aus dem Brief.
+        p1 = os.path.join(self.wurzel, "p1")
+        open(os.path.join(p1, "tickets", "T-0099.md"), "w", encoding="utf-8").write(
+            TICKET_DR.replace("status: open", "status: done"))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_ref_ist_eine_quelle(self):
+        """Die Kennung entsteht an EINER Stelle; ohne Projekt bleibt die Nummer stehen."""
+        self.assertEqual(aggregation.ref("pm", "T-0002"), "pm/T-0002")
+        self.assertEqual(aggregation.ref("", "T-0002"), "T-0002")
+
+    def test_gleiche_nummer_zwei_projekte_unterscheidbar(self):
+        """Board und Ticket-Detail liefern für dieselbe Nummer verschiedene Kennungen."""
+        p0 = aggregation.lade_board(self.wurzel, "p0")["gruppen"]
+        p1 = aggregation.lade_board(self.wurzel, "p1")["gruppen"]
+        refs0 = [t["ref"] for g in p0.values() for t in g]
+        refs1 = [t["ref"] for g in p1.values() for t in g]
+        self.assertIn("p0/T-0099", refs0)
+        self.assertIn("p1/T-0099", refs1)
+        self.assertEqual(aggregation.lade_ticket(self.wurzel, "p1", "T-0099")["ref"],
+                         "p1/T-0099")
+
+    def test_cockpit_und_inbox_tragen_die_kennung(self):
+        """Genau dort, wo Tickets mehrerer Projekte nebeneinanderstehen (SWR-046/027/042)."""
+        c = aggregation.cockpit(self.wurzel, "p0")
+        self.assertEqual([d["ref"] for d in c["offene_drs"]], ["p0/T-0099"])
+        self.assertTrue(all(a["ref"].startswith("p0/") for a in c["aufgaben"]))
+        self.assertEqual(sorted(e["ref"] for e in inbox.liste(self.wurzel)["inbox"]),
+                         ["p0/T-0099", "p1/T-0001"])
+        self.assertIn("p1/T-0099", [e["ref"] for e in inbox.historie(self.wurzel)["historie"]])
+
+
+class RequirementsUeberAlleTest(unittest.TestCase):
+    """SWR-085 (pm/N-0019): Requirements aller Projekte/Teams sichtbar und filterbar."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wurzel = _wurzel_bauen(self._tmp.name)
+        _p1_dazu(self.wurzel)
+        for name, text in (("p0", "# SWRs p0\n\n| ID | Requirement |\n|---|---|\n| SWR-001 | x |\n"),
+                           ("p1", "# SWRs p1\n")):
+            ordner = os.path.join(self.wurzel, name, "requirements", "software")
+            os.makedirs(ordner)
+            open(os.path.join(ordner, "software-requirements.md"), "w",
+                 encoding="utf-8").write(text)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_alle_projekte_in_einer_antwort(self):
+        """`projekt=alle` sammelt über alle Projekte — der alte Code kannte nur EIN Projekt."""
+        a = aggregation.lade_requirements(self.wurzel, aggregation.ALLE)
+        self.assertTrue(a["sammel"])
+        self.assertEqual(sorted(a["projekte"]), ["p0", "p1"])
+        self.assertEqual(sorted(d["projekt"] for d in a["dateien"]), ["p0", "p1"])
+
+    def test_herkunft_je_datei_fuer_den_filter(self):
+        """Jede Datei trägt Projekt UND Gruppe — ohne die beiden ist kein Filter möglich."""
+        for d in aggregation.lade_requirements(self.wurzel, aggregation.ALLE)["dateien"]:
+            self.assertTrue(d["projekt"])
+            self.assertTrue(d["gruppe"])
+            self.assertTrue(d["tabellen"] or d["text"])
+
+    def test_einzelprojekt_unveraendert(self):
+        """Regression SWR-030: die gescopte Abfrage liefert weiterhin nur ihr Projekt."""
+        a = aggregation.lade_requirements(self.wurzel, "p1")
+        self.assertFalse(a["sammel"])
+        self.assertEqual([d["projekt"] for d in a["dateien"]], ["p1"])
+        with self.assertRaises(ValueError):
+            aggregation.lade_requirements(self.wurzel, "gibtsnicht")
+
+
+class ProjektPoolTest(unittest.TestCase):
+    """SWR-086 (pm/N-0020): Der Projekt-Pool des PM-Teams ist im HMI sichtbar."""
+
+    POOL = ("# Projekt-Pool\n\nEinleitung.\n\n## Team-Kandidaten\n\n"
+            "| # | Kandidat | Nutzen |\n|---|---|---|\n| 1 | team-termine | Termine |\n\n"
+            "## Technik-Kandidaten\n\n| # | Kandidat | Quelle |\n|---|---|---|\n"
+            "| 6 | Renderer | P7-LeLe |\n")
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wurzel = _wurzel_bauen(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _pool_schreiben(self):
+        ordner = os.path.join(self.wurzel, "pm", "management")
+        os.makedirs(ordner)
+        open(os.path.join(ordner, "projekt-pool.md"), "w", encoding="utf-8").write(self.POOL)
+
+    def test_kandidaten_nach_kategorie(self):
+        """Kategorie-Überschrift und Tabelle bleiben zusammen — Karten je Kategorie im HMI."""
+        self._pool_schreiben()
+        p = aggregation.lade_pool(self.wurzel)
+        self.assertTrue(p["vorhanden"])
+        self.assertEqual([a["titel"] for a in p["abschnitte"]],
+                         ["Team-Kandidaten", "Technik-Kandidaten"])
+        self.assertEqual(p["abschnitte"][0]["tabellen"][0]["zeilen"][0][1], "team-termine")
+
+    def test_ohne_datei_keine_ausnahme(self):
+        """Fehlt die Pool-Datei, meldet die API das sauber statt zu krachen."""
+        p = aggregation.lade_pool(self.wurzel)
+        self.assertFalse(p["vorhanden"])
+        self.assertEqual(p["abschnitte"], [])
+        self.assertIn("projekt-pool.md", p["quelle"])
+
+    def test_abschnitte_ohne_tabelle_werden_uebersprungen(self):
+        """Reiner Fließtext erzeugt keine leere Karte."""
+        self.assertEqual(aggregation.pool_abschnitte("# X\n\n## Nur Text\n\nkeine Tabelle\n"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

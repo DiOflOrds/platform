@@ -95,7 +95,9 @@ def liste(root, projekt=None):
         for t in _dr_tickets(repo):
             pfad = os.path.join(repo, "tickets", f"{t['id']}.md")
             body = re.sub(r"(?s)^---.*?---\s*", "", open(pfad, encoding="utf-8").read())
-            eintraege.append({"projekt": name, "id": t["id"], "titel": t.get("titel"),
+            eintraege.append({"projekt": name, "id": t["id"],
+                              "ref": aggregation.ref(name, t["id"]),  # SWR-087
+                              "titel": t.get("titel"),
                               "status": t.get("status"), "prio": t.get("prio"),
                               "sprint": t.get("sprint"), "body": body.strip(),
                               "optionen": board.parse_liste(t.get("optionen")),
@@ -119,7 +121,9 @@ def historie(root, projekt=None):
             if ENTSCHIEDEN not in body and t.get("status") not in FINAL:
                 continue
             m = re.findall(r"\*\*Entscheidung \([^)]*\):\*\*[^\n]*", body)
-            eintraege.append({"projekt": name, "id": t["id"], "titel": t.get("titel"),
+            eintraege.append({"projekt": name, "id": t["id"],
+                              "ref": aggregation.ref(name, t["id"]),  # SWR-087
+                              "titel": t.get("titel"),
                               "status": t.get("status"), "sprint": t.get("sprint"),
                               "entscheidung": m[-1] if m else "(Vermerk im Ticket)"})
         eintraege.sort(key=lambda e: (e["projekt"], e["id"]), reverse=True)
