@@ -84,6 +84,20 @@ class MailAutopilotTest(unittest.TestCase):
         ohne = self.md._prompt(mails, "tag", True, "")
         self.assertNotIn("ZUSATZ-AUFTRAG", ohne)
 
+    def test_jetzt_takte_folgt_konfiguration(self):
+        """SWR-063 (team-mail/T-0003): „Jetzt zusammenfassen" nimmt die gespeicherten Takte.
+
+        Regression zu Brief `team-mail/N-0002`: `--jetzt` rief fest `lauf_takt(1, cfg)`,
+        während das Team auf `takte: [7]` steht — jeder Klick erzeugte einen Tages- statt
+        des konfigurierten Wochen-Digests, ohne Fehlermeldung, erkennbar nur am Dateinamen.
+        Gegen den alten Code scheitert der erste Fall nachweislich.
+        """
+        self.assertEqual(self.md.jetzt_takte({"takte": [7]}), [7])
+        self.assertEqual(self.md.jetzt_takte({"takte": [1, 7, 30]}), [1, 7, 30])
+        self.assertEqual(self.md.jetzt_takte({"takte": []}), [1])   # rueckwaertskompatibel
+        self.assertEqual(self.md.jetzt_takte({"takte": [7]}, tage=1), [1])   # Override greift
+        self.assertEqual(self.md.jetzt_takte({"takte": [7]}, tage=99), [1])  # ungueltig -> Tag
+
     def test_lauf_takt_schreibt_und_stellt_zu(self):
         """SWR-062/065: Lauf schreibt Digest-Datei mit Takt-Namen und stellt genau einmal zu."""
         heute = datetime.date(2026, 8, 16)
