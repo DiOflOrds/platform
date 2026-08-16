@@ -75,6 +75,15 @@ class _Zaehler:
 
 _laufende = _Zaehler()
 
+# platform/N-0002: Abbrüche der Gegenseite sind Normalbetrieb, kein Serverfehler.
+_ABBRUCH = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)
+
+
+def verbindungsabbruch(fehler):
+    """platform/N-0002: True, wenn der Fehler nur ein Verbindungsabbruch der
+    Gegenseite ist (reine Prüffunktion, ohne Seiteneffekte — testbar)."""
+    return isinstance(fehler, _ABBRUCH)
+
 
 def selbst_neustart_noetig(prozess_stand, aktueller_stand, vorheriger_fund,
                            schleife_aktiv, ruhig):
@@ -144,9 +153,22 @@ class Api(BaseHTTPRequestHandler):
         type(self).protokoll("[backend] " + fmt % args)
 
     def handle_one_request(self):
-        """SWR-073: laufende Anfragen zählen — die Neustart-Wache wartet, bis Ruhe ist."""
+        """SWR-073: laufende Anfragen zählen — die Neustart-Wache wartet, bis Ruhe ist.
+
+        platform/N-0002: Legt die Gegenseite auf (Handy sperrt den Bildschirm, Tab
+        zu, WLAN weg), wirft der Socket ConnectionResetError o. ä. Das ist
+        Normalbetrieb und kein Serverfehler — eine Logzeile statt Traceback.
+        """
         with _laufende:
-            return BaseHTTPRequestHandler.handle_one_request(self)
+            try:
+                return BaseHTTPRequestHandler.handle_one_request(self)
+            except _ABBRUCH as fehler:
+                self.close_connection = True
+                type(self).protokoll(
+                    "[backend] Verbindung zu %s vorzeitig beendet (%s) — "
+                    "kein Fehler, Anfrage verworfen."
+                    % (self.client_address[0], type(fehler).__name__))
+                return None
 
     # ---------- Routen ----------
     def do_GET(self):
@@ -285,10 +307,21 @@ class Api(BaseHTTPRequestHandler):
         return self._json(200, ergebnis)
 
 
+class RuhigerServer(ThreadingHTTPServer):
+    """platform/N-0002: Zweite Sicherung — was doch am Handler vorbeikommt (z. B.
+    Abbruch beim Aufräumen der Verbindung), wird für Verbindungsabbrüche still
+    verworfen. Echte Fehler behalten ihren Traceback."""
+
+    def handle_error(self, request, client_address):
+        if verbindungsabbruch(sys.exc_info()[1]):
+            return
+        ThreadingHTTPServer.handle_error(self, request, client_address)
+
+
 def start(wurzel, host="127.0.0.1", port=8080):
     """Server starten (blockierend); für Tests: Rückgabe des Serverobjekts via Thread."""
     Api.wurzel = os.path.abspath(wurzel)
-    server = ThreadingHTTPServer((host, port), Api)
+    server = RuhigerServer((host, port), Api)
     return server
 
 

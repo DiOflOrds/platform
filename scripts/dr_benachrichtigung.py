@@ -33,7 +33,7 @@ def _offene_drs(root):
     """[(projekt, ticket, pfad)] — offene DRs aller Projekte."""
     funde = []
     for name in aggregation.projekte(root):
-        repo = os.path.join(root, name)
+        repo = aggregation.projekt_pfad(root, name)  # SWR-070: auch projects/<p>
         tickets, _ = board.lade_tickets(repo)
         for t in tickets:
             if t.get("typ") != "decision-request" or t.get("status") in FINAL:

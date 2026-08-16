@@ -126,6 +126,81 @@ class OrgCockpitTest(RepoWelt):
         self.assertEqual(c["aufgaben_offen"], 1)
 
 
+DR_TICKET = ("---\nid: T-0002\ntitel: \"DR: Freigabe\"\ntyp: decision-request\n"
+             "prozess: man3\nrolle: pl\nsprint: 0\nstatus: open\nprio: hoch\n"
+             "blocked_by: []\noptionen: [G1a, G1b]\nfrist: 2026-08-23\n"
+             "default: G1a\ngeändert: 2026-08-16\nerstellt: 2026-08-16\n---\n\n"
+             "## Sachverhalt\n\nBitte freigeben.\n")
+
+
+class VerschachtelteDrsTest(RepoWelt):
+    """pm/T-0017: Ein Decision Request in `projects/<p>` muss den Menschen erreichen.
+
+    Der Befund: `aggregation.projekte()` fand p10, aber Inbox, Übersicht und
+    Frist-Warnmail bauten den Pfad weiter als `root/<name>` — der G1-DR war damit
+    unsichtbar, während der Default still auf seine Frist zulief.
+    """
+
+    def _mit_dr(self, name, nested):
+        basis = self._repo(name, nested=nested)
+        with open(os.path.join(basis, "tickets", "T-0002.md"), "w", encoding="utf-8") as f:
+            f.write(DR_TICKET)
+        wurzel = os.path.join(self.root, "projects") if nested else basis
+        _git(wurzel, "add", "-A")
+        _git(wurzel, "commit", "-m", "dr")
+        return basis
+
+    def test_inbox_zeigt_dr_aus_sammelrepo(self):
+        """SWR-027/070: Offene DRs verschachtelter Projekte stehen in der Inbox."""
+        from backend import inbox
+        self._mit_dr("p10", nested=True)
+        eintraege = inbox.liste(self.root)["inbox"]
+        self.assertEqual([(e["projekt"], e["id"]) for e in eintraege], [("p10", "T-0002")])
+        e = eintraege[0]
+        self.assertEqual(e["optionen"], ["G1a", "G1b"])   # Buttons (SWR-042)
+        self.assertEqual(e["frist"], "2026-08-23")
+        self.assertEqual(e["default"], "G1a")
+        self.assertIn("Bitte freigeben", e["body"])
+
+    def test_uebersicht_zaehlt_tickets_aus_sammelrepo(self):
+        """SWR-026/070: Die Übersicht darf verschachtelte Projekte nicht als leer melden."""
+        self._mit_dr("p10", nested=True)
+        eintrag = {e["projekt"]: e for e in
+                   aggregation.uebersicht(self.root)["projekte"]}["p10"]
+        self.assertEqual(eintrag["tickets_gesamt"], 2)
+        self.assertEqual(eintrag["tickets_offen"], 2)
+        self.assertEqual([d["id"] for d in eintrag["offene_drs"]], ["T-0002"])
+
+    def test_fristwarnung_sieht_dr_aus_sammelrepo(self):
+        """SWR-033/034/070: Ohne diesen Pfad liefe der Default ohne Warnung ab."""
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        import dr_benachrichtigung
+        self._mit_dr("p10", nested=True)
+        funde = [(p, t["id"]) for p, t, _ in dr_benachrichtigung._offene_drs(self.root)]
+        self.assertEqual(funde, [("p10", "T-0002")])
+
+    def test_historie_zeigt_entschiedene_drs_aus_sammelrepo(self):
+        """SWR-042/070: Auch die Entscheidungshistorie kennt verschachtelte Projekte."""
+        from backend import inbox
+        basis = self._mit_dr("p10", nested=True)
+        pfad = os.path.join(basis, "tickets", "T-0002.md")
+        text = open(pfad, encoding="utf-8").read().replace("status: open", "status: done")
+        with open(pfad, "w", encoding="utf-8") as f:
+            f.write(text)
+        eintraege = inbox.historie(self.root)["historie"]
+        self.assertIn(("p10", "T-0002"), [(e["projekt"], e["id"]) for e in eintraege])
+
+    def test_top_level_projekte_unveraendert(self):
+        """Regressionsschutz: die Auflösung darf Bestandsrepos nicht verschieben."""
+        from backend import inbox
+        self._mit_dr("p3", nested=False)
+        self._mit_dr("p10", nested=True)
+        self.assertEqual(sorted(e["projekt"] for e in inbox.liste(self.root)["inbox"]),
+                         ["p10", "p3"])
+        self.assertEqual(aggregation.projekt_pfad(self.root, "p3"),
+                         os.path.join(self.root, "p3"))
+
+
 class NavigationTest(RepoWelt):
     """SWR-082 (pm/N-0015, pm/T-0012): Navigationsgruppen für den Kopfbereich."""
 

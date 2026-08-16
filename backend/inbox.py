@@ -80,7 +80,7 @@ def liste(root, projekt=None):
     namen = [projekt] if projekt else (aggregation.projekte(root) or ["p0"])
     eintraege = []
     for name in namen:
-        repo = os.path.join(root, name)
+        repo = aggregation.projekt_pfad(root, name)  # SWR-070: auch projects/<p>
         for t in _dr_tickets(repo):
             pfad = os.path.join(repo, "tickets", f"{t['id']}.md")
             body = re.sub(r"(?s)^---.*?---\s*", "", open(pfad, encoding="utf-8").read())
@@ -99,7 +99,7 @@ def historie(root, projekt=None):
     namen = [projekt] if projekt else (aggregation.projekte(root) or ["p0"])
     eintraege = []
     for name in namen:
-        repo = os.path.join(root, name)
+        repo = aggregation.projekt_pfad(root, name)  # SWR-070: auch projects/<p>
         tickets, _ = board.lade_tickets(repo)
         for t in tickets:
             if t.get("typ") != "decision-request":

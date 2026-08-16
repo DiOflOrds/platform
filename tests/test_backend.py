@@ -627,5 +627,111 @@ class HttpTest(unittest.TestCase):
             self.assertEqual(e.code, 404)
 
 
+class VerbindungsabbruchTest(unittest.TestCase):
+    """platform/N-0002: Legt die Gegenseite auf, ist das Normalbetrieb — eine
+    Logzeile statt eines Tracebacks. Echte Fehler bleiben sichtbar."""
+
+    def test_abbruch_erkannt(self):
+        for fehler in (ConnectionResetError(10054, "vom Remotehost geschlossen"),
+                       ConnectionAbortedError(), BrokenPipeError()):
+            self.assertTrue(server.verbindungsabbruch(fehler), repr(fehler))
+
+    def test_echte_fehler_nicht_als_abbruch(self):
+        for fehler in (ValueError("kaputt"), OSError("Platte voll"),
+                       KeyError("x"), TimeoutError()):
+            self.assertFalse(server.verbindungsabbruch(fehler), repr(fehler))
+
+    def test_handler_verwirft_abbruch_mit_einer_zeile(self):
+        """handle_one_request fängt den Abbruch, schließt die Verbindung und
+        protokolliert eine Zeile — der Traceback aus N-0002 entfällt."""
+        zeilen = []
+
+        class Handler(server.Api):
+            protokoll = staticmethod(zeilen.append)
+
+            def __init__(self):  # kein echter Socket nötig
+                self.client_address = ("192.168.178.164", 51942)
+                self.close_connection = False
+
+        h = Handler()
+        original = server.BaseHTTPRequestHandler.handle_one_request
+        server.BaseHTTPRequestHandler.handle_one_request = \
+            lambda self: (_ for _ in ()).throw(ConnectionResetError(10054, "weg"))
+        try:
+            self.assertIsNone(h.handle_one_request())
+        finally:
+            server.BaseHTTPRequestHandler.handle_one_request = original
+        self.assertTrue(h.close_connection)
+        self.assertEqual(len(zeilen), 1)
+        self.assertIn("192.168.178.164", zeilen[0])
+        self.assertIn("ConnectionResetError", zeilen[0])
+        self.assertIn("kein Fehler", zeilen[0])
+
+    def test_handler_laesst_echte_fehler_durch(self):
+        """Ein echter Fehler wird nicht verschluckt — sonst würde die Beruhigung
+        des Logs künftige Befunde verstecken."""
+        class Handler(server.Api):
+            protokoll = staticmethod(lambda _: None)
+
+            def __init__(self):
+                self.client_address = ("127.0.0.1", 1)
+                self.close_connection = False
+
+        h = Handler()
+        original = server.BaseHTTPRequestHandler.handle_one_request
+        server.BaseHTTPRequestHandler.handle_one_request = \
+            lambda self: (_ for _ in ()).throw(ValueError("kaputt"))
+        try:
+            with self.assertRaises(ValueError):
+                h.handle_one_request()
+        finally:
+            server.BaseHTTPRequestHandler.handle_one_request = original
+
+    def test_zaehler_wird_auch_bei_abbruch_freigegeben(self):
+        """Der Ruhe-Zähler der Neustart-Wache (SWR-073) darf nach einem Abbruch
+        nicht hängen bleiben — sonst startet der Server nie wieder selbst neu."""
+        class Handler(server.Api):
+            protokoll = staticmethod(lambda _: None)
+
+            def __init__(self):
+                self.client_address = ("192.168.178.164", 2)
+                self.close_connection = False
+
+        original = server.BaseHTTPRequestHandler.handle_one_request
+        server.BaseHTTPRequestHandler.handle_one_request = \
+            lambda self: (_ for _ in ()).throw(ConnectionResetError())
+        try:
+            Handler().handle_one_request()
+        finally:
+            server.BaseHTTPRequestHandler.handle_one_request = original
+        self.assertTrue(server._laufende.leer())
+
+    def test_serverklasse_schweigt_nur_bei_abbruch(self):
+        """RuhigerServer.handle_error: still bei Abbruch, laut bei echtem Fehler."""
+        gemeldet = []
+
+        class Prueflig(server.RuhigerServer):
+            def __init__(self):
+                pass  # kein Socket binden
+
+        srv = Prueflig()
+        original = server.ThreadingHTTPServer.handle_error
+        server.ThreadingHTTPServer.handle_error = \
+            lambda self, req, adr: gemeldet.append(adr)
+        try:
+            try:
+                raise ConnectionResetError(10054, "weg")
+            except ConnectionResetError:
+                srv.handle_error(None, ("192.168.178.164", 3))
+            self.assertEqual(gemeldet, [])
+            try:
+                raise ValueError("kaputt")
+            except ValueError:
+                srv.handle_error(None, ("192.168.178.164", 4))
+            self.assertEqual(gemeldet, [("192.168.178.164", 4)])
+        finally:
+            server.ThreadingHTTPServer.handle_error = original
+
+
 if __name__ == "__main__":
     unittest.main()

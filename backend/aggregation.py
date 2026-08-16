@@ -125,7 +125,7 @@ def uebersicht(root):
     """SWR-026: je Projekt offene Tickets + offene Decision Requests."""
     eintraege = []
     for name in projekte(root):
-        tickets, _ = board.lade_tickets(os.path.join(root, name))
+        tickets, _ = board.lade_tickets(projekt_pfad(root, name))  # SWR-070
         offen = [t for t in tickets if t.get("status") not in ("done", "rejected")]
         drs = [{"id": t.get("id"), "titel": t.get("titel")} for t in offen
                if t.get("typ") == "decision-request"]
