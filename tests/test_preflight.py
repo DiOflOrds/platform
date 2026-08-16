@@ -43,17 +43,110 @@ class TestLockArtefakte(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             _fake_git(d, "index.lock")
             funde = preflight.finde_lock_artefakte(d)
-            entfernt, kaputt = preflight.entferne_artefakte(funde)
+            entfernt, geparkt, kaputt = preflight.entferne_artefakte(funde)
             self.assertEqual(len(entfernt), 1)
+            self.assertEqual(geparkt, [])
             self.assertEqual(kaputt, [])
             self.assertEqual(preflight.finde_lock_artefakte(d), [])
 
     def test_entfernen_meldet_fehlschlag(self):
-        """Nicht löschbare Pfade landen in der Fehlschlag-Liste (R7-Fall), kein Abbruch."""
-        entfernt, kaputt = preflight.entferne_artefakte(
-            [os.path.join(tempfile.gettempdir(), "gibt-es-nicht", "x.lock")])
+        """Weder löschbar noch benennbar → Fehlschlag-Liste (R7-Fall), kein Abbruch."""
+        entfernt, geparkt, kaputt = preflight.entferne_artefakte(
+            [os.path.join(tempfile.gettempdir(), "gibt-es-nicht", ".git", "x.lock")])
         self.assertEqual(entfernt, [])
+        self.assertEqual(geparkt, [])
         self.assertEqual(len(kaputt), 1)
+
+
+class TestLockParkplatz(unittest.TestCase):
+    """Fallback für Mounts ohne unlink-Recht (R7). Bezug: pm/T-0023, Befund 2026-08-16.
+
+    Ohne diesen Fallback blieb ein verwaister index.lock liegen und JEDER
+    Commit der Session schlug fehl — eine komplette Session verlor am
+    2026-08-16 ihre Verbuchung, obwohl die Arbeit fertig war.
+    """
+
+    @staticmethod
+    def _ohne_unlink(pfade):
+        """os.remove hart abschalten, os.rename unverändert lassen (Mount-Verhalten R7)."""
+        echt = os.remove
+
+        def blockiert(p):
+            raise PermissionError(1, "Operation not permitted", p)
+        os.remove = blockiert
+        try:
+            return preflight.entferne_artefakte(pfade)
+        finally:
+            os.remove = echt
+
+    def test_nicht_loeschbarer_lock_wird_geparkt(self):
+        """Wenn os.remove scheitert, wird der Lock weggeräumt statt aufzugeben."""
+        with tempfile.TemporaryDirectory() as d:
+            _fake_git(d, "index.lock")
+            funde = preflight.finde_lock_artefakte(d)
+            entfernt, geparkt, kaputt = self._ohne_unlink(funde)
+            self.assertEqual(entfernt, [])
+            self.assertEqual(len(geparkt), 1)
+            self.assertEqual(kaputt, [])
+
+    def test_git_sieht_den_lock_danach_nicht_mehr(self):
+        """Der eigentliche Zweck: der exakte Pfad .git/index.lock existiert nicht mehr."""
+        with tempfile.TemporaryDirectory() as d:
+            g = _fake_git(d, "index.lock")
+            self._ohne_unlink(preflight.finde_lock_artefakte(d))
+            self.assertFalse(os.path.exists(os.path.join(g, "index.lock")))
+            self.assertEqual(preflight.finde_lock_artefakte(d), [])
+
+    def test_geparktes_artefakt_bleibt_erhalten(self):
+        """Weggeräumt heißt nicht vernichtet — die Datei liegt auf dem Parkplatz."""
+        with tempfile.TemporaryDirectory() as d:
+            g = _fake_git(d, "index.lock")
+            self._ohne_unlink(preflight.finde_lock_artefakte(d))
+            parkplatz = os.path.join(g, preflight.PARKPLATZ)
+            self.assertTrue(os.path.isdir(parkplatz))
+            self.assertEqual(len(os.listdir(parkplatz)), 1)
+
+    def test_parkplatz_wird_nicht_erneut_als_lock_erkannt(self):
+        """Sonst räumte jeder Lauf seinen eigenen Parkplatz um (Endlos-Umbenennen)."""
+        with tempfile.TemporaryDirectory() as d:
+            _fake_git(d, "index.lock", os.path.join("refs", "heads", "main.lock"))
+            self._ohne_unlink(preflight.finde_lock_artefakte(d))
+            self.assertEqual(preflight.finde_lock_artefakte(d), [])
+
+    def test_preflight_hinterlaesst_keinen_lock(self):
+        """Zweiter Befund pm/T-0023: Preflights EIGENE git-Aufrufe legen index.lock an.
+
+        Ohne Schlusslauf meldet Preflight STARTKLAR und hinterlässt genau die Sperre,
+        die es gerade aufgehoben hat — der nächste Commit der Session scheitert dann.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            for repo in ("process", "platform", "p0"):
+                _fake_git(os.path.join(d, repo))
+            preflight.preflight(d, skip_tests=True)
+            # Simuliert den Zustand nach den git-Aufrufen: neuer, nicht löschbarer Lock
+            nachher = os.path.join(d, "p0", ".git", "index.lock")
+            open(nachher, "w").close()
+            self._ohne_unlink(preflight.finde_lock_artefakte(os.path.join(d, "p0")))
+            self.assertFalse(os.path.exists(nachher))
+
+    def test_nur_locks_laesst_repos_unberuehrt(self):
+        """--nur-locks entsperrt schnell, ohne Board-Check und Tests zu fahren."""
+        with tempfile.TemporaryDirectory() as d:
+            _fake_git(os.path.join(d, "p0"), "index.lock")
+            befunde = preflight.preflight(d, skip_tests=True, nur_locks=True)
+            self.assertEqual(befunde, 0)
+            self.assertFalse(os.path.exists(os.path.join(d, "p0", ".git", "index.lock")))
+
+    def test_artefakte_aus_unterordnern_kollidieren_nicht(self):
+        """refs/heads/main.lock und ein gleichnamiger Fund dürfen sich nicht überschreiben."""
+        with tempfile.TemporaryDirectory() as d:
+            g = _fake_git(d, "index.lock",
+                          os.path.join("objects", "e5", "tmp_obj_XYZ"),
+                          os.path.join("refs", "heads", "main.lock"))
+            entfernt, geparkt, kaputt = self._ohne_unlink(preflight.finde_lock_artefakte(d))
+            self.assertEqual(len(geparkt), 3)
+            self.assertEqual(kaputt, [])
+            self.assertEqual(len(os.listdir(os.path.join(g, preflight.PARKPLATZ))), 3)
 
 
 class TestPreflightGesamt(unittest.TestCase):
