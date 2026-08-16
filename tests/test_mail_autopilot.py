@@ -98,6 +98,56 @@ class MailAutopilotTest(unittest.TestCase):
         self.assertEqual(self.md.jetzt_takte({"takte": [7]}, tage=1), [1])   # Override greift
         self.assertEqual(self.md.jetzt_takte({"takte": [7]}, tage=99), [1])  # ungueltig -> Tag
 
+    def test_was_laeuft_folgt_jetzt_takte(self):
+        """SWR-090 (pm/T-0025): Auskunft ohne Wirkung — und aus derselben Quelle.
+
+        `was_laeuft` darf die Takte nicht selbst aus `cfg["takte"]` ableiten, sondern
+        muss `jetzt_takte()` benutzen: dieselbe Funktion, die der Lauf verwendet. Der
+        Nachweis läuft über den `--tage`-Override, den nur `jetzt_takte()` kennt —
+        eine Nachbildung aus der Konfiguration würde ihn nicht abbilden.
+        """
+        cfg = {"takte": [7], "konten": [], "abschnitt_rechnungen": True,
+               "zustellung_mail": True, "ollama_modell": "", "ki_hinweis": " achte auf X "}
+        v = self.md.was_laeuft(cfg)
+        self.assertEqual(v["takte"], [{"tage": 7, "name": "woche"}])
+        self.assertTrue(v["automatisch"])          # leeres Modell = automatisch
+        self.assertEqual(v["modell"], "")
+        self.assertEqual(v["ki_hinweis"], "achte auf X")   # getrimmt, aber wortgetreu
+        self.assertTrue(v["zustellung_mail"])
+        self.assertEqual(self.md.was_laeuft(cfg, tage=1)["takte"],
+                         [{"tage": 1, "name": "tag"}])     # Override wie im Lauf
+        cfg2 = dict(cfg, takte=[1, 7, 30], ollama_modell="llama3", ki_hinweis="")
+        self.assertEqual([t["tage"] for t in self.md.was_laeuft(cfg2)["takte"]], [1, 7, 30])
+        self.assertFalse(self.md.was_laeuft(cfg2)["automatisch"])
+        self.assertEqual(self.md.was_laeuft(cfg2)["ki_hinweis"], "")
+
+    def test_was_laeuft_ohne_wirkung(self):
+        """SWR-090: die Auskunft schreibt nichts und ändert die Fälligkeit nicht."""
+        vorher = sorted(os.listdir(os.path.join(self.basis, "digest")))
+        cfg = {"takte": [7], "konten": [], "abschnitt_rechnungen": True,
+               "zustellung_mail": False, "ollama_modell": "", "ki_hinweis": ""}
+        self.md.was_laeuft(cfg)
+        self.assertEqual(sorted(os.listdir(os.path.join(self.basis, "digest"))), vorher)
+        self.assertTrue(self.md.faellig(7, self.basis, datetime.date(2026, 8, 16)))
+
+    def test_digest_marker_in_der_ergebniszeile(self):
+        """SWR-090: Die Ergebniszeile trägt `DIGEST_MARKER` — die Plattform liest ihn
+        wieder aus (`teams._digest_dateien`), um die geschriebenen Dateien zu benennen."""
+        import contextlib
+        import io
+        cfg = {"takte": [7], "konten": [], "abschnitt_rechnungen": True,
+               "zustellung_mail": False, "ollama_modell": "test", "ki_hinweis": ""}
+        puffer = io.StringIO()
+        with contextlib.redirect_stdout(puffer):
+            self.md.lauf_takt(
+                7, cfg, basis=self.basis,
+                hole=lambda c, t: [{"von": "a", "betreff": "b", "zeit": "z", "link": ""}],
+                verdichter=lambda m, c, n: "## Auf einen Blick\nEine Mail.",
+                heute=datetime.date(2026, 8, 16))
+        zeilen = [z for z in puffer.getvalue().splitlines() if self.md.DIGEST_MARKER in z]
+        self.assertEqual(len(zeilen), 1)
+        self.assertTrue(zeilen[0].endswith("2026-08-16-woche-digest.md"))
+
     def test_lauf_takt_schreibt_und_stellt_zu(self):
         """SWR-062/065: Lauf schreibt Digest-Datei mit Takt-Namen und stellt genau einmal zu."""
         heute = datetime.date(2026, 8, 16)

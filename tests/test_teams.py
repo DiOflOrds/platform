@@ -171,6 +171,97 @@ class TeamsTest(unittest.TestCase):
             teams.digest_jetzt(self.root, "team-x", runner=lambda p: (1, "kaputt"))
         self.assertEqual(k.exception.code, 502)
 
+    # ---------- SWR-090 (pm/T-0025): der Sofort-Knopf sagt, womit er läuft ----------
+    def _werkzeug_anlegen(self):
+        os.makedirs(os.path.join(self.repo, "tools"), exist_ok=True)
+        with open(os.path.join(self.repo, "tools", "mail_digest.py"), "w", encoding="utf-8") as f:
+            f.write("# dummy\n")
+
+    def test_digest_vorschau_kommt_vom_werkzeug(self):
+        """SWR-090: Auskunft stammt aus `--was-laeuft`, nicht aus konfiguration.yaml.
+
+        Der Prüfpunkt ist genau der Befund aus `team-mail/N-0002`: Das Repo dieses Tests
+        steht auf `zeitraum_tage: 1` (Tag). Meldet das Werkzeug `[7]`, MUSS die Anzeige
+        „Woche" sagen — ein Nachbau aus der Konfiguration würde hier „Tag" liefern und
+        das Auseinanderlaufen wieder unsichtbar machen.
+        """
+        self._werkzeug_anlegen()
+        antwort = ('{"modell": "", "automatisch": true, "ki_hinweis": "achte auf Bewerbungen",'
+                   ' "zustellung_mail": true, "takte": [{"tage": 7, "name": "woche"}]}')
+        v = teams.digest_vorschau(self.root, "team-x", runner=lambda p: (0, antwort))
+        self.assertEqual(v["takt_text"], "Woche")
+        self.assertTrue(v["automatisch"])
+        self.assertEqual(v["ki_hinweis"], "achte auf Bewerbungen")
+        self.assertTrue(v["zustellung_mail"])
+        self.assertEqual(teams.lade_konfiguration(self.root, "team-x")["takte"], [1])
+
+    def test_digest_vorschau_mehrere_takte_und_modellname(self):
+        """SWR-090/064: mehrere Takte werden als lesbare Kette angezeigt."""
+        self._werkzeug_anlegen()
+        antwort = ('{"modell": "llama3", "automatisch": false, "ki_hinweis": "",'
+                   ' "zustellung_mail": false, "takte": [{"tage": 1, "name": "tag"},'
+                   ' {"tage": 7, "name": "woche"}, {"tage": 30, "name": "monat"}]}')
+        v = teams.digest_vorschau(self.root, "team-x", runner=lambda p: (0, antwort))
+        self.assertEqual(v["takt_text"], "Tag · Woche · Monat")
+        self.assertEqual(v["modell"], "llama3")
+        self.assertFalse(v["automatisch"])
+        self.assertEqual(v["ki_hinweis"], "")
+
+    def test_digest_vorschau_fehlerwege(self):
+        """SWR-090: ohne Werkzeug 404, unlesbare/leere Antwort 502 — nie stille Zahl."""
+        with self.assertRaises(teams.TeamFehler) as k:
+            teams.digest_vorschau(self.root, "team-x")
+        self.assertEqual(k.exception.code, 404)
+        self._werkzeug_anlegen()
+        for ausgabe, code in ((("FEHLER: kein Postfach"), 502), ("", 502)):
+            with self.assertRaises(teams.TeamFehler) as k:
+                teams.digest_vorschau(self.root, "team-x",
+                                      runner=lambda p, a=ausgabe: (0, a))
+            self.assertEqual(k.exception.code, code)
+        with self.assertRaises(teams.TeamFehler) as k:
+            teams.digest_vorschau(self.root, "team-x", runner=lambda p: (1, "kaputt"))
+        self.assertEqual(k.exception.code, 502)
+
+    def test_digest_jetzt_benennt_geschriebene_dateien(self):
+        """SWR-090: nach dem Lauf stehen die entstandenen Dateien einzeln da.
+
+        Bewusst aus der Ergebniszeile des Werkzeugs gelesen: Ein zweiter Lauf am selben
+        Tag überschreibt dieselbe Datei — ein Verzeichnis-Vergleich meldete dann
+        fälschlich „nichts passiert", also erneut die Unsichtbarkeit aus N-0002.
+        """
+        self._werkzeug_anlegen()
+        ausgabe = ("[tag] Digest -> digest/2026-08-16-tag-digest.md\n"
+                   "[tag] Mail: zugestellt\n"
+                   "[woche] Digest -> digest/2026-08-16-woche-digest.md")
+        erg = teams.digest_jetzt(self.root, "team-x", runner=lambda p: (0, ausgabe))
+        self.assertEqual(erg["dateien"], ["digest/2026-08-16-tag-digest.md",
+                                          "digest/2026-08-16-woche-digest.md"])
+        # Fallback-Lauf (Ollama weg) schreibt Rohdaten, keinen Digest -> Liste bleibt leer,
+        # die Rohmeldung bleibt aber sichtbar statt stillschweigend als Erfolg zu gelten.
+        erg = teams.digest_jetzt(self.root, "team-x",
+                                 runner=lambda p: (0, "[woche] Fallback: Rohdaten -> eingang/x.md"))
+        self.assertEqual(erg["dateien"], [])
+        self.assertIn("Fallback", erg["meldung"])
+
+    def test_marker_stimmt_mit_werkzeug_ueberein(self):
+        """SWR-090: `teams._DIGEST_MARKER` und `mail_digest.DIGEST_MARKER` sind eine
+        Absprache über zwei Repos hinweg (team-mail ist lokal und wird nie importiert).
+        Dieser Test ist die Klammer — ändert das Werkzeug sein Format, wird es hier rot
+        statt still zu veralten. Übersprungen, wo team-mail nicht vorliegt (CI)."""
+        tools = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..",
+                                              "team-mail", "tools"))
+        if not os.path.isfile(os.path.join(tools, "mail_digest.py")):
+            self.skipTest("team-mail liegt lokal nicht vor (CI)")
+        sys.path.insert(0, tools)
+        try:
+            import mail_digest
+        finally:
+            sys.path.remove(tools)
+        self.assertEqual(teams._DIGEST_MARKER, mail_digest.DIGEST_MARKER)
+        zeile = f"[woche] {mail_digest.DIGEST_MARKER}digest/2026-08-16-woche-digest.md"
+        self.assertEqual(teams._digest_dateien(zeile),
+                         ["digest/2026-08-16-woche-digest.md"])
+
 
 if __name__ == "__main__":
     unittest.main()

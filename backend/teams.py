@@ -261,24 +261,89 @@ def konfiguration_schreiben(root, projekt, werte):
     return {"projekt": projekt, "konfiguration": lade_konfiguration(root, projekt)}
 
 
+def _werkzeug(root, projekt):
+    pfad = _pfad(root, projekt, "tools", "mail_digest.py")
+    if not os.path.isfile(pfad):
+        raise TeamFehler(404, f"'{projekt}' hat kein Digest-Werkzeug (tools/mail_digest.py).")
+    return pfad
+
+
+def _standard_runner(root, projekt, *argumente):
+    import sys as _sys
+
+    def runner(pfad):  # noqa: ANN001
+        lauf = subprocess.run([_sys.executable, pfad, *argumente],
+                              capture_output=True, text=True, timeout=600,
+                              cwd=os.path.join(root, projekt))
+        return lauf.returncode, (lauf.stdout + lauf.stderr).strip()
+    return runner
+
+
+# SWR-090: Erkennungszeichen der Ergebniszeile des Werkzeugs. Gegenstueck zu
+# `mail_digest.DIGEST_MARKER` — das Werkzeug liegt in einem anderen (lokalen, ggf. gar
+# nicht vorhandenen) Repo und wird nie importiert, deshalb steht das Zeichen hier ein
+# zweites Mal. Der Test `test_marker_stimmt_mit_werkzeug_ueberein` haelt beide zusammen.
+_DIGEST_MARKER = "Digest -> "
+
+
+def _digest_dateien(ausgabe):
+    """SWR-090: Welche Digest-Dateien hat der Lauf geschrieben? Aus seiner eigenen
+    Ergebniszeile gelesen — bewusst nicht aus einem Verzeichnis-Vergleich, weil ein
+    zweiter Lauf am selben Tag dieselbe Datei ueberschreibt und der Vergleich dann
+    faelschlich "nichts passiert" meldete (genau die Unsichtbarkeit aus N-0002)."""
+    dateien = []
+    for zeile in (ausgabe or "").splitlines():
+        stelle = zeile.find(_DIGEST_MARKER)
+        if stelle >= 0:
+            name = zeile[stelle + len(_DIGEST_MARKER):].strip()
+            if name and name not in dateien:
+                dateien.append(name)
+    return dateien
+
+
+_TAKT_ANZEIGE = {1: "Tag", 7: "Woche", 30: "Monat"}
+
+
+def digest_vorschau(root, projekt, runner=None):
+    """SWR-090 (pm/T-0025): Womit läuft der Sofort-Knopf? Fragt das Werkzeug selbst
+    (`--was-laeuft`, Auskunft ohne Wirkung — kein IMAP, kein Ollama, keine Datei).
+
+    Bewusst kein Nachbau aus der Konfiguration: Die Takte kommen aus
+    `mail_digest.jetzt_takte()`, also aus derselben Funktion, die der Lauf benutzt.
+    Genau diese Trennung war der Befund aus `team-mail/N-0002` — der Knopf lief auf
+    einem anderen Takt als konfiguriert, und nichts sprach darüber."""
+    werkzeug = _werkzeug(root, projekt)
+    if runner is None:
+        runner = _standard_runner(root, projekt, "--was-laeuft")
+    try:
+        code, ausgabe = runner(werkzeug)
+    except subprocess.TimeoutExpired:
+        raise TeamFehler(504, "Zeitüberschreitung — das Team-Werkzeug antwortet nicht.")
+    if code != 0:
+        raise TeamFehler(502, "Auskunft des Werkzeugs fehlgeschlagen: " + (ausgabe or "")[-300:])
+    try:
+        daten = json.loads((ausgabe or "").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        raise TeamFehler(502, "Werkzeug lieferte keine lesbare Auskunft: " + (ausgabe or "")[-200:])
+    takte = daten.get("takte") or []
+    daten["takt_text"] = " · ".join(_TAKT_ANZEIGE.get(t.get("tage"), str(t.get("name")))
+                                    for t in takte) or "—"
+    daten["projekt"] = projekt
+    return daten
+
+
 def digest_jetzt(root, projekt, runner=None):
     """SWR-063 (P8): stößt den Sofort-Lauf des Team-Werkzeugs an (holen → Ollama →
-    Digest → ggf. Mail). runner injizierbar für Tests; Default: subprocess."""
-    werkzeug = _pfad(root, projekt, "tools", "mail_digest.py")
-    if not os.path.isfile(werkzeug):
-        raise TeamFehler(404, f"'{projekt}' hat kein Digest-Werkzeug (tools/mail_digest.py).")
+    Digest → ggf. Mail). runner injizierbar für Tests; Default: subprocess.
+    SWR-090: die entstandenen Digest-Dateien werden zusätzlich einzeln benannt."""
+    werkzeug = _werkzeug(root, projekt)
     if runner is None:
-        import sys as _sys
-
-        def runner(pfad):  # noqa: ANN001
-            lauf = subprocess.run([_sys.executable, pfad, "--jetzt"],
-                                  capture_output=True, text=True, timeout=600,
-                                  cwd=os.path.join(root, projekt))
-            return lauf.returncode, (lauf.stdout + lauf.stderr).strip()
+        runner = _standard_runner(root, projekt, "--jetzt")
     try:
         code, ausgabe = runner(werkzeug)
     except subprocess.TimeoutExpired:
         raise TeamFehler(504, "Zeitüberschreitung — Ollama/IMAP antworten nicht (Werkzeuglauf abgebrochen).")
     if code != 0:
         raise TeamFehler(502, "Werkzeuglauf fehlgeschlagen: " + ausgabe[-300:])
-    return {"projekt": projekt, "meldung": ausgabe[-600:] or "Lauf abgeschlossen."}
+    return {"projekt": projekt, "meldung": ausgabe[-600:] or "Lauf abgeschlossen.",
+            "dateien": _digest_dateien(ausgabe)}

@@ -1073,6 +1073,11 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
 
     var digestKarte = el("div", { "class": "karte" }, el("h3", {}, "Digests (" + t.digests.length + ")"));
     var jetztMeldung = el("div", {});
+    // SWR-090 (pm/T-0025): Der Knopf sagt im Klartext, womit er läuft. Die Angaben kommen
+    // vom Werkzeug selbst (`--was-laeuft` -> jetzt_takte), NICHT aus k.takte im Formular —
+    // sonst wäre es die zweite Kopie derselben Regel und ein Auseinanderlaufen wie in
+    // team-mail/N-0002 wieder unsichtbar.
+    var laeuftZeile = el("div", { "class": "zeile leer" }, "Ein Klick startet: wird geprüft …");
     var jetztKnopf = el("button", { "class": "knopf", onclick: function () {  // SWR-063 (P8)
       jetztKnopf.disabled = true;
       leeren(jetztMeldung);
@@ -1083,7 +1088,11 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
       }).then(function (r) {
         jetztKnopf.disabled = false;
         leeren(jetztMeldung);
-        jetztMeldung.appendChild(el("div", { "class": "meldung ok" }, r.meldung));
+        var dateien = r.dateien || [];  // SWR-090: was ist tatsächlich entstanden?
+        jetztMeldung.appendChild(el("div", { "class": "meldung ok" },
+          dateien.length ? "Fertig — geschrieben: " + dateien.join(" · ")
+                         : "Fertig — kein neuer Digest geschrieben (Details unten)."));
+        jetztMeldung.appendChild(el("pre", { "class": "leer" }, r.meldung));
         lade();
       }).catch(function (f) {
         jetztKnopf.disabled = false;
@@ -1092,7 +1101,16 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
       });
     } }, "Jetzt zusammenfassen (Ollama)");
     digestKarte.appendChild(el("div", { "class": "btnreihe" }, jetztKnopf));
+    digestKarte.appendChild(laeuftZeile);
     digestKarte.appendChild(jetztMeldung);
+    api("/api/team/digest-vorschau?projekt=" + encodeURIComponent(projekt)).then(function (v) {
+      laeuftZeile.textContent = "Ein Klick startet: " + (v.takt_text || "—") +
+        " · Modell: " + (v.automatisch ? "automatisch (erstes installiertes)" : v.modell) +
+        " · KI-Hinweis: " + (v.ki_hinweis ? "„" + v.ki_hinweis + "“" : "kein Zusatz") +
+        (v.zustellung_mail ? " · Versand: zusätzlich per Mail" : " · Versand: nur ablegen");
+    }).catch(function (f) {
+      laeuftZeile.textContent = "Ein Klick startet: nicht abrufbar — " + String(f.message || f);
+    });
     if (!t.digests.length) digestKarte.appendChild(el("p", { "class": "leer" }, "Noch kein Digest."));
     t.digests.forEach(function (d) {
       digestKarte.appendChild(el("div", { "class": "karte klick brief", onclick: function () {

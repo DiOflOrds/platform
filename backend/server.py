@@ -234,6 +234,8 @@ class Api(BaseHTTPRequestHandler):
                         return self._json(200, teams.digest_inhalt(wurzel, projekt, name))
                     if pfad == "/api/team/ollama-modelle":  # SWR-071 (P8-E4)
                         return self._json(200, teams.ollama_modelle(wurzel, projekt))
+                    if pfad == "/api/team/digest-vorschau":  # SWR-090 (pm/T-0025)
+                        return self._json(200, teams.digest_vorschau(wurzel, projekt))
                 except teams.TeamFehler as e:
                     return self._json(e.code, {"fehler": str(e)})
             if pfad == "/architektur.svg":  # SWR-045 (P3): generiertes Architekturbild
