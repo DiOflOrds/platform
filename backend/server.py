@@ -16,7 +16,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend import aggregation, briefkasten, inbox, mailer, pool, session, teams, tickets  # noqa: E402
+from backend import (aggregation, briefkasten, inbox, mailer, pool,  # noqa: E402
+                     session, sprint, teams, tickets)
 
 
 def schreibschutz_pruefen(client_ip, pin_header):
@@ -220,6 +221,8 @@ class Api(BaseHTTPRequestHandler):
                 return self._json(200, aggregation.cockpit_alle(wurzel))
             if pfad == "/api/session":  # SWR-102 (pm/T-0040): was die letzte Session tat
                 return self._json(200, session.stand(wurzel))
+            if pfad == "/api/sprint":  # SWR-103 (pm/T-0016, pm/D006): Sprint-Workflow
+                return self._json(200, sprint.plan(wurzel))
             if pfad == "/api/briefkasten":  # SWR-050 (P4): Konversation lesen
                 return self._json(200, briefkasten.liste(wurzel, projekt))
             if pfad.startswith("/api/team"):  # SWR-053 (P7): PIN-Lesegate für

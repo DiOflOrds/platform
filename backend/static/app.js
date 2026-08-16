@@ -188,7 +188,11 @@ function zeige(elemente) {
 }
 
 // ---------- Ansichten ----------
-var AMPEL_KLASSE = { rot: "rejected", gelb: "in_progress", gruen: "done", grau: "" };
+// SWR-103 (pm/T-0016): `sprint` und `mensch` sind benannte Zustände und KEINE Fristen —
+// sie bekommen deshalb eine eigene Farbe und nie das Grün, das „Termin liegt komfortabel
+// in der Zukunft" bedeutet (B038: eine Farbe, die sich wie eine Terminzusage liest).
+var AMPEL_KLASSE = { rot: "rejected", gelb: "in_progress", gruen: "done", grau: "",
+                     sprint: "open", mensch: "in_review" };
 // SWR-074 (pm/N-0012): Takt-Aufgaben bleiben absichtlich offen — Klartext statt Rätselraten.
 var TAKT_NAMEN = { "je-session": "je Session", taeglich: "täglich", woechentlich: "wöchentlich",
                    monatlich: "monatlich", quartalsweise: "quartalsweise", jaehrlich: "jährlich" };
@@ -308,13 +312,74 @@ function sessionKachel(s) {
   return karte;
 }
 
+// SWR-103 (pm/T-0016, pm/D006): Kachel "Sprint aktuell" — die Workflow-Sicht des PM.
+// Quelle ist pm/management/sprint-aktuell.md, dieselbe Datei, die die Routine-Session
+// ohnehin schreibt (kein zweiter Plan, B033). Zeitstempel aus dem Git-Commit.
+function sprintKachel(s) {
+  var karte = el("div", { "class": "karte" });
+  var z = s.zaehler || {};
+  var kopf = el("div", { "class": "zeile" }, el("h3", { style: "margin:0" }, "Sprint aktuell"),
+    pille(sprintZeit(s.stand) || "Zeitpunkt unbekannt", s.veraltet ? "in_progress" : "done"));
+  if (z.dieser_sprint) kopf.appendChild(pille(z.dieser_sprint + "× dieser Sprint", "open"));
+  if (z.wartet_auf_mensch) {
+    kopf.appendChild(pille(z.wartet_auf_mensch + "× wartet auf dich", "in_review"));
+  }
+  if (z.terminiert) kopf.appendChild(pille(z.terminiert + "× terminiert"));
+  karte.appendChild(kopf);
+  if (s.veraltet && s.hinweis) {
+    karte.appendChild(el("div", { "class": "meldung fehler" },
+      s.hinweis + " — der Plan ist nicht fortgeschrieben worden."));
+  }
+  // Der Bestandsabgleich steht VOR dem Plan: ein Ticket, das in keiner Planzeile
+  // vorkommt, ist genau der Vorgang, den sonst niemand sieht (B049/B044) — er darf
+  // nicht unter einer 18-zeiligen Tabelle stehen.
+  var fehlend = s.nicht_geplant || [];
+  if (fehlend.length) {
+    var liste = el("div", { "class": "meldung fehler" },
+      fehlend.length + " offene(s) Ticket(s) stehen in KEINER Planzeile:");
+    fehlend.forEach(function (t) {
+      liste.appendChild(el("div", {}, el("a", { href: "#/ticket/" + t.projekt + "/" + t.id },
+        t.ref), " — " + (t.titel || "")));
+    });
+    karte.appendChild(liste);
+  } else if (s.offen_gesamt) {
+    karte.appendChild(el("div", { "class": "zeile" },
+      "Alle " + s.offen_gesamt + " offenen Aufgaben der Organisation sind im Plan."));
+  }
+  if (!(s.zeilen || []).length) {
+    karte.appendChild(el("p", { "class": "leer" }, "Kein Sprint-Plan in " + s.quelle + "."));
+    return karte;
+  }
+  var tab = el("table", { "class": "tab" });
+  tab.appendChild(el("tr", {}, el("th", {}, "Aufgabe"), el("th", {}, "Rolle"),
+    el("th", {}, "Fällig"), el("th", {}, "Status"), el("th", {}, "Grund")));
+  s.zeilen.forEach(function (r) {
+    var erste = (r.refs || []).filter(function (x) { return x.indexOf("/") > 0; })[0] || "";
+    var teile = erste.split("/");
+    var name = el("td", {});
+    if (teile.length === 2) {
+      name.appendChild(el("a", { href: "#/ticket/" + teile[0] + "/" + teile[1] }, r.aufgabe));
+    } else { name.appendChild(document.createTextNode(r.aufgabe)); }
+    tab.appendChild(el("tr", {}, name, el("td", {}, r.rolle || ""),
+      el("td", {}, pille(r.faellig || "—", AMPEL_KLASSE[r.ampel])),
+      el("td", {}, r.status || ""), el("td", {}, r.grund || "")));
+  });
+  karte.appendChild(tab);
+  karte.appendChild(el("div", { "class": "zeile" },
+    "Quelle: " + s.quelle + " · Zeitstempel aus dem Git-Commit, nicht aus dem Text."));
+  return karte;
+}
+
+function sprintZeit(iso) { return sessionZeit(iso); }
+
 function ladeUebersicht() {  // SWR-046 + P9 SWR-067: Org-Cockpit mit Gruppen
   // SWR-102: Die Session-Kachel darf das Cockpit nicht mitreissen — faellt ihr
   // Endpunkt aus, fehlt die Kachel, nicht die Uebersicht.
   return Promise.all([api("/api/cockpit"),
-                      api("/api/session").catch(function () { return null; })
+                      api("/api/session").catch(function () { return null; }),
+                      api("/api/sprint").catch(function () { return null; })
                      ]).then(function (beide) {
-    var u = beide[0], sitzung = beide[1];
+    var u = beide[0], sitzung = beide[1], sprintplan = beide[2];
     document.getElementById("stand").textContent = u.projekte.length + " Projekt(e)";
     var gruppen = { "festes-team": [], "projekt-team": [], "aktiv": [], "abgeschlossen": [] };
     u.projekte.forEach(function (p) {
@@ -323,6 +388,8 @@ function ladeUebersicht() {  // SWR-046 + P9 SWR-067: Org-Cockpit mit Gruppen
     var teile = [];
     // SWR-102: ganz oben, ohne Scrollen sichtbar (T-0040 DoD 2).
     if (sitzung) teile.push(sessionKachel(sitzung));
+    // SWR-103: direkt darunter — was die Session getan hat, dann was ansteht (T-0016 DoD 6).
+    if (sprintplan) teile.push(sprintKachel(sprintplan));
     [["festes-team", "Feste Teams"], ["projekt-team", "Projekt-Teams"],
      ["aktiv", "Aktive Projekte"]].forEach(function (g) {
       if (!gruppen[g[0]].length) return;
