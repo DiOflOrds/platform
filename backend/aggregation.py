@@ -66,6 +66,61 @@ def steckbrief(pfad):
     return info
 
 
+GRUPPEN_NAMEN = (("festes-team", "Feste Teams"), ("projekt-team", "Projekt-Teams"),
+                 ("aktiv", "Aktive Projekte"), ("abgeschlossen", "Abgeschlossen"))
+
+
+def _tags(pfad):
+    import subprocess
+    return subprocess.run(["git", "-C", pfad, "tag", "-n1"],
+                          capture_output=True, text=True).stdout
+
+
+def einstufung(root, projekt, pfad=None, tag_text=None):
+    """SWR-066/067 + SWR-082: EINE Ableitung von Beschreibung, Status und Gruppe.
+
+    Cockpit (Kacheln) und Navigation (Kopfbereich) rufen dieselbe Funktion — genau
+    deshalb können sie nicht auseinanderlaufen (pm/N-0015, T-0012). `pfad`/`tag_text`
+    sind Durchreichungen für Aufrufer, die beides ohnehin schon haben.
+    """
+    pfad = pfad or projekt_pfad(root, projekt)
+    sb = steckbrief(pfad)
+    if tag_text is None:
+        tag_text = _tags(pfad)
+    status = sb["status"] or ("abgeschlossen" if (f"{projekt}-v1.0" in tag_text or
+                              (projekt == "p0" and "genesis-v1.0" in tag_text)) else "aktiv")
+    if sb["typ"] in ("aspice", "pm"):
+        gruppe = "festes-team"
+    elif sb["typ"] == "projekt":
+        gruppe = "projekt-team"
+    else:
+        gruppe = "abgeschlossen" if status == "abgeschlossen" else "aktiv"
+    return {"beschreibung": sb["beschreibung"], "status": status, "gruppe": gruppe}
+
+
+def navigation(root):
+    """SWR-082 (pm/N-0015, pm/T-0012): Navigationsgruppen für den Kopfbereich.
+
+    Liefert dieselbe Menge und Gruppierung wie das Cockpit (`einstufung`), aber ohne
+    Ticket-/KPI-Last: aktive Gruppen in fester Reihenfolge, abgeschlossene Projekte
+    getrennt unter `weitere` — erreichbar, aber nicht im Weg. Leere Gruppen entfallen.
+    """
+    aktive, weitere = {}, []
+    for name in projekte(root):
+        e = einstufung(root, name)
+        eintrag = {"projekt": name, "beschreibung": e["beschreibung"], "status": e["status"],
+                   "gruppe": e["gruppe"]}
+        if e["gruppe"] == "abgeschlossen":
+            weitere.append(eintrag)
+        else:
+            aktive.setdefault(e["gruppe"], []).append(eintrag)
+    gruppen = [{"schluessel": s, "name": n, "eintraege": aktive[s]}
+               for s, n in GRUPPEN_NAMEN if aktive.get(s)]
+    return {"gruppen": gruppen, "weitere": weitere,
+            "anzahl_aktiv": sum(len(g["eintraege"]) for g in gruppen),
+            "anzahl_weitere": len(weitere)}
+
+
 def uebersicht(root):
     """SWR-026: je Projekt offene Tickets + offene Decision Requests."""
     eintraege = []
@@ -200,10 +255,8 @@ def cockpit(root, projekt="p0", heute=None):
             pass
         drs.append({"id": t["id"], "titel": t.get("titel"), "frist": frist,
                     "default": t.get("default", ""), "ampel": ampel})
-    import subprocess
-    lauf = subprocess.run(["git", "-C", pfad, "tag", "-n1"],
-                          capture_output=True, text=True)
-    tags = [z for z in lauf.stdout.splitlines() if z.strip()]
+    tag_text = _tags(pfad)
+    tags = [z for z in tag_text.splitlines() if z.strip()]
     kpi = lade_kpi(root, projekt)
     # SWR-051 (P4): unbeantwortete Briefkasten-Nachrichten (inline, kein Zirkelimport)
     briefe_offen = 0
@@ -221,16 +274,9 @@ def cockpit(root, projekt="p0", heute=None):
                          if n.endswith(".md")) if os.path.isdir(dverz) else []
         team = {"letzter_digest": digests[-1][:10] if digests else ""}
     # SWR-066/068 (P9): Steckbrief, Status-Fallback über Abschluss-Baseline, Gruppe, Aufgaben
-    sb = steckbrief(pfad)
-    tag_text = lauf.stdout
-    status = sb["status"] or ("abgeschlossen" if (f"{projekt}-v1.0" in tag_text or
-                              (projekt == "p0" and "genesis-v1.0" in tag_text)) else "aktiv")
-    if sb["typ"] in ("aspice", "pm"):
-        gruppe = "festes-team"
-    elif sb["typ"] == "projekt":
-        gruppe = "projekt-team"
-    else:
-        gruppe = "abgeschlossen" if status == "abgeschlossen" else "aktiv"
+    # SWR-082: gemeinsame Einstufung mit der Navigation — eine Quelle, keine Drift.
+    stufe = einstufung(root, projekt, pfad=pfad, tag_text=tag_text)
+    status, gruppe = stufe["status"], stufe["gruppe"]
     offene = sorted((t for t in tickets if t.get("status") not in ("done", "rejected")),
                     key=lambda t: t.get("id", ""))
     aufgaben = [{"id": t.get("id"), "titel": t.get("titel", ""),
@@ -240,7 +286,7 @@ def cockpit(root, projekt="p0", heute=None):
             "tickets_gesamt": len(tickets), "offene_drs": drs,
             "letzte_baseline": tags[-1].strip() if tags else "",
             "briefe_offen": briefe_offen, "team": team,
-            "beschreibung": sb["beschreibung"], "status": status, "gruppe": gruppe,
+            "beschreibung": stufe["beschreibung"], "status": status, "gruppe": gruppe,
             "aufgaben_offen": len(offene), "aufgaben": aufgaben,
             "aufgaben_wiederkehrend": wiederkehrend,  # SWR-074 (pm/N-0012)
             "kpi": {"laeufe": kpi.get("laeufe", 0),

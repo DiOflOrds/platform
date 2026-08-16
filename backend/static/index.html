@@ -66,6 +66,16 @@
   .md code { background:var(--fond); border:1px solid var(--rand); border-radius:.25rem; padding:0 .3rem; font-size:.85em; }
   .md hr { border:0; border-top:1px solid var(--rand); margin:.8rem 0; }
   .md em { color:var(--grau); }
+  /* SWR-082 (pm/N-0015, T-0012): Kopfbereich zeigt aktive Projekte/Teams zum Anklicken */
+  .projektwahl { display:flex; gap:.3rem; flex-wrap:wrap; align-items:center; }
+  .projektwahl button { border:0; border-radius:1rem; padding:.25rem .75rem; cursor:pointer;
+                        background:#2c3e50; color:#cfd8e3; font-size:.85rem; }
+  .projektwahl button:hover { background:#3b5065; color:#fff; }
+  .projektwahl button.aktiv { background:var(--fond); color:var(--haupt); font-weight:600; }
+  .projektwahl button.weitere { background:transparent; color:#9fb0c2; text-decoration:underline; }
+  .projektwahl .gruppe { color:#8fa2b5; font-size:.72rem; text-transform:uppercase;
+                         letter-spacing:.04em; margin-left:.35rem; }
+  .projektwahl .gruppe:first-child { margin-left:0; }
   /* P4 Sprint 1 (SWR-050/051/052) */
   .brief { border-left:4px solid var(--akzent); }
   .brief.beantwortet { border-left-color:var(--ok); }
@@ -77,13 +87,14 @@
     .knopf { padding:.65rem 1rem; min-height:44px; }
     .spalten { grid-template-columns:1fr; }
     .filterzeile select { flex:1 1 8rem; }
+    .projektwahl button { padding:.4rem .8rem; min-height:32px; }  /* SWR-082: Daumen-tauglich */
     .kpiraster { grid-template-columns:repeat(2,1fr); }
   }
 </style>
 </head>
 <body>
 <header><h1>Mission Control</h1>
-  <select id="projekt" style="width:auto;margin:0" title="Projekt wählen (SWR-026)"></select>
+  <div id="projektwahl" class="projektwahl" title="Projekt/Team wählen (SWR-082)"></div>
   <input id="pin" type="password" placeholder="PIN (nur remote)" title="Schreib-PIN für Netzwerk-Zugriff (SWR-049)"
          style="width:8.5rem;margin:0" autocomplete="off">
   <button id="neustart" class="knopf zweit" style="padding:.3rem .7rem;margin:0"

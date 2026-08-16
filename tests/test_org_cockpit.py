@@ -21,7 +21,9 @@ def _git(repo, *args):
                           + list(args), capture_output=True, text=True)
 
 
-class OrgCockpitTest(unittest.TestCase):
+class RepoWelt(unittest.TestCase):
+    """Gemeinsame Testwelt: Temp-Root mit echten Mini-Repos (hermetisch, gb-02)."""
+
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="orgcockpit-")
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
@@ -46,6 +48,8 @@ class OrgCockpitTest(unittest.TestCase):
             _git(wurzel, "tag", tag)
         return basis
 
+
+class OrgCockpitTest(RepoWelt):
     def test_steckbrief_und_gruppen(self):
         """SWR-066/068: Beschreibung/Status aus Steckbrief; typ-basierte Gruppen; Aufgabenliste."""
         self._repo("alpha", steckbrief='beschreibung: "Testprojekt Alpha"\nstatus: aktiv\n')
@@ -120,6 +124,65 @@ class OrgCockpitTest(unittest.TestCase):
         c = aggregation.cockpit(self.root, "p10")
         self.assertEqual(c["beschreibung"], "Nested-Projekt")
         self.assertEqual(c["aufgaben_offen"], 1)
+
+
+class NavigationTest(RepoWelt):
+    """SWR-082 (pm/N-0015, pm/T-0012): Navigationsgruppen für den Kopfbereich."""
+
+    def _welt(self):
+        self._repo("aspice-team", team_typ="aspice")
+        self._repo("pm", team_typ="pm")
+        self._repo("team-mail", team_typ="projekt")
+        self._repo("aktiv-projekt", steckbrief='beschreibung: "läuft noch"\nstatus: aktiv\n')
+        self._repo("alt", tag="alt-v1.0")
+        self._repo("p10", nested=True, steckbrief='beschreibung: "Nested"\n')
+
+    def test_gruppen_reihenfolge_und_trennung(self):
+        """SWR-082: feste Teams, Projekt-Teams, aktive Projekte in fester Reihenfolge;
+        abgeschlossene Projekte separat unter `weitere` (erreichbar, aber nicht im Weg)."""
+        self._welt()
+        n = aggregation.navigation(self.root)
+        self.assertEqual([g["schluessel"] for g in n["gruppen"]],
+                         ["festes-team", "projekt-team", "aktiv"])
+        namen = dict((g["schluessel"], [e["projekt"] for e in g["eintraege"]])
+                     for g in n["gruppen"])
+        self.assertEqual(namen["festes-team"], ["aspice-team", "pm"])
+        self.assertEqual(namen["projekt-team"], ["team-mail"])
+        self.assertIn("aktiv-projekt", namen["aktiv"])
+        self.assertIn("p10", namen["aktiv"])          # verschachteltes Projekt (SWR-070)
+        self.assertNotIn("alt", namen["aktiv"])
+        self.assertEqual([e["projekt"] for e in n["weitere"]], ["alt"])
+        self.assertEqual(n["anzahl_weitere"], 1)
+        self.assertEqual(n["anzahl_aktiv"], 5)
+
+    def test_gleiche_einstufung_wie_cockpit(self):
+        """SWR-082: Kopf und Cockpit dürfen nie auseinanderlaufen — beide Ansichten
+        nutzen dieselbe Ableitung, also muss jede Gruppe/Status-Angabe deckungsgleich sein."""
+        self._welt()
+        n = aggregation.navigation(self.root)
+        alle = [e for g in n["gruppen"] for e in g["eintraege"]] + n["weitere"]
+        self.assertEqual(len(alle), len(aggregation.projekte(self.root)))
+        for e in alle:
+            c = aggregation.cockpit(self.root, e["projekt"])
+            self.assertEqual(e["gruppe"], c["gruppe"], e["projekt"])
+            self.assertEqual(e["status"], c["status"], e["projekt"])
+            self.assertEqual(e["beschreibung"], c["beschreibung"], e["projekt"])
+
+    def test_leere_gruppen_entfallen(self):
+        """SWR-082: Ohne Teams gibt es keine leeren Überschriften im Kopfbereich."""
+        self._repo("nur-projekt")
+        n = aggregation.navigation(self.root)
+        self.assertEqual([g["schluessel"] for g in n["gruppen"]], ["aktiv"])
+        self.assertEqual(n["weitere"], [])
+
+    def test_nur_abgeschlossene_bleiben_erreichbar(self):
+        """SWR-082: Sind alle Projekte abgeschlossen, bleiben sie über `weitere` erreichbar —
+        der Kopfbereich darf nie leer sein und Boards/Berichte nie unaufrufbar machen."""
+        self._repo("alt1", tag="alt1-v1.0")
+        self._repo("alt2", tag="alt2-v1.0")
+        n = aggregation.navigation(self.root)
+        self.assertEqual(n["gruppen"], [])
+        self.assertEqual([e["projekt"] for e in n["weitere"]], ["alt1", "alt2"])
 
 
 if __name__ == "__main__":

@@ -157,6 +157,8 @@ class Api(BaseHTTPRequestHandler):
             wurzel = type(self).wurzel
             if pfad == "/api/projekte":  # SWR-025
                 return self._json(200, {"projekte": aggregation.projekte(wurzel)})
+            if pfad == "/api/navigation":  # SWR-082 (pm/T-0012): Gruppen für den Kopfbereich
+                return self._json(200, aggregation.navigation(wurzel))
             if pfad == "/api/uebersicht":  # SWR-026
                 return self._json(200, aggregation.uebersicht(wurzel))
             if pfad == "/api/board":

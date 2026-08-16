@@ -605,6 +605,19 @@ class HttpTest(unittest.TestCase):
                                 "decision-log.md"), encoding="utf-8").read()
         self.assertIn("| D001 |", log)
 
+    def test_navigation_endpunkt(self):
+        """/api/navigation liefert die Kopfbereichs-Gruppen — dieselbe Menge wie das
+        Cockpit, abgeschlossene Projekte getrennt. Verifiziert: SWR-082."""
+        _p1_dazu(self.wurzel)
+        n = self._get("/api/navigation")
+        namen = [e["projekt"] for g in n["gruppen"] for e in g["eintraege"]] + \
+                [e["projekt"] for e in n["weitere"]]
+        self.assertEqual(sorted(namen), self._get("/api/projekte")["projekte"])
+        self.assertEqual(n["anzahl_aktiv"] + n["anzahl_weitere"], len(namen))
+        for g in n["gruppen"]:
+            self.assertTrue(g["eintraege"])  # leere Gruppen werden nicht ausgeliefert
+            self.assertTrue(g["name"])
+
     def test_unbekanntes_projekt_404(self):
         """Unbekannte Projektnamen liefern 404 statt Serverfehler. Verifiziert: SWR-025."""
         try:

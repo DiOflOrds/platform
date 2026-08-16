@@ -11,7 +11,7 @@ var TABS = [["uebersicht", "Cockpit"], ["board", "Board"], ["inbox", "Inbox"],
             ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
 var inhalt = document.getElementById("inhalt");
 var tabsEl = document.getElementById("tabs");
-var projektEl = document.getElementById("projekt");
+var projektEl = document.getElementById("projektwahl");
 var aktiv = "uebersicht";
 var projekt = "p0";
 var detailId = "";
@@ -70,7 +70,7 @@ function parseHash() {
   var h = location.hash.replace(/^#\/?/, "");
   var teile = h.split("/");
   aktiv = teile[0] || "uebersicht";
-  if (teile[1]) { projekt = teile[1]; if (projektEl.value !== projekt) projektEl.value = projekt; }
+  if (teile[1]) { projekt = teile[1]; }
   detailId = teile[2] || "";
 }
 
@@ -114,6 +114,59 @@ function zeigeTabs() {
       onclick: function () { gehe(paar[0], projekt); }
     }, text));
   });
+}
+
+// SWR-082 (pm/N-0015, T-0012): Kopfbereich zeigt genau das, was auch im Cockpit steht.
+// Die Gruppen kommen fertig vom Server (aggregation.navigation) — Kopf und Cockpit
+// können damit nicht auseinanderlaufen. Abgeschlossenes bleibt erreichbar, aber weg.
+var navDaten = null;
+var navWeitereOffen = false;
+
+function projektKnopf(e) {
+  return el("button", {
+    "class": e.projekt === projekt ? "aktiv" : "",
+    title: e.beschreibung || e.projekt,
+    onclick: function () { gehe(aktiv === "ticket" ? "board" : aktiv, e.projekt); }
+  }, e.projekt);
+}
+
+function zeichneProjektwahl() {
+  if (!projektEl || !navDaten) return;
+  leeren(projektEl);
+  (navDaten.gruppen || []).forEach(function (g) {
+    projektEl.appendChild(el("span", { "class": "gruppe" }, g.name));
+    g.eintraege.forEach(function (e) { projektEl.appendChild(projektKnopf(e)); });
+  });
+  var weitere = navDaten.weitere || [];
+  if (!weitere.length) return;
+  // Deep-Link auf ein abgeschlossenes Projekt: dann aufklappen, sonst bliebe der
+  // aktuelle Eintrag unsichtbar (Boards und Berichte von p0–p9 bleiben gebraucht).
+  var drin = weitere.some(function (e) { return e.projekt === projekt; });
+  if (drin) navWeitereOffen = true;
+  var knopf = el("button", { "class": "weitere", onclick: function () {
+    navWeitereOffen = !navWeitereOffen; zeichneProjektwahl();
+  } }, (navWeitereOffen ? "weniger" : "weitere (" + weitere.length + ")"));
+  projektEl.appendChild(knopf);
+  if (navWeitereOffen) {
+    weitere.forEach(function (e) { projektEl.appendChild(projektKnopf(e)); });
+  }
+}
+
+function ladeNavigation() {  // SWR-082: Gruppen holen und Kopfbereich zeichnen
+  return api("/api/navigation").then(function (n) {
+    navDaten = n;
+    zeichneProjektwahl();
+    return n;
+  });
+}
+
+function navProjekte() {  // alle bekannten Namen, aktive zuerst
+  var namen = [];
+  (navDaten && navDaten.gruppen || []).forEach(function (g) {
+    g.eintraege.forEach(function (e) { namen.push(e.projekt); });
+  });
+  (navDaten && navDaten.weitere || []).forEach(function (e) { namen.push(e.projekt); });
+  return namen;
 }
 
 function pruefeInbox() {  // SWR-076 (pm/N-0016): Zähler frisch holen und Reiter neu zeichnen
@@ -787,6 +840,7 @@ function ladeBaselines() {  // SWR-032
 
 function lade() {
   zeigeTabs();
+  zeichneProjektwahl();  // SWR-082: aktueller Eintrag bleibt hervorgehoben
   zeige([el("p", { "class": "leer" }, "Lade …")]);
   var ansichten = { uebersicht: ladeUebersicht, board: ladeBoard, inbox: ladeInbox,
                     chat: ladeChat, team: ladeTeam, ticket: ladeTicket,
@@ -830,15 +884,10 @@ function pruefeVersion() {  // SWR-047: Prozess- vs. Code-Stand
 }
 setInterval(pruefeVersion, 30000);  // SWR-073: merkt den Selbst-Neustart
 
-projektEl.addEventListener("change", function () { gehe(aktiv === "ticket" ? "board" : aktiv, projektEl.value); });
-api("/api/projekte").then(function (antwort) {
-  leeren(projektEl);
-  antwort.projekte.forEach(function (name) {
-    projektEl.appendChild(el("option", { value: name }, name));
-  });
+ladeNavigation().then(function () {  // SWR-082 (pm/T-0012), löst die alte Auswahlliste ab
   parseHash();
-  if (antwort.projekte.indexOf(projekt) < 0 && antwort.projekte.length) projekt = antwort.projekte[0];
-  projektEl.value = projekt;
+  var namen = navProjekte();
+  if (namen.indexOf(projekt) < 0 && namen.length) projekt = namen[0];
   pruefeVersion();
   pruefeInbox();  // SWR-076 (pm/N-0016)
   lade();
