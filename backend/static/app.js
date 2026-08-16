@@ -341,14 +341,37 @@ function sessionKachel(s) {
 function sprintKachel(s) {
   var karte = el("div", { "class": "karte" });
   var z = s.zaehler || {};
-  var kopf = el("div", { "class": "zeile" }, el("h3", { style: "margin:0" }, "Sprint aktuell"),
+  // SWR-106: Die Planeinheit ist der Sprint. Die laufende Nummer steht als erstes im
+  // Kopf — ohne sie sind „Sprint 4" in der Tabelle und „in drei Läufen" im Kopf des
+  // Lesers zwei verschiedene Dinge.
+  var kopf = el("div", { "class": "zeile" }, el("h3", { style: "margin:0" }, "Sprint aktuell"));
+  if (s.sprint_nr) {
+    kopf.appendChild(pille("Sprint " + s.sprint_nr +
+      (s.takt_min ? " · Takt " + s.takt_min + " Min" : ""), "done"));
+  }
+  kopf.appendChild(
     pille(sprintZeit(s.stand) || "Zeitpunkt unbekannt", s.veraltet ? "in_progress" : "done"));
   if (z.dieser_sprint) kopf.appendChild(pille(z.dieser_sprint + "× dieser Sprint", "open"));
   if (z.wartet_auf_mensch) {
     kopf.appendChild(pille(z.wartet_auf_mensch + "× wartet auf dich", "in_review"));
   }
-  if (z.terminiert) kopf.appendChild(pille(z.terminiert + "× terminiert"));
+  // SWR-106: fest geplant und Warteschlange sind dieselbe Zahl mit verschiedener
+  // Verbindlichkeit — deshalb zwei Pillen und nicht eine Summe (B053).
+  if (z.fest_geplant) kopf.appendChild(pille(z.fest_geplant + "× fest geplant", "in_progress"));
+  if (z.warteschlange) kopf.appendChild(pille(z.warteschlange + "× Warteschlange"));
+  if (z.terminiert) kopf.appendChild(pille(z.terminiert + "× mit Datum", "in_progress"));
   karte.appendChild(kopf);
+  // Widerspruch zwischen Frist und geplantem Sprint: die bekannte Schwachstelle daran,
+  // beide Felder zu führen (B033). Sie steht oben, weil sie sonst niemand sucht.
+  var wid = s.widersprueche || [];
+  if (wid.length) {
+    var wliste = el("div", { "class": "meldung fehler" },
+      wid.length + "× Frist und geplanter Sprint widersprechen sich:");
+    wid.forEach(function (w) {
+      wliste.appendChild(el("div", {}, w.ref + " — " + w.meldung));
+    });
+    karte.appendChild(wliste);
+  }
   if (s.veraltet && s.hinweis) {
     karte.appendChild(el("div", { "class": "meldung fehler" },
       s.hinweis + " — der Plan ist nicht fortgeschrieben worden."));
@@ -384,7 +407,8 @@ function sprintKachel(s) {
       name.appendChild(el("a", { href: "#/ticket/" + teile[0] + "/" + teile[1] }, r.aufgabe));
     } else { name.appendChild(document.createTextNode(r.aufgabe)); }
     tab.appendChild(el("tr", {}, name, el("td", {}, r.rolle || ""),
-      el("td", {}, pille(r.faellig || "—", AMPEL_KLASSE[r.ampel])),
+      el("td", {}, pille(r.faellig || "—", AMPEL_KLASSE[r.ampel]),
+        r.horizont === "warteschlange" ? pille("Warteschlange") : ""),
       el("td", {}, r.status || ""), el("td", {}, r.grund || "")));
   });
   karte.appendChild(tab);

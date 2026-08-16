@@ -72,7 +72,8 @@ SAMMEL_REPO = "projects"
 # Abhängigkeitsgraph gehören der Skript-/Session-Route, sonst entsteht ein zweiter
 # Weg für Dinge, die genau einen haben müssen (ADR-007).
 EDITIERBARE_FELDER = ("titel", "typ", "prio", "rolle", "sprint", "status",
-                      "takt", "labels", "reviewer", "frist", "zuletzt_erledigt")
+                      "takt", "labels", "reviewer", "frist", "zuletzt_erledigt",
+                      "geplant_sprint")
 GESCHLOSSEN = ("done", "rejected")  # SWR-077: Archiv — nur Wiedereröffnung
 
 
@@ -281,6 +282,54 @@ def ist_ueberfaellig(t, heute=None):
     return frist_ampel(t.get("frist"), heute) == "rot"
 
 
+def parse_sprint_nr(wert):
+    """SWR-106: `geplant_sprint` -> int, sonst None.
+
+    Erlaubt sind eine reine Zahl (`42`) und die Schreibweise `Sprint 42`, weil die
+    zweite in Plandatei und Agenda ohnehin steht und ein Feld, das zwei Schreibweisen
+    derselben Sache unterschiedlich behandelt, ein künftiger Befund ist.
+    """
+    s = str(wert or "").strip()
+    if not s:
+        return None
+    m = re.match(r"^(?:[Ss]print\s*)?(\d{1,6})$", s)
+    return int(m.group(1)) if m else None
+
+
+def sprint_widerspruch(t, jetzt_nr, takt_min=60, heute=None):
+    """SWR-106: Sagt der geplante Sprint etwas anderes als die Frist? -> Text oder None.
+
+    Der Auftraggeber hat entschieden, **beide** Felder zu führen (2026-08-17):
+    `frist` ist die Zusage nach außen bzw. an den Menschen, `geplant_sprint` sagt,
+    wann das Team es anfasst. Das sind zwei Fakten und keine zwei Quellen für
+    einen — solange sie sich nicht widersprechen.
+
+    **Genau das ist die bekannte Schwachstelle dieser Wahl (B033), und deshalb wird
+    sie geprüft statt vorausgesetzt.** Liegt der geplante Sprint nach der Frist,
+    ist eine der beiden Angaben falsch, und niemand würde es merken: die Frist
+    bleibt grün, bis sie reißt, und der Sprint bleibt plausibel, weil ihn keiner
+    gegen die Frist hält.
+
+    Die Zeitschätzung ist eine Schätzung (Takt × Abstand) und wird auch so genannt.
+    Gemeldet wird nur, was **auch bei ununterbrochenem Takt** nicht mehr passt —
+    ein Widerspruch, den schon der günstigste Fall nicht auflöst.
+    """
+    if t.get("status") in GESCHLOSSEN:
+        return None
+    ziel = parse_sprint_nr(t.get("geplant_sprint"))
+    frist = t.get("frist")
+    if ziel is None or not frist or not ist_datum(str(frist).strip()[:10]):
+        return None
+    heute = heute or date.today()
+    tage = max(0, ziel - jetzt_nr) * takt_min / (60 * 24)
+    erreicht = heute + timedelta(days=tage)
+    endet = date.fromisoformat(str(frist).strip()[:10])
+    if erreicht > endet:
+        return (f"geplant für Sprint {ziel} (frühestens {erreicht.isoformat()}), "
+                f"Frist ist aber {endet.isoformat()}")
+    return None
+
+
 def parse_takt(wert):
     """SWR-104: Takt zerlegen -> (basis, wochentag|None, uhrzeit|None), sonst None.
 
@@ -454,6 +503,12 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
                           f"(erwartet JJJJ-MM-TT oder JJJJ-MM-TT HH:MM)")
         elif not t.get("takt"):
             fehler.append("zuletzt_erledigt ohne takt: das Feld bezieht sich auf einen Takt")
+    # SWR-106: Sprintnummern sind fortlaufend und ganzzahlig. „nächster Sprint" oder
+    # „bald" wären keine Planung, sondern eine Absichtserklärung — genau das, was die
+    # Umstellung von Datum auf Sprint beenden soll.
+    if t.get("geplant_sprint") and parse_sprint_nr(t["geplant_sprint"]) is None:
+        fehler.append(f"ungültiger geplant_sprint: {t['geplant_sprint']} "
+                      f"(erwartet eine Sprintnummer, z. B. 42 oder 'Sprint 42')")
     # SWR-091 (pm/T-0030): `frist` ist ab jetzt für JEDEN Typ zulässig und wird für
     # jeden Typ geprüft. Bis hierher galt die Datumsprüfung nur für Decision-Requests —
     # ein Tippfehler in der Frist eines CR wäre stillschweigend als „keine Frist"
@@ -600,8 +655,8 @@ def lies_ticket(repo, tid):
     return text, t
 
 
-OPTIONALE_FELDER = ("takt", "labels", "reviewer", "frist",
-                    "zuletzt_erledigt")  # leer = Zeile entfällt
+OPTIONALE_FELDER = ("takt", "labels", "reviewer", "frist", "zuletzt_erledigt",
+                    "geplant_sprint")  # leer = Zeile entfällt
 
 
 def _feld_schreiben(text, feld, wert):

@@ -33,6 +33,7 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 import board  # noqa: E402
+import sprint_register  # noqa: E402  — der Sprintzähler (SWR-106)
 
 from . import aggregation  # noqa: E402
 from . import session  # noqa: E402
@@ -52,9 +53,23 @@ PLAN_KOPF = re.compile(r"(?m)^#{2,6}\s+Sprint-Plan\b.*$")
 ZUSTAND_SPRINT = "sprint"      # „dieser Sprint"
 ZUSTAND_MENSCH = "mensch"      # „wartet-auf-Mensch"
 ZUSTAND_TERMIN = "termin"      # ein echtes Datum
+ZUSTAND_NUMMER = "sprint_nr"   # SWR-106: „Sprint 4" — die Planeinheit ab 2026-08-17
 ZUSTAND_OFFEN = "unbekannt"    # weder das eine noch das andere
 
+# SWR-106: Wie weit voraus eine Sprintnummer noch eine Zusage ist. Bei stündlichem Takt
+# sind 24 Sprints ein Tag; eine Nummer 150 Läufe voraus wäre eine Scheingenauigkeit, die
+# bei jedem Lauf neu geschrieben werden müsste. Bis `HORIZONT` Sprints voraus gilt eine
+# Nummer als **fest**, dahinter als **Warteschlange** — dieselbe Zahl, ehrlich beschriftet.
+HORIZONT = 2
+
+_SPRINT_NR = re.compile(r"(?i)\bsprint\s*(\d{1,6})\b")
 _SPRINT_WORT = re.compile(r"dies\w*\s+sprint", re.I)
+# SWR-106: Takt-Dauerläufer laufen in JEDEM Sprint, also auch in diesem. Sie bekommen
+# bewusst keine Nummer — das Feld `takt` sagt es bereits, und eine Nummer daneben wäre
+# eine zweite Aussage über dieselbe Sache (B033). Ohne dieses Muster fielen sie in
+# „unbekannt" und sähen ungeplant aus, obwohl sie die am festesten geplanten Aufgaben
+# der Organisation sind.
+_TAKT_WORT = re.compile(r"jede[rmns]?\s+sprint|je\s+(sprint|session|lauf)", re.I)
 _MENSCH_WORT = re.compile(r"wartet[\s-]*auf[\s-]*mensch", re.I)
 _TICKET_REF = re.compile(r"([A-Za-z0-9_.-]+)/(T-\d{4})|(T-\d{4})")
 
@@ -103,14 +118,43 @@ def faellig_zustand(wert, heute=None):
     Terminaussage vortäuscht.
     """
     s = _zellen_text(wert)
-    if _SPRINT_WORT.search(s):
+    if _SPRINT_WORT.search(s) or _TAKT_WORT.search(s):
         return ZUSTAND_SPRINT, "sprint"
     if _MENSCH_WORT.search(s):
         return ZUSTAND_MENSCH, "mensch"
+    # SWR-106: „Sprint 4" ist die Planeinheit, kein Datum — und bekommt deshalb wie die
+    # anderen benannten Zustände keine Datumsampel. Die Reihenfolge ist Absicht: der
+    # Wortlaut wird VOR dem Datumsmuster geprüft, damit eine Zelle wie „Sprint 4 (bis
+    # 23.08. zugesagt)" als Sprint gilt und nicht als Termin. Was zugesagt ist, steht im
+    # Feld `frist` des Tickets; was geplant ist, hier.
+    nr = _SPRINT_NR.search(s)
+    if nr:
+        return ZUSTAND_NUMMER, "sprint"
     treffer = re.search(r"\d{4}-\d{2}-\d{2}", s)
     if treffer:
         return ZUSTAND_TERMIN, board.frist_ampel(treffer.group(0), heute)
     return ZUSTAND_OFFEN, "grau"
+
+
+def sprint_nummer(wert):
+    """SWR-106: Die Sprintnummer einer „Fällig"-Zelle -> int oder None."""
+    m = _SPRINT_NR.search(_zellen_text(wert))
+    return int(m.group(1)) if m else None
+
+
+def horizont(nr, jetzt_nr):
+    """SWR-106: Ist diese Nummer **fest geplant** oder **Warteschlange**?
+
+    Der Auftraggeber hat den Horizont so gewählt (2026-08-17): die nächsten Sprints
+    tragen feste Zuordnungen, alles dahinter ist eine geordnete Reihenfolge. Beide
+    Angaben sind dieselbe Zahl — der Unterschied ist die **Verbindlichkeit**, und die
+    auszusprechen ist billiger, als sie zu suggerieren (B038).
+    """
+    if nr is None or not jetzt_nr:
+        return ""
+    if nr <= jetzt_nr:
+        return "jetzt"
+    return "fest" if nr <= jetzt_nr + HORIZONT else "warteschlange"
 
 
 def wartet_auf_mensch(*zellen):
@@ -148,8 +192,8 @@ def refs_der_zeile(text):
     return gefunden
 
 
-def zeilen(tabelle, heute=None):
-    """Plantabelle -> Liste von Zeilen mit Zustand und Ampel."""
+def zeilen(tabelle, heute=None, jetzt_nr=0):
+    """Plantabelle -> Liste von Zeilen mit Zustand, Ampel und (SWR-106) Sprintnummer."""
     if not tabelle:
         return []
     sp = tabelle.get("spalten", [])
@@ -168,12 +212,15 @@ def zeilen(tabelle, heute=None):
         faellig = hole(z, i_faellig)
         status = hole(z, i_status)
         zustand, ampel = faellig_zustand(faellig, heute)
+        nr = sprint_nummer(faellig)
         ergebnis.append({"aufgabe": aufgabe,
                          "refs": sorted(refs_der_zeile(aufgabe)),
                          "rolle": hole(z, i_rolle),
                          "faellig": faellig,
                          "zustand": zustand,
                          "ampel": ampel,
+                         "sprint_nr": nr,                      # SWR-106
+                         "horizont": horizont(nr, jetzt_nr),   # fest / warteschlange
                          "wartet_auf_mensch": wartet_auf_mensch(faellig, status),
                          "status": status,
                          "grund": hole(z, i_grund)})
@@ -201,7 +248,30 @@ def offene_tickets(root):
                             "titel": t.get("titel", ""),
                             "status": t.get("status", ""),
                             "frist": t.get("frist", ""),
-                            "takt": t.get("takt", "")})
+                            "takt": t.get("takt", ""),
+                            "geplant_sprint": t.get("geplant_sprint", ""),  # SWR-106
+                            "_ticket": t})
+    return treffer
+
+
+def widersprueche(offene, jetzt_nr, takt_min=60, heute=None):
+    """SWR-106: Tickets, deren geplanter Sprint nach ihrer eigenen Frist läge.
+
+    Der Auftraggeber führt `frist` und `geplant_sprint` **parallel** (2026-08-17). Das
+    ist zulässig, solange beide verschiedene Fragen beantworten — die Zusage nach außen
+    und der Lauf, in dem das Team es anfasst. Es ist **nicht** zulässig, wenn sie sich
+    widersprechen, und ein Widerspruch fiele hier niemandem auf: die Frist bliebe grün,
+    bis sie reißt, und die Sprintnummer bliebe plausibel, weil sie keiner gegen die
+    Frist hält. Deshalb prüft die Sicht es und zeigt es **über** der Tabelle — dieselbe
+    Regel wie bei `nicht_geplant` (SWR-103): Was fehlt oder klemmt, steht vor dem, was
+    stimmt, nicht dahinter.
+    """
+    treffer = []
+    for o in offene:
+        t = o.get("_ticket") or {}
+        text = board.sprint_widerspruch(t, jetzt_nr, takt_min, heute)
+        if text:
+            treffer.append({"ref": o["ref"], "titel": o["titel"], "meldung": text})
     return treffer
 
 
@@ -232,7 +302,8 @@ def zaehler(plan_zeilen):
     tragen und trotzdem auf den Menschen warten. Die Zahl heißt deshalb nach dem, was
     sie zählt, und wird nicht in die Zerlegung gemischt (B033/B053).
     """
-    z = {ZUSTAND_SPRINT: 0, ZUSTAND_MENSCH: 0, ZUSTAND_TERMIN: 0, ZUSTAND_OFFEN: 0}
+    z = {ZUSTAND_SPRINT: 0, ZUSTAND_MENSCH: 0, ZUSTAND_TERMIN: 0, ZUSTAND_NUMMER: 0,
+         ZUSTAND_OFFEN: 0}
     for zeile in plan_zeilen:
         schl = zeile.get("zustand", ZUSTAND_OFFEN)
         z[schl] = z.get(schl, 0) + 1
@@ -240,6 +311,13 @@ def zaehler(plan_zeilen):
             "terminiert": z[ZUSTAND_TERMIN],
             "ohne_termin": z[ZUSTAND_MENSCH],
             "ohne_zustand": z[ZUSTAND_OFFEN],
+            # SWR-106: die beiden Sprint-Zahlen liegen in derselben Zerlegung wie die
+            # anderen Zustände (jede Zeile hat genau einen), `wartet_auf_mensch` bleibt
+            # die einzige Querzahl.
+            "fest_geplant": sum(1 for zl in plan_zeilen if zl.get("horizont") == "fest"),
+            "warteschlange": sum(1 for zl in plan_zeilen
+                                 if zl.get("horizont") == "warteschlange"),
+            "auf_sprint": z[ZUSTAND_NUMMER],
             "wartet_auf_mensch": sum(1 for zl in plan_zeilen if zl.get("wartet_auf_mensch"))}
 
 
@@ -263,9 +341,16 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
                 text = f.read()
         except OSError:
             text = ""
-    plan_zeilen = zeilen(plan_tabelle(text), heute)
+    # SWR-106: Die Planeinheit ist der Sprint, nicht der Kalendertag. Die laufende
+    # Nummer kommt aus dem Register — der einzigen Stelle, die sie kennt (B033).
+    jetzt_nr = sprint_register.aktuell(root)
+    takt_min = sprint_register.takt_minuten(root)
+    plan_zeilen = zeilen(plan_tabelle(text), heute, jetzt_nr)
     offene = offene_tickets(root)
     fehlend = nicht_geplant(plan_zeilen, offene)
+    widerspruch = widersprueche(offene, jetzt_nr, takt_min, heute)
+    for o in offene:
+        o.pop("_ticket", None)
 
     # Staleness aus SWR-102 wiederverwendet — dieselbe Falle, dieselbe Regel, ein Ort.
     zeiten = session._commit_zeiten(root, projekt, datei)
@@ -277,6 +362,9 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
             "zaehler": zaehler(plan_zeilen),
             "offen_gesamt": len(offene),
             "nicht_geplant": fehlend,
+            "widersprueche": widerspruch,   # SWR-106
+            "sprint_nr": jetzt_nr,          # SWR-106: der laufende Sprint
+            "takt_min": takt_min,
             "stand": letzter,
             "veraltet": veraltet,
             "hinweis": hinweis,
