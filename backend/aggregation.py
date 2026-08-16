@@ -15,25 +15,55 @@ import board  # noqa: E402
 
 
 def projekte(root):
-    """SWR-025/ADR-004: Projekt-Discovery — Verzeichnisse mit tickets/ und .git."""
+    """SWR-025/ADR-004 + SWR-070 (P9): Discovery — Top-Level-Repos mit tickets/
+    und .git PLUS Projektordner im Sammel-Repo projects/ (pm/D003)."""
     namen = []
     try:
         for d in sorted(os.listdir(root)):
             p = os.path.join(root, d)
             if os.path.isdir(os.path.join(p, "tickets")) and os.path.isdir(os.path.join(p, ".git")):
                 namen.append(d)
+        sammel = os.path.join(root, "projects")
+        if os.path.isdir(os.path.join(sammel, ".git")):
+            for d in sorted(os.listdir(sammel)):
+                if os.path.isdir(os.path.join(sammel, d, "tickets")) and d not in namen:
+                    namen.append(d)
     except OSError:
         pass
-    return namen
+    return sorted(namen)
 
 
 def projekt_pfad(root, projekt):
-    """Projektnamen gegen die Discovery validieren (SWR-025); wirft ValueError."""
+    """Projektnamen gegen die Discovery validieren (SWR-025); wirft ValueError.
+    SWR-070: Ordner im Sammel-Repo projects/ werden auf ihren Pfad abgebildet."""
     bekannte = projekte(root)
     if projekt not in bekannte:
         raise ValueError(f"unbekanntes Projekt: {projekt} "
                          f"(bekannt: {', '.join(bekannte) or 'keine'})")
-    return os.path.join(root, projekt)
+    direkt = os.path.join(root, projekt)
+    if os.path.isdir(os.path.join(direkt, "tickets")):
+        return direkt
+    return os.path.join(root, "projects", projekt)
+
+
+def steckbrief(pfad):
+    """SWR-066 (P9): steckbrief.yaml (beschreibung, status) + typ aus team.yaml."""
+    info = {"beschreibung": "", "status": "", "typ": ""}
+    sp = os.path.join(pfad, "steckbrief.yaml")
+    if os.path.isfile(sp):
+        for zeile in open(sp, encoding="utf-8"):
+            z = zeile.split("#", 1)[0].strip()
+            if z.startswith("beschreibung:"):
+                info["beschreibung"] = z.split(":", 1)[1].strip().strip('"')
+            elif z.startswith("status:"):
+                info["status"] = z.split(":", 1)[1].strip()
+    ty = os.path.join(pfad, "team.yaml")
+    if os.path.isfile(ty):
+        for zeile in open(ty, encoding="utf-8"):
+            z = zeile.split("#", 1)[0].strip()
+            if z.startswith("typ:"):
+                info["typ"] = z.split(":", 1)[1].strip().strip('"')
+    return info
 
 
 def uebersicht(root):
@@ -130,7 +160,8 @@ def cockpit(root, projekt="p0", heute=None):
     offene DRs mit Frist-Ampel (rot=überschritten, gelb=<=2 Tage, gruen=später,
     grau=ohne Frist), letzte Baseline, KPI-Kurzfassung."""
     heute = heute or _datum.today()
-    tickets, _ = board.lade_tickets(projekt_pfad(root, projekt))
+    pfad = projekt_pfad(root, projekt)
+    tickets, _ = board.lade_tickets(pfad)
     status_zahlen = {}
     for t in tickets:
         status_zahlen[t.get("status", "?")] = status_zahlen.get(t.get("status", "?"), 0) + 1
@@ -149,13 +180,13 @@ def cockpit(root, projekt="p0", heute=None):
         drs.append({"id": t["id"], "titel": t.get("titel"), "frist": frist,
                     "default": t.get("default", ""), "ampel": ampel})
     import subprocess
-    lauf = subprocess.run(["git", "-C", os.path.join(root, projekt), "tag", "-n1"],
+    lauf = subprocess.run(["git", "-C", pfad, "tag", "-n1"],
                           capture_output=True, text=True)
     tags = [z for z in lauf.stdout.splitlines() if z.strip()]
     kpi = lade_kpi(root, projekt)
     # SWR-051 (P4): unbeantwortete Briefkasten-Nachrichten (inline, kein Zirkelimport)
     briefe_offen = 0
-    brief_verz = os.path.join(root, projekt, "management", "briefkasten")
+    brief_verz = os.path.join(pfad, "management", "briefkasten")
     if os.path.isdir(brief_verz):
         for name in os.listdir(brief_verz):
             if name.endswith(".md") and "status: offen" in open(
@@ -163,15 +194,31 @@ def cockpit(root, projekt="p0", heute=None):
                 briefe_offen += 1
     # SWR-055 (P7): Team-Kachel — letzter Digest für Team-Repos (team.yaml)
     team = None
-    if os.path.isfile(os.path.join(root, projekt, "team.yaml")):
-        dverz = os.path.join(root, projekt, "digest")
+    if os.path.isfile(os.path.join(pfad, "team.yaml")):
+        dverz = os.path.join(pfad, "digest")
         digests = sorted(n for n in os.listdir(dverz)
                          if n.endswith(".md")) if os.path.isdir(dverz) else []
         team = {"letzter_digest": digests[-1][:10] if digests else ""}
+    # SWR-066/068 (P9): Steckbrief, Status-Fallback über Abschluss-Baseline, Gruppe, Aufgaben
+    sb = steckbrief(pfad)
+    tag_text = lauf.stdout
+    status = sb["status"] or ("abgeschlossen" if (f"{projekt}-v1.0" in tag_text or
+                              (projekt == "p0" and "genesis-v1.0" in tag_text)) else "aktiv")
+    if sb["typ"] in ("aspice", "pm"):
+        gruppe = "festes-team"
+    elif sb["typ"] == "projekt":
+        gruppe = "projekt-team"
+    else:
+        gruppe = "abgeschlossen" if status == "abgeschlossen" else "aktiv"
+    offene = sorted((t for t in tickets if t.get("status") not in ("done", "rejected")),
+                    key=lambda t: t.get("id", ""))
+    aufgaben = [{"id": t.get("id"), "titel": t.get("titel", "")} for t in offene[:3]]
     return {"projekt": projekt, "status_zahlen": status_zahlen,
             "tickets_gesamt": len(tickets), "offene_drs": drs,
             "letzte_baseline": tags[-1].strip() if tags else "",
             "briefe_offen": briefe_offen, "team": team,
+            "beschreibung": sb["beschreibung"], "status": status, "gruppe": gruppe,
+            "aufgaben_offen": len(offene), "aufgaben": aufgaben,
             "kpi": {"laeufe": kpi.get("laeufe", 0),
                     "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}}
 

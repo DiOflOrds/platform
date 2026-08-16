@@ -117,14 +117,26 @@ function zeige(elemente) {
 // ---------- Ansichten ----------
 var AMPEL_KLASSE = { rot: "rejected", gelb: "in_progress", gruen: "done", grau: "" };
 
-function ladeUebersicht() {  // SWR-046: Projekt-Cockpit
-  return api("/api/cockpit").then(function (u) {
-    document.getElementById("stand").textContent = u.projekte.length + " Projekt(e)";
-    zeige(u.projekte.map(function (p) {
+function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
       var fertig = (p.status_zahlen.done || 0) + (p.status_zahlen.rejected || 0);
       var karte = el("div", { "class": "karte" },
         el("h3", {}, p.projekt),
-        el("div", { "class": "zeile" }, pille(fertig + "/" + p.tickets_gesamt + " fertig", "done")));
+        el("div", { "class": "zeile" },
+          pille(p.status === "abgeschlossen" ? "abgeschlossen" : (p.status || "aktiv"),
+                p.status === "abgeschlossen" ? "done" : "open"),
+          pille(fertig + "/" + p.tickets_gesamt + " fertig", "done")));
+      if (p.beschreibung) {  // SWR-066/069: nie wieder raten, was "p3" war
+        karte.appendChild(el("div", { "class": "zeile leer" }, p.beschreibung));
+      }
+      if (p.aufgaben && p.aufgaben.length) {  // SWR-068: laufende Aufgaben
+        var az = el("div", { "class": "zeile" }, "Offen (" + p.aufgaben_offen + "): ");
+        p.aufgaben.forEach(function (a) {
+          az.appendChild(el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + a.id,
+                                   title: a.titel }, a.id));
+          az.appendChild(document.createTextNode(" "));
+        });
+        karte.appendChild(az);
+      }
       var statusZeile = el("div", { "class": "zeile" });
       Object.keys(p.status_zahlen).sort().forEach(function (s) {
         statusZeile.appendChild(pille(s + " " + p.status_zahlen[s], s));
@@ -157,7 +169,36 @@ function ladeUebersicht() {  // SWR-046: Projekt-Cockpit
         gehe("board", p.projekt);
       } }, "Zum Board"));
       return karte;
-    }));
+}
+
+function ladeUebersicht() {  // SWR-046 + P9 SWR-067: Org-Cockpit mit Gruppen
+  return api("/api/cockpit").then(function (u) {
+    document.getElementById("stand").textContent = u.projekte.length + " Projekt(e)";
+    var gruppen = { "festes-team": [], "projekt-team": [], "aktiv": [], "abgeschlossen": [] };
+    u.projekte.forEach(function (p) {
+      (gruppen[p.gruppe || "aktiv"] || gruppen.aktiv).push(p);
+    });
+    var teile = [];
+    [["festes-team", "Feste Teams"], ["projekt-team", "Projekt-Teams"],
+     ["aktiv", "Aktive Projekte"]].forEach(function (g) {
+      if (!gruppen[g[0]].length) return;
+      teile.push(el("h3", {}, g[1] + " (" + gruppen[g[0]].length + ")"));
+      gruppen[g[0]].forEach(function (p) { teile.push(cockpitKarte(p)); });
+    });
+    if (gruppen.abgeschlossen.length) {  // SWR-067: eingeklappt
+      var container = el("div", { style: "display:none" });
+      gruppen.abgeschlossen.forEach(function (p) { container.appendChild(cockpitKarte(p)); });
+      var knopf = el("button", { "class": "knopf zweit", onclick: function () {
+        var zu = container.style.display === "none";
+        container.style.display = zu ? "" : "none";
+        knopf.textContent = (zu ? "Ausblenden: " : "Anzeigen: ") + "abgeschlossene Projekte (" +
+          gruppen.abgeschlossen.length + ")";
+      } }, "Anzeigen: abgeschlossene Projekte (" + gruppen.abgeschlossen.length + ")");
+      teile.push(el("h3", {}, "Abgeschlossen"));
+      teile.push(el("div", { "class": "btnreihe" }, knopf));
+      teile.push(container);
+    }
+    zeige(teile);
   });
 }
 
