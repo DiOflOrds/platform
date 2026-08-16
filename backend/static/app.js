@@ -154,8 +154,13 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
         p.aufgaben.forEach(function (a) {
           az.appendChild(el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + a.id,
                                    title: a.titel + (a.takt ? " (wiederkehrend: " +
-                                     TAKT_TEXT(a.takt) + ")" : "") },
-                            a.id + (a.takt ? " ↻" : "")));
+                                     TAKT_TEXT(a.takt) + ")" : "") }, a.id));
+          // SWR-074 (pm/N-0017): dieselbe Klartext-Pille wie im Board statt eines Symbols —
+          // ein "↻" war zwar da, hat aber niemandem gesagt, was es bedeutet.
+          if (a.takt) {
+            az.appendChild(document.createTextNode(" "));
+            az.appendChild(pille("wiederkehrend: " + TAKT_TEXT(a.takt), "in_progress"));
+          }
           az.appendChild(document.createTextNode(" "));
         });
         karte.appendChild(az);
