@@ -22,6 +22,7 @@ if _SCRIPTS not in sys.path:
 import board  # noqa: E402
 
 from . import aggregation  # noqa: E402
+from . import git_schreiben  # noqa: E402  — SWR-134: der eine Schreibweg nach Git
 
 HERKUNFT = "Mensch via HMI"
 COMMIT_IDENTITAET = ["-c", f"user.name={HERKUNFT}", "-c", "user.email=mensch@hmi.local"]
@@ -148,18 +149,17 @@ def speichere(root, projekt, ticket_id, werte):
             open(board_pfad, "w", encoding="utf-8", newline="\n").write(vorher_board)
 
     ziele = [os.path.join("tickets", f"{ticket_id}.md"), BOARD_DATEI]
-    add = subprocess.run(["git", "-C", repo, "add", "--"] + ziele,
-                         capture_output=True, text=True, encoding="utf-8", errors="replace")
     nachricht = (f"{ticket_id}: Änderung via HMI ({', '.join(ergebnis['geaendert'])}) "
                  f"— {HERKUNFT}")
-    commit = subprocess.run(["git", "-C", repo] + COMMIT_IDENTITAET +
-                            ["commit", "-m", nachricht], capture_output=True,
-                                text=True, encoding="utf-8", errors="replace")
-    if add.returncode or commit.returncode:
+    # SWR-134: über den einen Schreibweg. ⚠ Die Rücknahme bleibt unverändert: der
+    # Schreibweg räumt eine verwaiste Sperre und wiederholt EINMAL — scheitert es auch
+    # dann, war es kein Sperrproblem, und die Änderung gehört zurückgenommen.
+    v = git_schreiben.verbuche(repo, ziele, nachricht, COMMIT_IDENTITAET)
+    if not v.ok:
         zuruecknehmen()
         raise TicketFehler(503, "Git-Commit fehlgeschlagen — die Änderung wurde "
                                 "zurückgenommen, die Dateien stehen unverändert: " +
-                           (add.stderr + commit.stderr + commit.stdout).strip()[:400])
+                           v.fehler[:400])
     return {"ok": True, "projekt": projekt, "ticket": ticket_id,
             "ref": aggregation.ref(projekt, ticket_id),
             "geaendert": ergebnis["geaendert"], "status": ergebnis["status"],

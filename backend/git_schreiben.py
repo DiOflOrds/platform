@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""Der eine Schreibweg nach Git (SWR-134, platform/T-0015).
+
+**Warum es diese Datei gibt.** Auf dem Cowork-Mount hinterlässt *jeder* Git-Aufruf eine
+`.git/index.lock`, die Git selbst nicht mehr entfernen darf (`unlink` ist verboten,
+`rename` erlaubt). Der **nächste schreibende** Aufruf im selben Repo scheitert daran mit
+`fatal: Unable to create '.git/index.lock': File exists` — Exit 128.
+
+SWR-123 hat genau dafür die Räumung gebaut, zweistufig (löschen, sonst wegbenennen), und
+sie ist **richtig**. Was fehlte, war nicht der Rückfall auf `rename` — den gibt es seit
+`pm/T-0023` — sondern die **Reichweite**: von acht Stellen, die in dieser Organisation
+`git commit` aufrufen, benutzte genau **eine** sie (der Briefkasten). Die anderen sieben
+liefen in denselben Fehler, für den die Reparatur schon im Haus lag.
+
+> **Eine Reparatur, die nur ihr eigener Fundort benutzt, ist eine Reparatur des Fundorts
+> und nicht des Fehlers.**
+
+Das ist dieselbe Gestalt wie SWR-131 („eine Antwort auf *ist das entschieden?*, alle
+Leser fragen dort") — hier: **ein Schreibweg, alle Schreiber gehen durch ihn**. Und wie
+dort wird „alle" von einem **Zähltest** gehalten und nicht von einer Zusage: der Test
+`test_git_schreibweg.py` zählt die Stellen, die `commit` selbst zusammenbauen, und
+verlangt, dass es genau diese Datei ist.
+
+**Warum in `backend/` und nicht in `scripts/`.** `preflight` (in `scripts/`) importiert
+`board` **und** `backend`; ein Modulimport von `preflight` in `backend/*.py` schlösse
+einen Zyklus. Diese Datei ist deshalb ein **Blatt**: sie importiert oben nichts aus der
+Organisation, und den Import von `preflight` macht sie **in der Funktion** — dieselbe
+Begründung, die schon in `briefkasten._entsperre` stand, jetzt an einer Stelle statt in
+acht. `backend/` ist der Ort, weil alle acht Aufrufer es erreichen: die
+`backend`-Module über `from . import`, `scripts/` und `orchestrator/` über den
+`platform`-Pfad, den sie ohnehin schon setzen. Ein Lademechanismus je Aufrufer wäre
+B033 in der Form, gegen die dieses Ticket gerichtet ist.
+
+**Was diese Datei ausdrücklich NICHT tut.** Sie räumt nicht vorsorglich vor jedem Aufruf.
+Geräumt wird erst, **nachdem** ein Versuch gescheitert ist — ein Lock, das ein *aktiver*
+Git-Prozess hält, beiseite zu benennen wäre schlimmer als der Fehler (DoD 2 aus
+`platform/T-0015`). Die Voraussetzung „kein Git-Prozess läuft" prüft `preflight`
+weiterhin selbst; sie wird hier nicht kopiert (B033).
+"""
+import os
+import subprocess
+import sys
+
+#: Vorgabe-Identität für Commits des Teams (D006). Wer als Mensch schreibt, übergibt
+#: seine eigene — der Briefkasten und die Inbox tun genau das.
+TEAM_IDENTITAET = ["-c", "user.name=ASPICE-Team", "-c", "user.email=team@aspice.local"]
+
+#: Git sagt „nichts zu committen" auf **stdout**, nicht auf stderr. Wer nur stderr liest,
+#: hält einen leeren Commit für einen Fehler (der Fall aus `teams.py`).
+LEERTEXTE = ("nothing to commit", "nichts zu committen")
+
+
+class Verbuchung:
+    """Ergebnis eines Schreibversuchs — bewusst ein Objekt und kein Tupel.
+
+    `stderr` und `stdout` bleiben **getrennt**: der Briefkasten meldet dem Menschen nur
+    `stderr` (SWR-121), `teams.py` muss „nothing to commit" aus `stdout` erkennen. Beides
+    in einen String zu falten hieße, eine der beiden Fragen nicht mehr beantworten zu
+    können — zwei Fragen, ein Feld, das ist B033 rückwärts.
+    """
+
+    __slots__ = ("ok", "stderr", "stdout", "wiederholt", "geraeumt")
+
+    def __init__(self, ok, stderr="", stdout="", wiederholt=False, geraeumt=0):
+        self.ok = bool(ok)
+        self.stderr = stderr or ""
+        self.stdout = stdout or ""
+        self.wiederholt = bool(wiederholt)
+        self.geraeumt = int(geraeumt)
+
+    @property
+    def fehler(self):
+        """Der Text, den ein Mensch zu sehen bekommt (stderr **und** stdout)."""
+        return (self.stderr + self.stdout).strip()
+
+    @property
+    def nichts_zu_committen(self):
+        """True, wenn Git nur meldet, dass es nichts zu tun gab.
+
+        Das ist **kein** Fehler: ein Schreibweg, der eine unveränderte Datei speichert,
+        hat seine Zusage erfüllt. Wer das als Fehler behandelt, meldet dem Menschen einen
+        Ausfall, wo nichts ausgefallen ist — der Befund hinter SWR-121, eine Etage tiefer.
+        """
+        text = (self.stdout + self.stderr).lower()
+        return any(t in text for t in LEERTEXTE)
+
+    def __repr__(self):  # pragma: no cover — Diagnose
+        return (f"Verbuchung(ok={self.ok}, wiederholt={self.wiederholt}, "
+                f"geraeumt={self.geraeumt})")
+
+
+def entsperre(repo):
+    """Verwaiste Git-Sperren dieses Repos wegräumen. Rückgabe: Anzahl (0 = nichts/geht nicht).
+
+    **Kein zweiter Räummechanismus** (B033). Die Organisation hat seit Sprint 5 genau
+    einen — `preflight.finde_lock_artefakte` / `entferne_artefakte`, zweistufig: erst
+    `os.remove`, bei `OSError` **umbenennen** nach `.git/verwaiste-locks/`. Auf diesem
+    Mount ist genau das der Unterschied zwischen „geht" und „geht nicht".
+
+    Schlägt der Import fehl, ist das **kein** Fehler des Schreibwegs: dann bleibt es beim
+    alten Verhalten, also bei der ehrlichen Meldung. Eine scheiternde Reparatur darf nie
+    schlimmer sein als keine.
+    """
+    try:
+        skripte = os.path.dirname(os.path.abspath(__file__))
+        if skripte not in sys.path:
+            sys.path.insert(0, skripte)
+        import preflight as _preflight
+    except Exception:
+        return 0
+    try:
+        locks = _preflight.finde_lock_artefakte(repo)
+        if not locks:
+            return 0
+        entfernt, geparkt, _kaputt = _preflight.entferne_artefakte(locks)
+        return len(entfernt) + len(geparkt)
+    except Exception:
+        return 0
+
+
+def _einmal_wiederholen(versuch, repo, entsperren):
+    """`versuch()` ausführen; bei Fehlschlag **einmal** entsperren und wiederholen.
+
+    `versuch` liefert `(ok, stderr, stdout)`. Rückgabe: :class:`Verbuchung`.
+
+    Diese Funktion ist die **eine** Stelle, an der „einmal und nicht in einer Schleife"
+    steht. Sowohl :func:`verbuche` (add+commit als Paar) als auch :func:`ruf` (ein
+    einzelner Git-Aufruf) gehen durch sie — zwei Fassungen derselben Regel wären genau
+    das Muster, gegen das dieses Modul gebaut ist.
+    """
+    ok, err, out = versuch()
+    if ok:
+        return Verbuchung(True, err, out, wiederholt=False)
+    # Eingefasst, obwohl `entsperre` selbst schon fängt: die Zusicherung lautet, dass eine
+    # **scheiternde Reparatur** nie schlimmer ist als keine. Wer sie ersetzt (Test, Fork,
+    # späterer Umbau), soll diese Zusicherung nicht brechen können.
+    try:
+        geraeumt = (entsperren or entsperre)(repo)
+    except Exception:
+        geraeumt = 0
+    if not geraeumt:
+        return Verbuchung(False, err, out, wiederholt=False, geraeumt=0)
+    ok2, err2, out2 = versuch()
+    return Verbuchung(ok2, err2, out2, wiederholt=True, geraeumt=geraeumt)
+
+
+def ruf(repo, args, identitaet=None, entsperren=None):
+    """**Ein** Git-Aufruf mit derselben Absicherung wie :func:`verbuche`.
+
+    Für Aufrufer, die nicht das Paar `add`+`commit` machen, sondern einzelne Kommandos
+    (der Orchestrator-Tick: `checkout`, `add -A`, `commit`). ⚠ Auch **lesende** Aufrufe
+    gehören hier durch: auf diesem Mount hinterlässt bereits ein `git status` eine Sperre,
+    an der der nächste schreibende Aufruf scheitert — gemessen in Sprint 14. Wer nur die
+    schreibenden absichert, sichert die falsche Hälfte.
+
+    Rückgabe: :class:`Verbuchung` (`stdout` trägt die Ausgabe des Kommandos).
+    """
+    befehl = ["git", "-C", repo] + list(identitaet or []) + list(args)
+
+    def versuch():
+        p = subprocess.run(befehl, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
+        return p.returncode == 0, p.stderr, p.stdout
+
+    return _einmal_wiederholen(versuch, repo, entsperren)
+
+
+def _lauf(repo, pfade, meldung, identitaet):
+    add_ok, add_err, add_out = True, "", ""
+    if pfade:
+        add = subprocess.run(["git", "-C", repo, "add", "--"] + list(pfade),
+                             capture_output=True, text=True, encoding="utf-8",
+                             errors="replace")
+        add_ok, add_err, add_out = add.returncode == 0, add.stderr, add.stdout
+    commit = subprocess.run(["git", "-C", repo] + list(identitaet) + ["commit", "-m", meldung],
+                            capture_output=True, text=True, encoding="utf-8",
+                            errors="replace")
+    return (add_ok and commit.returncode == 0,
+            (add_err + commit.stderr), (add_out + commit.stdout))
+
+
+def verbuche(repo, pfade, meldung, identitaet=None, entsperren=None):
+    """`git add` + `git commit`; bei Fehlschlag **einmal** entsperren und wiederholen.
+
+    Rückgabe: :class:`Verbuchung`.
+
+    `entsperren` ist die **Naht für die Gegenprobe** und keine Konfiguration: die Tests
+    zu SWR-123 setzen dort eine Reparatur ein, die scheitert oder wirft, und prüfen, dass
+    der Schreibweg dann *genau* die ehrliche Meldung von vorher liefert. Ohne diesen Haken
+    ließe sich die Zusicherung „eine scheiternde Reparatur ist nie schlimmer als keine"
+    nicht prüfen — und eine Zusicherung ohne Prüfung ist die Lage aus SWR-125.
+
+    **Warum genau einmal und keine Schleife.** Eine Schleife verwandelt einen echten,
+    dauerhaften Fehler in eine Wartezeit und meldet ihn am Ende trotzdem. Der Fall, den
+    wir gemessen haben, ist nach *einem* Räumen behoben; jeder andere gehört gemeldet.
+
+    **Warum erst nach dem Fehlschlag geräumt wird.** Vorsorgliches Räumen wäre bequemer
+    und falsch: eine Sperre, die ein *laufender* Git-Prozess hält, beiseite zu benennen
+    ist schlimmer als sie stehen zu lassen. Erst der gescheiterte Versuch zeigt, dass die
+    Sperre niemandem gehört, den dieser Aufruf stören würde.
+
+    `pfade` darf leer sein — dann wird nur committet (der Fall „schon gestaget").
+    """
+    identitaet = list(identitaet if identitaet is not None else TEAM_IDENTITAET)
+    pfade = [pfade] if isinstance(pfade, str) else list(pfade or [])
+    return _einmal_wiederholen(lambda: _lauf(repo, pfade, meldung, identitaet),
+                               repo, entsperren)

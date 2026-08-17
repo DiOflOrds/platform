@@ -19,6 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from backend import teams  # noqa: E402
+from backend import git_schreiben  # noqa: E402  — SWR-134: der eine Schreibweg nach Git
 
 VERMERK = "**Zugestellt:**"
 _COMMIT_IDENT = ["-c", "user.name=ASPICE-Team", "-c", "user.email=team@aspice.local"]
@@ -46,11 +47,13 @@ def _vermerken(root, projekt, name, heute):
     with open(pfad, "a", encoding="utf-8") as f:
         f.write(f"\n{VERMERK} {heute} per E-Mail (SWR-058).\n")
     repo = os.path.join(root, projekt)
-    subprocess.run(["git", "-C", repo, "add", os.path.join("digest", name)],
-                   capture_output=True, text=True, encoding="utf-8", errors="replace")
-    subprocess.run(["git", "-C", repo] + _COMMIT_IDENT +
-                   ["commit", "-m", f"Digest {name}: Zustellvermerk (SWR-058)"],
-                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+    # SWR-134: über den einen Schreibweg. ⚠ Der Rückgabewert wird hier bewusst **nicht**
+    # geprüft — SWR-058 verlangt ausdrücklich, dass die Zustellung nie blockiert. Was
+    # dieser Weg beiträgt, ist die Sperren-Räumung: vorher blieb der Zustellvermerk auf
+    # diesem Mount an einer verwaisten `index.lock` hängen und der nächste Lauf hätte
+    # denselben Digest erneut versandt — genau die Doppelzustellung, die SWR-058 verbietet.
+    git_schreiben.verbuche(repo, [os.path.join("digest", name)],
+                           f"Digest {name}: Zustellvermerk (SWR-058)", _COMMIT_IDENT)
 
 
 def lauf(root, sende, dry_run=False, heute=None):

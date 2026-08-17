@@ -36,6 +36,7 @@ if _SCRIPTS not in sys.path:
 import board  # noqa: E402
 
 from . import aggregation  # noqa: E402
+from . import git_schreiben  # noqa: E402  — SWR-134: der eine Schreibweg nach Git
 
 HERKUNFT = "Mensch via HMI"
 COMMIT_IDENTITAET = ["-c", f"user.name={HERKUNFT}", "-c", "user.email=mensch@hmi.local"]
@@ -285,13 +286,11 @@ def kandidat_anlegen(root, kategorie, kandidat, kurzbeschreibung, werte):
     # auf sie verweist. Getrennt committet gäbe es einen Zustand, in dem die Tabelle auf
     # eine Datei zeigt, die es in Git nicht gibt — ein toter Verweis, den niemand sieht.
     pfade = [rel] + [os.path.relpath(p, repo) for p in ausgelagert]
-    add = subprocess.run(["git", "-C", repo, "add", "--"] + pfade, capture_output=True,
-        text=True, encoding="utf-8", errors="replace")
-    commit = subprocess.run(
-        ["git", "-C", repo] + COMMIT_IDENTITAET +
-        ["commit", "-m", f"Projekt-Pool: Kandidat '{name}' angelegt (#{nummer}, {kategorie}) — {HERKUNFT}"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if add.returncode or commit.returncode:
+    _v = git_schreiben.verbuche(  # SWR-134
+        repo, pfade,
+        f"Projekt-Pool: Kandidat '{name}' angelegt (#{nummer}, {kategorie}) — {HERKUNFT}",
+        COMMIT_IDENTITAET)
+    if not _v.ok:
         open(pfad, "w", encoding="utf-8", newline="\n").write(text)  # Rücknahme (Muster tickets.py)
         # SWR-124: die Rücknahme muss auch die ausgelagerten Dateien mitnehmen — sonst
         # bliebe der Volltext eines Kandidaten liegen, den es im Pool nicht gibt.
@@ -301,7 +300,7 @@ def kandidat_anlegen(root, kategorie, kandidat, kurzbeschreibung, werte):
             except OSError:
                 pass
         raise PoolFehler(503, "Git-Commit fehlgeschlagen — die Änderung wurde zurückgenommen: "
-                          + (add.stderr + commit.stderr + commit.stdout).strip()[:400])
+                          + _v.fehler[:400])
     return {"ok": True, "kategorie": kategorie, "kandidat": name, "nummer": nummer,
             "meldung": f"Kandidat '{name}' angelegt (#{nummer}, {kat['ueberschrift']}) — "
                       "committet, ohne Serverneustart im Pool-Reiter sichtbar."}
@@ -616,18 +615,15 @@ def kandidat_starten(root, kandidat):
         shutil.rmtree(projekt_pfad, ignore_errors=True)
         raise
 
-    add = subprocess.run(["git", "-C", projects_repo, "add", "--", neuer_name],
-                         capture_output=True, text=True, encoding="utf-8", errors="replace")
     commit_msg = (f"{neuer_name}: aus dem Projekt-Pool gestartet („{name}“, "
                  f"Technik-Kandidat) — Ordner + G0-Antrag T-0001, {HERKUNFT}")
-    commit = subprocess.run(["git", "-C", projects_repo] + COMMIT_IDENTITAET +
-                            ["commit", "-m", commit_msg], capture_output=True,
-                                text=True, encoding="utf-8", errors="replace")
-    if add.returncode or commit.returncode:
+    _v1 = git_schreiben.verbuche(projects_repo, [neuer_name], commit_msg,  # SWR-134
+                                 COMMIT_IDENTITAET)
+    if not _v1.ok:
         shutil.rmtree(projekt_pfad, ignore_errors=True)
         raise PoolFehler(503, "Git-Commit fehlgeschlagen — der Projektordner wurde nicht "
                               "angelegt, es steht nichts auf der Platte: " +
-                          (add.stderr + commit.stderr + commit.stdout).strip()[:400])
+                          _v1.fehler[:400])
 
     ref = aggregation.ref(neuer_name, "T-0001")
     grundmeldung = (f"'{name}' gestartet: {neuer_name} angelegt, G0-Antrag {ref} in der Inbox "
@@ -655,19 +651,17 @@ def kandidat_starten(root, kandidat):
     pm_repo = os.path.join(root, aggregation.POOL_DATEI[0])
     rel = os.path.join(*aggregation.POOL_DATEI[1:])
     open(pool_pfad, "w", encoding="utf-8", newline="\n").write(neuer_pool_text)
-    add2 = subprocess.run(["git", "-C", pm_repo, "add", "--", rel], capture_output=True,
-        text=True, encoding="utf-8", errors="replace")
-    commit2 = subprocess.run(
-        ["git", "-C", pm_repo] + COMMIT_IDENTITAET +
-        ["commit", "-m", f"Projekt-Pool: '{name}' gestartet als {neuer_name} (pm/T-0022 Teil 2) "
-                         f"— nach 'Realisiert' verschoben (pm/T-0037) — {HERKUNFT}"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if add2.returncode or commit2.returncode:
+    _v2 = git_schreiben.verbuche(  # SWR-134
+        pm_repo, [rel],
+        f"Projekt-Pool: '{name}' gestartet als {neuer_name} (pm/T-0022 Teil 2) "
+        f"— nach 'Realisiert' verschoben (pm/T-0037) — {HERKUNFT}",
+        COMMIT_IDENTITAET)
+    if not _v2.ok:
         open(pool_pfad, "w", encoding="utf-8", newline="\n").write(pool_text)  # Rücknahme nur hier
         return {"ok": True, "kandidat": name, "projekt": neuer_name, "ticket": "T-0001", "ref": ref,
                 "meldung": grundmeldung + " ACHTUNG: der Kandidat konnte NICHT im Pool "
                           "nachgeführt werden (Git-Commit fehlgeschlagen: " +
-                          (add2.stderr + commit2.stderr + commit2.stdout).strip()[:200] +
+                          _v2.fehler[:200] +
                           ") — bitte die Zeile manuell in pm/management/projekt-pool.md prüfen."}
 
     return {"ok": True, "kandidat": name, "projekt": neuer_name, "ticket": "T-0001", "ref": ref,

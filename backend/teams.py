@@ -248,16 +248,20 @@ def konfiguration_schreiben(root, projekt, werte):
     with open(pfad, "w", encoding="utf-8") as f:
         f.write("\n".join(zeilen))
     repo = os.path.join(root, projekt)
-    subprocess.run(["git", "-C", repo, "add", "konfiguration.yaml"],
-                   capture_output=True, text=True, encoding="utf-8", errors="replace")
-    lauf = subprocess.run(["git", "-C", repo] + _COMMIT_IDENT +
-                          ["commit", "-m", f"Konfiguration via HMI: takte={takte}, "
-                           f"rechnungen={_bool_text(rechnungen)}, mail={_bool_text(zustellung)}, "
-                           f"modell={modell or 'automatisch'}, hinweis={'ja' if hinweis else 'nein'}"],
-                          capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if lauf.returncode != 0 and "nothing to commit" not in (lauf.stdout + lauf.stderr):
+    # SWR-134: über den einen Schreibweg. ⚠ „nichts zu committen" bleibt **kein** Fehler
+    # — eine unveränderte Konfiguration ist gespeichert, nicht ausgefallen. Die Erkennung
+    # dafür liegt jetzt in `Verbuchung.nichts_zu_committen` statt als Textvergleich hier;
+    # eine zweite Fassung derselben Frage wäre B033.
+    from . import git_schreiben  # lokal: teams.py wird auch ohne Paketwurzel geladen
+    v = git_schreiben.verbuche(
+        repo, ["konfiguration.yaml"],
+        f"Konfiguration via HMI: takte={takte}, "
+        f"rechnungen={_bool_text(rechnungen)}, mail={_bool_text(zustellung)}, "
+        f"modell={modell or 'automatisch'}, hinweis={'ja' if hinweis else 'nein'}",
+        _COMMIT_IDENT)
+    if not v.ok and not v.nichts_zu_committen:
         raise TeamFehler(500, "Konfiguration geschrieben, aber Commit fehlgeschlagen: "
-                              + (lauf.stderr or lauf.stdout)[:200])
+                              + (v.stderr or v.stdout)[:200])
     return {"projekt": projekt, "konfiguration": lade_konfiguration(root, projekt)}
 
 

@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(_PLATFORM, "scripts"))
 
 import board  # noqa: E402
 import preflight as preflight_mod  # noqa: E402  (T-0024: Precondition je Tick)
+from backend import git_schreiben  # noqa: E402  — SWR-134: der eine Schreibweg nach Git
 from gateway import core as gateway  # noqa: E402
 
 try:
@@ -36,11 +37,18 @@ PRIO_RANG = board.PRIO_RANG
 # ---------- Git-Helfer ----------
 
 def git(repo, *args, fehler_ok=False):
-    out = subprocess.run(["git", "-C", repo, *args], capture_output=True,
-        text=True, encoding="utf-8", errors="replace")
-    if out.returncode != 0 and not fehler_ok:
-        raise RuntimeError(f"git {' '.join(args)} in {repo}: {out.stderr.strip()}")
-    return out.stdout.strip()
+    """Ein Git-Aufruf des Ticks — seit SWR-134 über den **einen** Schreibweg.
+
+    ⚠ Vorher lief der Orchestrator ohne Sperren-Räumung. Auf dem Cowork-Mount hinterlässt
+    **jeder** Git-Aufruf eine `.git/index.lock`, die Git selbst nicht entfernen darf; der
+    nächste schreibende Aufruf im selben Repo scheitert daran. Ein Tick macht in Folge
+    `add`, `commit`, `checkout`, `add`, `commit` — er lief also in genau diesen Fehler,
+    für den die Reparatur seit Sprint 5 im Haus lag und die nur der Briefkasten benutzte.
+    """
+    v = git_schreiben.ruf(repo, args)
+    if not v.ok and not fehler_ok:
+        raise RuntimeError(f"git {' '.join(args)} in {repo}: {v.stderr.strip()}")
+    return v.stdout.strip()
 
 
 def slug(text, laenge=30):

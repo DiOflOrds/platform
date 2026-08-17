@@ -13,6 +13,7 @@ if _SCRIPTS not in sys.path:
 import board  # noqa: E402
 
 from . import aggregation  # noqa: E402
+from . import git_schreiben  # noqa: E402  — SWR-134: der eine Schreibweg nach Git
 
 FINAL = board.STATUS_FINAL
 # SWR-039 hat den Marker eingeführt, SWR-131 hat ihn zur einzigen Quelle gemacht: bis
@@ -186,13 +187,13 @@ def entscheide(root, ticket_id, option, begruendung="", projekt="p0", entscheide
         board.generiere_board(tickets))
     rel = [os.path.join("management", "decisions", "decision-log.md"),
            os.path.join("tickets", f"{ticket_id}.md"), "BOARD.md"]
-    add = subprocess.run(["git", "-C", p0, "add", "--"] + rel, capture_output=True,
-        text=True, encoding="utf-8", errors="replace")
-    commit = subprocess.run(["git", "-C", p0] + COMMIT_IDENTITAET +
-                            ["commit", "-m", f"{ticket_id}: Entscheidung via Inbox ({d_id})"],
-                            capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if add.returncode or commit.returncode:
-        raise InboxFehler(503, "Git-Commit fehlgeschlagen: " +
-                          (add.stderr + commit.stderr + commit.stdout).strip()[:400])
+    # SWR-134: derselbe Schreibweg wie der Briefkasten. Vorher lief der Weg des Menschen
+    # ohne Sperren-Räumung — auf diesem Mount hieß das: die zweite Entscheidung in einer
+    # Sitzung scheiterte an der Sperre, die die erste hinterlassen hatte.
+    v = git_schreiben.verbuche(p0, rel,
+                               f"{ticket_id}: Entscheidung via Inbox ({d_id})",
+                               COMMIT_IDENTITAET)
+    if not v.ok:
+        raise InboxFehler(503, "Git-Commit fehlgeschlagen: " + v.fehler[:400])
     return {"entscheidung": d_id, "ticket": ticket_id, "option": option.strip(),
             "entscheider": entscheider}

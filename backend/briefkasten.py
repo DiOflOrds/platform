@@ -11,6 +11,7 @@ import subprocess
 from datetime import datetime, timezone
 
 from . import aggregation
+from . import git_schreiben  # SWR-134: der eine Schreibweg nach Git
 
 COMMIT_IDENTITAET = ["-c", "user.name=Mensch via Briefkasten",
                      "-c", "user.email=geraldine.john90@gmail.com"]
@@ -96,77 +97,39 @@ class BriefkastenFehler(Exception):
 
 
 def _entsperre(repo):
-    """SWR-123 (pm/T-0055 Teil 2): verwaiste Git-Sperren dieses Repos wegräumen.
+    """SWR-123/SWR-134: verwaiste Git-Sperren dieses Repos wegräumen — **delegiert**.
 
-    **Kein zweiter Räummechanismus.** Die Organisation hat seit Sprint 5 genau einen —
-    `preflight.finde_lock_artefakte` / `entferne_artefakte`, zweistufig (löschen, sonst
-    wegbenennen), weil dieser Mount kein `unlink` erlaubt. Einen eigenen daneben zu
-    stellen wäre B033: zwei Stellen, die dieselbe Frage beantworten und irgendwann
-    verschieden.
+    Die Logik stand bis Sprint 13 hier und war damit die einzige Stelle der
+    Organisation, die sie benutzte; sieben weitere Schreibwege liefen ohne sie in
+    denselben Fehler (`platform/T-0015`). Sie liegt jetzt in
+    `scripts/git_schreiben.entsperre` — **ein** Weg, alle Schreiber gehen durch ihn.
 
-    Der Import steht **hier drin** und nicht oben: `preflight` importiert `board` und
-    `backend`, ein Modulimport an der Dateispitze schlösse einen Zyklus. Schlägt er
-    fehl, ist das kein Fehler des Schreibpfads — dann bleibt es beim alten Verhalten,
-    also bei der ehrlichen Meldung aus SWR-121.
+    Der Name bleibt hier stehen, weil die Tests zu SWR-123 ihn ersetzen, um den
+    Fehlerfall zu bauen: die Zusicherung „eine scheiternde Reparatur ist nie schlimmer
+    als keine" wird genau an diesem Haken geprüft.
 
     Rückgabe: Anzahl weggeräumter Artefakte (0 = nichts zu tun oder nicht möglich).
     """
-    try:
-        import sys
-        skripte = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                               "scripts")
-        if skripte not in sys.path:
-            sys.path.insert(0, skripte)
-        import preflight as _preflight
-    except Exception:
-        return 0
-    try:
-        locks = _preflight.finde_lock_artefakte(repo)
-        if not locks:
-            return 0
-        entfernt, geparkt, _kaputt = _preflight.entferne_artefakte(locks)
-        return len(entfernt) + len(geparkt)
-    except Exception:
-        return 0
+    return git_schreiben.entsperre(repo)
 
 
 def _verbuche(repo, rel, meldung):
-    """SWR-123: `git add` + `commit`, bei verwaister Sperre EINMAL wiederholen.
+    """SWR-123/SWR-134: `git add` + `commit`, bei verwaister Sperre EINMAL wiederholen.
 
     Der gemessene Ablauf des Fehlers (pm/N-0039): `git add` hinterlässt auf diesem Mount
     eine `index.lock`, die es nicht mehr löschen kann, und der **nachfolgende** `commit`
-    scheitert an ihr. Der Fehler entsteht also zwischen den beiden Schritten, die diese
-    Funktion macht — und genau dort wird er behandelt.
+    scheitert an ihr.
 
-    **Warum genau einmal.** Eine Schleife würde einen echten, dauerhaften Fehler in eine
-    Wartezeit verwandeln und ihn am Ende trotzdem melden. Der Fall, den wir kennen, ist
-    nach einem Räumen behoben; jeder andere gehört gemeldet statt wiederholt.
+    Der Ablauf liegt seit SWR-134 in `git_schreiben.verbuche`; diese Funktion ist die
+    Anpassung an den Briefkasten. ⚠ Sie gibt weiterhin **nur `stderr`** an den Menschen
+    weiter und nicht `stdout`: SWR-121 verlangt eine Meldung über den *Ausgang*, und
+    Gits „nothing to commit" auf stdout ist kein Ausfall.
 
     Rückgabe: `(ok, fehlertext, wiederholt)`.
     """
-    def lauf():
-        add = subprocess.run(["git", "-C", repo, "add", "--", rel], capture_output=True,
-                             text=True, encoding="utf-8", errors="replace")
-        commit = subprocess.run(
-            ["git", "-C", repo] + COMMIT_IDENTITAET + ["commit", "-m", meldung],
-            capture_output=True, text=True, encoding="utf-8", errors="replace")
-        ok = not (add.returncode or commit.returncode)
-        return ok, (add.stderr + commit.stderr).strip()
-
-    ok, fehler = lauf()
-    if ok:
-        return True, "", False
-    # Der Aufruf ist eingefasst, obwohl `_entsperre` selbst schon fängt: die Zusicherung
-    # lautet, dass eine **scheiternde Reparatur** nie schlimmer ist als keine. Wer sie
-    # ersetzt (Test, Fork, späterer Umbau), soll diese Zusicherung nicht brechen können.
-    try:
-        geraeumt = _entsperre(repo)
-    except Exception:
-        geraeumt = 0
-    if not geraeumt:
-        return False, fehler, False
-    ok, fehler2 = lauf()
-    return ok, fehler2, True
+    v = git_schreiben.verbuche(repo, [rel], meldung, COMMIT_IDENTITAET,
+                               entsperren=_entsperre)
+    return v.ok, ("" if v.ok else v.stderr.strip()), v.wiederholt
 
 
 def _verzeichnis(root, projekt):
