@@ -145,6 +145,47 @@ def _naechste_d_id(log_pfad):
     return f"D{(max(ids) + 1 if ids else 0):03d}"
 
 
+def _log_sicherstellen(log_pfad, projekt):
+    """Das Entscheidungslog anlegen, wenn es fehlt — SWR-152 (platform/T-0022).
+
+    ⚠⚠ **Der Anlass ist ein Fehlschlag in Produktion.** Der Auftraggeber hat
+    `promt-team/T-0009` (**Klasse A**) über die Inbox mit „A" entschieden, und der
+    Schreibweg starb an `[Errno 2] No such file or directory` — `promt-team` hat nie ein
+    `management/decisions/` bekommen. Angelegt wird es von `pool.py` bei der **Gründung**;
+    die Teams, die anders entstanden sind (`promt-team`, `platform`), haben keins.
+
+    > **Der Schreibweg setzte eine Datei voraus, die ein ANDERER Weg anlegt. Solange jedes
+    > Repo durch diesen anderen Weg entstanden ist, ist die Annahme unsichtbar richtig.**
+
+    ⚠ **Warum Anlegen und nicht Abweisen.** Ein sauberer 400er („dieses Team hat kein
+    Entscheidungslog") wäre ehrlicher gewesen als der Errno — und hätte den Menschen mit
+    einer Klasse-A-Entscheidung stehen lassen, die er getroffen hat und nicht verbuchen
+    kann. *Eine getroffene Entscheidung, die am Ablageort scheitert, ist verloren, sobald
+    das Fenster zu ist.* Das Log ist ein **Pflichtartefakt** jedes Repos, das DRs führen
+    kann (Playbook Kap. 16), kein Freiwilliges.
+
+    ⚠ **Der Kopf ist wortgleich zu `pool.py`.** Zwei Wege, die dieselbe Datei in zwei
+    Gestalten anlegen, sind zwei Wahrheiten über ihr Format — und die Zeile, die
+    `entscheide` anhängt, passt dann irgendwann nur zu einer davon (B033).
+
+    Tut nichts, wenn die Datei existiert: das Log ist **append-only**, und ein Weg, der
+    unter Umständen überschreibt, ist an dieser Stelle das Schlimmste, was passieren kann.
+    """
+    if os.path.exists(log_pfad):
+        return
+    os.makedirs(os.path.dirname(log_pfad), exist_ok=True)
+    # Wortgleich zu `pool.LOG_TABELLENKOPF` — importiert und nicht abgeschrieben.
+    from . import pool  # in der Funktion: sonst Import-Zyklus (SWR-134)
+    open(log_pfad, "w", encoding="utf-8", newline="\n").write(
+        f"# Decision Log {projekt}\n\n"
+        "*Append-only — Entscheidungen werden nie überschrieben, nur ergänzt "
+        "(Playbook Kap. 16).*\n\n"
+        "*Angelegt beim ersten Eintrag über die Inbox (SWR-152): dieses Repo ist nicht "
+        "über `pool.gruende` entstanden und hatte deshalb keins.*\n\n"
+        + pool.LOG_TABELLENKOPF)
+
+
+
 def entscheide(root, ticket_id, option, begruendung="", projekt="p0", entscheider=""):
     """Entscheidung annehmen (je Projekt, SWR-027; Entscheider-Pflicht SWR-038):
     Log + Ticket + BOARD + Commit."""
@@ -174,6 +215,7 @@ def entscheide(root, ticket_id, option, begruendung="", projekt="p0", entscheide
                                    f"{', '.join(zulaessig)} (T-0039)")
     zeitpunkt = entscheidungszeitpunkt()  # SWR-084: Datum UND Uhrzeit
     log_pfad = os.path.join(p0, "management", "decisions", "decision-log.md")
+    _log_sicherstellen(log_pfad, projekt)
     d_id = _naechste_d_id(log_pfad)
     zeile = (f"| {d_id} | {zeitpunkt} | Mensch ({entscheider}, via Inbox) | **{option.strip()}** "
              f"| lt. {ticket_id} | {begruendung.strip() or '—'} | {ticket_id} |")
