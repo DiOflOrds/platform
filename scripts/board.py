@@ -481,8 +481,29 @@ def status_in_head(repo, datei):
     GIT-Lesung nicht.
     """
     try:
+        # platform/T-0008: `HEAD:` zählt vom REPO-Wurzelverzeichnis, nicht vom
+        # Arbeitsordner. Seit dem Monorepo-Beschluss pm/D003 liegen p10/p11/p12 als
+        # ORDNER im Repo `projects` — dort ist der Pfad `p11/tickets/…` und nicht
+        # `tickets/…`. Der feste Pfad schlug für diese drei still fehl, `git show`
+        # gab `returncode != 0`, das galt als „Ticket ist neu", und die
+        # Übergangsprüfung (SWR-002) wurde übersprungen. Der board-check meldete OK.
+        # Für drei von sechzehn Einträgen hat SWR-002 damit nie geprüft.
+        praefix = subprocess.run(
+            ["git", "-C", repo, "rev-parse", "--show-prefix"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=10)
+        # Leer für ein Repo-Wurzelverzeichnis, „p11/" für einen Unterordner. Bei einem
+        # Fehler bleibt es leer — das ist genau das bisherige Verhalten und damit kein
+        # neuer Fehlermodus.
+        #
+        # `or ""` ist nicht Vorsicht, sondern ein gefangener Fehler: die erste Fassung
+        # dieser Zeile schrieb `praefix.stdout.strip()` und starb an genau dem
+        # `AttributeError: 'NoneType' object has no attribute …`, den T-0007 behoben
+        # hat — `stdout` IST None, wenn der Lese-Thread stirbt, auch bei returncode 0.
+        # Gefangen hat es der Regressionstest aus T-0007, eine Zeile weiter.
+        unter = (praefix.stdout or "").strip() if praefix.returncode == 0 else ""
         out = subprocess.run(
-            ["git", "-C", repo, "show", f"HEAD:tickets/{datei}"],
+            ["git", "-C", repo, "show", f"HEAD:{unter}tickets/{datei}"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=10)
         if out.returncode != 0:

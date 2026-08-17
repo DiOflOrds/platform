@@ -785,3 +785,81 @@ class SubprocessKodierungRegelTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VerschachteltesRepoUebergangTest(unittest.TestCase):
+    """platform/T-0008 — `HEAD:` zaehlt vom Repo-Wurzelverzeichnis, nicht vom Ordner.
+
+    Seit dem Monorepo-Beschluss pm/D003 liegen p10/p11/p12 als ORDNER im Repo
+    `projects`. `status_in_head` baute den Pfad fest als `HEAD:tickets/<datei>` — fuer
+    diese drei also falsch. `git show` scheiterte, das galt als „Ticket ist neu", die
+    Uebergangspruefung (SWR-002) wurde uebersprungen, und der board-check meldete OK.
+    Fuer drei von sechzehn Eintraegen hat SWR-002 nie geprueft — lautlos, seit jeher.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.sammel = self.tmp.name
+        self.unter = os.path.join(self.sammel, "p11")
+        os.makedirs(os.path.join(self.unter, "tickets"))
+
+    def _git(self, *args):
+        import subprocess as sp
+        sp.run(["git", "-C", self.sammel, "-c", "user.name=t", "-c", "user.email=t@t",
+                *args], capture_output=True, text=True, encoding="utf-8",
+               errors="replace", check=True)
+
+    def _lege_an(self, status="open"):
+        schreibe(self.unter, "T-0001", status=status)
+        self._git("init", "-q")
+        self._git("add", "-A")
+        self._git("commit", "-qm", "angelegt")
+
+    def test_ticket_im_unterordner_wird_in_head_gefunden(self):
+        """Der Kern. Ohne die Korrektur ist die Antwort `None` — also „Ticket ist neu"."""
+        self._lege_an(status="open")
+        self.assertEqual(board.status_in_head(self.unter, "T-0001.md"), "open")
+
+    def test_der_unzulaessige_uebergang_faellt_jetzt_auf(self):
+        """Der Live-Fall aus Sprint 5: `p11/T-0005` sprang open -> done, und der
+        board-check ueber alle 16 Eintraege lief fehlerfrei durch.
+
+        Dieser Test prueft nicht den Rueckgabewert, sondern die FOLGE — dass die
+        Uebergangspruefung ueberhaupt greift. Ein Test auf `status_in_head` allein
+        haette die Korrektur belegt, aber nicht ihren Zweck.
+        """
+        self._lege_an(status="open")
+        schreibe(self.unter, "T-0001", status="done")
+        # Bewusst ueber lade_tickets/validiere_alle statt ueber parse_frontmatter:
+        # das ist der Weg, den `board.py --check` geht. Die erste Fassung dieses Tests
+        # rief `validiere` mit einem handgebauten Dict ohne `_datei` — die
+        # Uebergangspruefung stieg damit aus, der Test meldete `[]`, und er haette
+        # (mit umgedrehter Zusicherung) den Defekt sogar bestaetigt.
+        tickets, _ = board.lade_tickets(self.unter)
+        probleme = board.validiere_alle(tickets, repo=self.unter)
+        self.assertTrue(any("bergang" in p for p in probleme),
+                        f"open -> done muss ein Befund sein, bekam: {probleme}")
+
+    def test_repo_wurzel_bleibt_unveraendert(self):
+        """Gegenprobe: der Normalfall (Ticket direkt im Repo) darf sich nicht aendern.
+
+        `--show-prefix` liefert dort einen leeren String — der zusammengesetzte Pfad
+        ist byte-gleich mit dem alten.
+        """
+        os.makedirs(os.path.join(self.sammel, "tickets"), exist_ok=True)
+        schreibe(self.sammel, "T-0002", status="in_review")
+        self._git("init", "-q")
+        self._git("add", "-A")
+        self._git("commit", "-qm", "angelegt")
+        self.assertEqual(board.status_in_head(self.sammel, "T-0002.md"), "in_review")
+
+    def test_wirklich_neues_ticket_bleibt_none(self):
+        """Gegenprobe: die Korrektur darf „Ticket ist neu" nicht verlieren.
+
+        Ohne sie waere der Fix lauter als der Fehler — jedes frisch angelegte Ticket
+        im Unterordner wuerde gegen einen Vorgaenger geprueft, den es nicht gibt.
+        """
+        self._lege_an(status="open")
+        schreibe(self.unter, "T-0077", status="open")
+        self.assertIsNone(board.status_in_head(self.unter, "T-0077.md"))

@@ -3,11 +3,16 @@
 Stand: 2026-08-17 · Tickets: 9 · davon wiederkehrend: 1
 
 
-## open (2)
+## open (1)
 
 | ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | hoch | 0 | — |
+
+## in_progress (1)
+
+| ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | mittel | 0 | — |
 
 ## in_review (1)
