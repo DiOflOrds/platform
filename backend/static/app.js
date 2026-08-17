@@ -360,6 +360,39 @@ function sessionKachel(s) {
 // SWR-103 (pm/T-0016, pm/D006): Kachel "Sprint aktuell" — die Workflow-Sicht des PM.
 // Quelle ist pm/management/sprint-aktuell.md, dieselbe Datei, die die Routine-Session
 // ohnehin schreibt (kein zweiter Plan, B033). Zeitstempel aus dem Git-Commit.
+// SWR-117 (pm/T-0047): der Kopfblock der ORGANISATION — Aussagen, die keiner Kachel
+// gehören. B049: die „ohne Frist"-Zahl war nur je Kachel lesbar, und drei Sessions in
+// Folge erklärten sie für abgearbeitet, während in einer anderen Kachel Tickets offen
+// standen.
+//
+// Der Block liest AUSSCHLIESSLICH `organisation` aus dem Cockpit-Payload und zählt
+// nichts selbst nach (ADR-P11-001: keine Logik im Rand — sonst sagten Kopfblock und
+// Preflight verschiedene Dinge über dieselbe Frage).
+//
+// Er wird auch bei 0 gerendert. Die Alternative — bei 0 schweigen — macht einen
+// geprüften Bestand von einem ungeprüften ununterscheidbar; dieselbe Entscheidung hat
+// SWR-114 für die Preflight-Zeile bereits getroffen.
+//
+// Die Referenzen stehen NEBEN der Zahl und nicht hinter einem Aufklappen: ein Gate,
+// das „82" sagt, nennt nicht, welche fünf fehlen (B038).
+function orgKopfblock(o) {
+  var karte = el("div", { "class": "karte" });
+  var n = o.unterminiert_gesamt || 0;
+  var kopf = el("div", { "class": "zeile" },
+    el("h3", { style: "margin:0" }, "Organisation"));
+  kopf.appendChild(pille(n + " ohne Frist", n ? "in_progress" : "done"));
+  karte.appendChild(kopf);
+  var refs = o.unterminiert_refs || [];
+  if (refs.length) {
+    karte.appendChild(el("div", { "class": "meldung fehler" },
+      "Offene Tickets ohne Frist: " + refs.join(", ")));
+  } else {
+    karte.appendChild(el("div", { "class": "hinweis" },
+      "Kein offenes Ticket ohne Frist."));
+  }
+  return karte;
+}
+
 function sprintKachel(s) {
   var karte = el("div", { "class": "karte" });
   var z = s.zaehler || {};
@@ -459,6 +492,11 @@ function ladeUebersicht() {  // SWR-046 + P9 SWR-067: Org-Cockpit mit Gruppen
     if (sitzung) teile.push(sessionKachel(sitzung));
     // SWR-103: direkt darunter — was die Session getan hat, dann was ansteht (T-0016 DoD 6).
     if (sprintplan) teile.push(sprintKachel(sprintplan));
+    // SWR-117 (pm/T-0047): der Org-Kopfblock ÜBER den Kacheln — die Zahl gilt der
+    // Organisation, nicht einem Projekt, und ist je Kachel grundsätzlich nicht lesbar
+    // (B049). Er erscheint AUCH bei 0: ein stiller Check ist von einem nicht gelaufenen
+    // nicht zu unterscheiden (dieselbe Begründung wie die Preflight-Zeile aus SWR-114).
+    if (u.organisation) teile.push(orgKopfblock(u.organisation));
     [["festes-team", "Feste Teams"], ["projekt-team", "Projekt-Teams"],
      ["aktiv", "Aktive Projekte"]].forEach(function (g) {
       if (!gruppen[g[0]].length) return;

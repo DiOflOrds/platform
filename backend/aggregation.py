@@ -566,9 +566,80 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
                     if kpi.get("registry_vorhanden") else None)}  # SWR-108
 
 
+def unterminierte_tickets(root):
+    """SWR-117 (pm/T-0047): offene Tickets ohne Frist — org-weit, MIT Referenzen.
+
+    **Die eine Quelle.** Diese Funktion stand bis Sprint 9 in `scripts/preflight.py`
+    (SWR-114, pm/T-0036 Teil b). `pm/T-0047` will dieselbe Tatsache ein zweites Mal
+    anzeigen — im Cockpit-Kopfblock — und genau dort entsteht B033: zwei Stellen,
+    die dieselbe Frage aus zwei Quellen beantworten und auseinanderlaufen können.
+
+    **Warum sie hierher wandert und nicht umgekehrt.** `backend` importiert bereits
+    `scripts.board` (siehe Kopf dieser Datei). Der umgekehrte Weg — `aggregation`
+    importiert aus `preflight` — schlösse einen Zyklus. Die Richtung ist damit keine
+    Geschmacksfrage. `preflight.unterminierte_tickets` bleibt als **Weiterleitung**
+    stehen: sie ist keine zweite Quelle, sondern der Beleg, dass es nur eine gibt,
+    und sie hält die vorhandenen SWR-114-Tests auf dem ausgelieferten Pfad.
+
+    **Die Abgrenzung ist die von SWR-091**, damit Kachelzahl und Org-Summe nicht
+    verschieden zählen: Takt-Tickets tragen ihr Zeitkonzept im Feld `takt`, ein
+    `decision-request` wird über `frist` + `default` gesteuert.
+    """
+    treffer = []
+    for name, basis in board.projekt_pfade(root):
+        verz = os.path.join(basis, "tickets")
+        if not os.path.isdir(verz):
+            continue
+        for datei in sorted(os.listdir(verz)):
+            if not datei.endswith(".md"):
+                continue
+            try:
+                with open(os.path.join(verz, datei), encoding="utf-8") as f:
+                    fm, _ = board.parse_frontmatter(f.read())
+            except OSError:
+                continue
+            fm = fm or {}
+            if fm.get("status") in ("done", "rejected"):
+                continue
+            if fm.get("frist") or fm.get("takt") or fm.get("typ") == "decision-request":
+                continue
+            treffer.append(ref(name, fm.get("id") or datei[:-3]))
+    return treffer
+
+
+def organisation(root):
+    """SWR-117 (pm/T-0047): der Kopfblock — Aussagen über die ORGANISATION, nicht über
+    ein Projekt.
+
+    **Warum ein eigener Block und keine Umhüllung von `projekte`.** Jeder heutige Leser
+    — HMI, Widget, die beiden Übereinstimmungstests — greift auf `payload["projekte"]`
+    zu. Eine Umhüllung änderte die Antwort für **alle** von ihnen, um eine Zahl zu
+    liefern, die **keinen** von ihnen betrifft. Ein zusätzlicher Schlüssel ist eine
+    Vertrags**erweiterung**, eine umgeformte Hülle eine Vertrags**änderung** — und nur
+    die zweite braucht die Abstimmung, die dieses Ticket zweimal verschoben hat.
+
+    **Verhalten bei 0.** Der Block ist immer da, mit `0` und `[]` — nie `None`, nie
+    weggelassen. Die Messung läuft bei jedem Aufruf, die Null ist also eine **echte
+    Null** im Sinne von SWR-108 (der leere Wert des Typs) und keine ausgebliebene
+    Erhebung. Und nach der Begründung von SWR-114 ist ein stiller Check von einem nicht
+    gelaufenen nicht zu unterscheiden.
+
+    **Erweiterbar um einen zweiten Schlüssel** (der Zähler aus `pm/T-0051`), ohne dass
+    ein Leser sich ändert — das ist es, was die zweite Zahl zu einer Ergänzung in eine
+    feststehende Form macht statt zu einer zweiten Vertragsfrage.
+    """
+    refs = unterminierte_tickets(root)
+    return {"unterminiert_gesamt": len(refs), "unterminiert_refs": refs}
+
+
 def cockpit_alle(root, heute=None, jetzt=None):
-    """SWR-046: Cockpits aller entdeckten Projekte (eine Antwort fürs Frontend)."""
-    return {"projekte": [cockpit(root, name, heute, jetzt) for name in projekte(root)]}
+    """SWR-046: Cockpits aller entdeckten Projekte (eine Antwort fürs Frontend).
+
+    SWR-117: dazu der Org-Kopfblock als **Schwesterschlüssel** neben `projekte` —
+    `projekte` bleibt in Form und Reihenfolge unangetastet.
+    """
+    return {"projekte": [cockpit(root, name, heute, jetzt) for name in projekte(root)],
+            "organisation": organisation(root)}  # SWR-117 (pm/T-0047)
 
 
 def lade_baselines(root):

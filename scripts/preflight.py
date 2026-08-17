@@ -235,27 +235,19 @@ def unterminierte_tickets(root):
     `aggregation` (SWR-091), damit nicht zwei Stellen verschieden zählen (B033):
     Takt-Tickets tragen ihr Zeitkonzept im Feld `takt`, und ein `decision-request` wird
     über `frist` + `default` gesteuert.
+
+    **SWR-117 (pm/T-0047): der Rumpf ist nach `backend/aggregation.py` gewandert.**
+    Seit Sprint 9 zeigt der Cockpit-Kopfblock dieselbe Tatsache ein zweites Mal an —
+    und zwei Stellen, die eine Frage aus zwei Quellen beantworten, sind B033. Diese
+    Funktion bleibt als **Weiterleitung** bestehen: sie ist keine zweite Quelle,
+    sondern der Beleg, dass es nur eine gibt, und sie hält die SWR-114-Tests auf dem
+    Pfad, der tatsächlich ausgeliefert wird. Die Richtung des Umzugs ist erzwungen —
+    `backend` importiert bereits `scripts.board`, der umgekehrte Weg schlösse einen
+    Zyklus.
     """
-    treffer = []
-    for name, basis in board.projekt_pfade(root):
-        verz = os.path.join(basis, "tickets")
-        if not os.path.isdir(verz):
-            continue
-        for datei in sorted(os.listdir(verz)):
-            if not datei.endswith(".md"):
-                continue
-            try:
-                with open(os.path.join(verz, datei), encoding="utf-8") as f:
-                    fm, _ = board.parse_frontmatter(f.read())
-            except OSError:
-                continue
-            fm = fm or {}
-            if fm.get("status") in ("done", "rejected"):
-                continue
-            if fm.get("frist") or fm.get("takt") or fm.get("typ") == "decision-request":
-                continue
-            treffer.append("%s/%s" % (name, fm.get("id") or datei[:-3]))
-    return treffer
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    from backend import aggregation as _aggregation
+    return _aggregation.unterminierte_tickets(root)
 
 
 def arbeitskopie_befunde(repo, dirty):
