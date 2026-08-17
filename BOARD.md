@@ -11,13 +11,7 @@ Stand: 2026-08-17 · Tickets: 20 · davon wiederkehrend: 1
 | [T-0016](tickets/T-0016.md) | Die Drei-Zustände-Regel des Widget-Vertrags steht in der Cockpit-Ansicht dreimal inline | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0020](tickets/T-0020.md) | Die Matrix schrumpft still: kein Vergleich mit dem Bestand beim Schreiben | problem | einmalig | cm | Team | mittel | 0 | T-0019 |
 
-## in_review (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0019](tickets/T-0019.md) | trace_matrix.py ohne --alle-projekte überschreibt die echte Matrix mit einer unvollständigen | problem | einmalig | cm | Team | hoch | 0 | — |
-
-## done (16)
+## done (17)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -35,5 +29,6 @@ Stand: 2026-08-17 · Tickets: 20 · davon wiederkehrend: 1
 | [T-0014](tickets/T-0014.md) | Eine entschiedene Frage blieb 16 Minuten lang „liegt beim Menschen" — Inbox und Preflight meinen Verschiedenes mit „entschieden | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0017](tickets/T-0017.md) | Statuswechsel und sein Commit sind zwei Vorgänge — eine Git-Sperre dazwischen verliert einen Zustand lautlos | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0018](tickets/T-0018.md) | Die Sperren-Räumung des einen Git-Schreibwegs lief in Produktion nicht — sie fand preflight nur, wenn der Aufrufer ihn mitbrachte | problem | einmalig | cm | Team | hoch | 0 | — |
+| [T-0019](tickets/T-0019.md) | trace_matrix.py ohne --alle-projekte überschreibt die echte Matrix mit einer unvollständigen | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0015](tickets/T-0015.md) | SWR-123 räumt Git-Locks per unlink — auf dem Cowork-Mount ist das verboten, rename gelingt | problem | einmalig | cm | Team | mittel | 0 | — |
