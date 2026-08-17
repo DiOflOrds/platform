@@ -220,6 +220,13 @@ class Api(BaseHTTPRequestHandler):
                                         "gestartet": GESTARTET})
             if pfad == "/api/cockpit":  # SWR-046 (P3): alle Projekte auf einen Blick
                 return self._json(200, aggregation.cockpit_alle(wurzel))
+            # SWR-135 (projects/p11/T-0010): Kompaktkacheln fürs Widget-Dashboard.
+            # ⚠ Eigene Route und **keine** Erweiterung von `/api/cockpit`: der Widget-
+            # Vertrag prüft seit B066 die Feldliste von `cockpit`, und ein zusätzlicher
+            # Schlüssel dort wäre ein Vertragsbruch. Die Route ist eine andere **Form**
+            # derselben Daten, kein zweiter Erhebungsweg — `dashboard` ruft `cockpit_alle`.
+            if pfad == "/api/dashboard":
+                return self._json(200, aggregation.dashboard(wurzel))
             if pfad == "/api/session":  # SWR-102 (pm/T-0040): was die letzte Session tat
                 return self._json(200, session.stand(wurzel))
             if pfad == "/api/sprint":  # SWR-103 (pm/T-0016, pm/D006): Sprint-Workflow

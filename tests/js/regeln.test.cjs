@@ -256,3 +256,102 @@ test("gruppenTitel traegt die Zahl auch fuer die Cockpit-Gruppen — nichts ohne
   assert.strictEqual(R.gruppenTitel({ rolle: "Aktive Projekte", aufgaben: [1, 2] }),
                      "Aktive Projekte (2)");
 });
+
+// ---------- SWR-135 (p11/T-0010): Kompaktkacheln des Dashboards ----------
+
+test("⚠ echte_null wird als 0 gezeigt, NICHT als 'keine Daten'", () => {
+  // Widget-Vertrag woertlich: "0 offene Briefe ist ein Ergebnis, kein Loch."
+  assert.strictEqual(R.feldText({ wert: 0, zustand: "echte_null" }), "0");
+  assert.strictEqual(R.feldText({ wert: "", zustand: "echte_null" }), "0");
+});
+
+test("⚠ GEGENPROBE: nicht_geliefert wird als 'keine Daten' gezeigt, NIE als 0", () => {
+  // Die teure Verwechslung: `team: null` (fuehrt keine Digests) und `briefe_offen: 0`
+  // (keine offenen Briefe) kommen aus derselben Antwort. Ohne diese Trennung sehen sie
+  // gleich aus — dieselbe Gleichheit, die in SWR-128 fuenf Sprints "null JS-Tests" verbarg.
+  assert.strictEqual(R.feldText({ wert: null, zustand: "nicht_geliefert" }), R.KEINE_DATEN);
+  assert.notStrictEqual(R.feldText({ wert: null, zustand: "nicht_geliefert" }), "0");
+  assert.notStrictEqual(R.feldText({ wert: 0, zustand: "echte_null" }), R.KEINE_DATEN);
+});
+
+test("feldText liest den ZUSTAND, nicht den Wert", () => {
+  // Gegenprobe gegen die naheliegende Regel `if (!wert) return "keine Daten"` — die waere
+  // fuer eine echte 0 falsch. Der Zustand ist ein Fakt aus dem Backend (SWR-108), der Wert
+  // allein waere eine Annahme.
+  assert.strictEqual(R.feldText({ wert: 0, zustand: "echte_null" }), "0");
+  assert.strictEqual(R.feldText({ wert: 7, zustand: "wert" }), "7");
+});
+
+test("⚠ ein Feld ohne bekannten Zustand zeigt 'keine Daten', nicht 'undefined'", () => {
+  // Der erste Entwurf fiel hier bis `String(feld.wert)` durch und haette bei einem
+  // unvollstaendigen Payload die Zeichenkette "undefined" angezeigt — eine Anzeige, die
+  // aussieht wie ein Inhalt und keiner ist. Gefunden, weil der Test dazu zuerst so
+  // geschrieben war, dass er BEIDES durchgelassen haette: die Gegenprobe fehlte.
+  assert.strictEqual(R.feldText({}), R.KEINE_DATEN);
+  assert.strictEqual(R.feldText({ wert: 5 }), R.KEINE_DATEN);
+  assert.strictEqual(R.feldText({ wert: 5, zustand: "quatsch" }), R.KEINE_DATEN);
+  assert.strictEqual(R.feldText(null), R.KEINE_DATEN);
+});
+
+test("team ist ein Objekt und wird nicht als [object Object] gezeigt", () => {
+  assert.strictEqual(R.feldText({ wert: { letzter_digest: "2026-08-16" }, zustand: "wert" }),
+                     "2026-08-16");
+  // Fuehrt Digests, hat aber noch keinen: echte Null im INNEREN Feld (SWR-108).
+  assert.strictEqual(R.feldText({ wert: { letzter_digest: "" }, zustand: "wert" }), "0");
+  assert.strictEqual(R.feldText({ wert: { letzter_digest: null }, zustand: "wert" }),
+                     R.KEINE_DATEN);
+});
+
+test("kachelFelder folgt der Reihenfolge des Backends und erfindet keine Felder", () => {
+  const kachel = { felder: { aufgaben_offen: { wert: 3, zustand: "wert" },
+                             briefe_offen: { wert: 0, zustand: "echte_null" },
+                             team: { wert: null, zustand: "nicht_geliefert" } } };
+  const f = R.kachelFelder(kachel);
+  assert.deepStrictEqual(f.map(x => x.name), ["aufgaben_offen", "briefe_offen", "team"]);
+  assert.deepStrictEqual(f.map(x => x.text), ["3", "0", R.KEINE_DATEN]);
+  // Jedes Feld traegt eine Beschriftung — `name` als Rueckfall, nie leer.
+  f.forEach(x => assert.ok(x.titel && x.titel.length));
+});
+
+test("kachelFelder ohne Felder liefert eine leere Liste, keinen Fehler", () => {
+  assert.deepStrictEqual(R.kachelFelder({}), []);
+  assert.deepStrictEqual(R.kachelFelder(null), []);
+});
+
+test("dashboardGruppen haelt die Cockpit-Reihenfolge, nicht die alphabetische", () => {
+  // "Feste Teams" vor "Projekt-Teams" vor "Aktive Projekte" — die Ordnung aus SWR-067.
+  // Alphabetisch waere es "abgeschlossen, aktiv, festes-team, projekt-team".
+  const g = R.dashboardGruppen([
+    { projekt: "a", gruppe: "aktiv" }, { projekt: "b", gruppe: "festes-team" },
+    { projekt: "c", gruppe: "abgeschlossen" }, { projekt: "d", gruppe: "projekt-team" },
+  ]);
+  assert.deepStrictEqual(g.map(x => x.gruppe),
+    ["festes-team", "projekt-team", "aktiv", "abgeschlossen"]);
+});
+
+test("leere Gruppen fallen weg", () => {
+  const g = R.dashboardGruppen([{ projekt: "a", gruppe: "aktiv" }]);
+  assert.deepStrictEqual(g.map(x => x.gruppe), ["aktiv"]);
+});
+
+test("⚠ GEGENPROBE: eine UNBEKANNTE Gruppe verschwindet nicht (SWR-096)", () => {
+  // Ohne diesen Fall verliert ein neuer Gruppenname stillschweigend Projekte — und
+  // niemand merkt es, weil die Summe nirgends gegen die Kachelzahl gehalten wird.
+  const g = R.dashboardGruppen([
+    { projekt: "a", gruppe: "aktiv" }, { projekt: "x", gruppe: "brandneu" },
+    { projekt: "y", gruppe: "" },
+  ]);
+  const flach = g.reduce((s, x) => s.concat(x.kacheln.map(k => k.projekt)), []);
+  assert.strictEqual(flach.length, 3);
+  assert.ok(flach.includes("x") && flach.includes("y"));
+  assert.strictEqual(g[g.length - 1].gruppe, "sonstige");
+});
+
+test("jede Kachel erscheint in genau EINER Gruppe", () => {
+  const kacheln = [{ projekt: "a", gruppe: "aktiv" }, { projekt: "b", gruppe: "aktiv" },
+                   { projekt: "c", gruppe: "festes-team" }];
+  const flach = R.dashboardGruppen(kacheln)
+    .reduce((s, x) => s.concat(x.kacheln.map(k => k.projekt)), []);
+  assert.strictEqual(flach.length, 3);
+  assert.strictEqual(new Set(flach).size, 3);
+});

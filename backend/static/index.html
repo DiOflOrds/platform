@@ -23,6 +23,32 @@
   nav button.wartet { background:var(--akzent); color:#fff; font-weight:600; }
   nav button.aktiv.wartet { background:var(--fond); color:var(--akzent); }
   main { padding:1rem; max-width:62rem; margin:0 auto; }
+  /* ADR-P11-002 + DR p11/T-0006 (LAY-a, entschieden 2026-08-17 08:11), SWR-135.
+     ⚠ Die Ausnahme sitzt AN DER ANSICHT, nicht am Korridor: die Regel `main` eine Zeile
+     darueber bleibt unveraendert und kennt keinen Sonderfall. Eine Regel mit
+     Ausnahmeliste zwingt jede kuenftige Ansicht zu der Frage „gilt sie hier?" — und die
+     Antwort stuende dann nicht in der Ansicht, sondern in einer Liste woanders. */
+  main.breit { max-width:none; }
+  /* Kacheln als Raster statt eine pro Zeile. Gemessen (pm/T-0068, 4K-Bildschirm des
+     Auftraggebers): drei Kacheln sichtbar, links und rechts je rund ein Fuenftel der
+     Breite leer. `auto-fill` legt so viele je Reihe, wie die Breite traegt — die Zahl
+     steht damit nicht im Code und muss bei jedem neuen Bildschirm nicht nachgezogen
+     werden. */
+  .raster { display:grid; gap:.6rem; grid-template-columns:repeat(auto-fill, minmax(19rem, 1fr)); }
+  .kompakt { border:1px solid var(--rand); border-radius:.6rem; padding:.6rem .7rem;
+             background:#fff; }
+  .kompakt h4 { margin:0 0 .2rem; font-size:1rem; }
+  .kompakt .satz { font-size:.8rem; color:var(--grau); margin:0 0 .45rem;
+                   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+                   overflow:hidden; }
+  .kompakt dl { display:grid; grid-template-columns:auto auto; gap:.1rem .5rem; margin:0;
+                font-size:.85rem; }
+  .kompakt dt { color:var(--grau); }
+  .kompakt dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; }
+  /* ⚠ „keine Daten" wird SICHTBAR anders dargestellt als eine 0 — der Widget-Vertrag
+     verlangt, dass ein fehlender Beitrag als fehlend erkennbar ist. Waeren beide gleich
+     formatiert, waere die Unterscheidung im Code richtig und auf dem Schirm wertlos. */
+  .kompakt dd.leer { color:var(--grau); font-style:italic; font-size:.78rem; }
   .karte { background:#fff; border:1px solid var(--rand); border-radius:.5rem; padding: .8rem 1rem; margin-bottom:.8rem; }
   .karte h3 { margin:.1rem 0 .4rem; font-size:1rem; }
   .zeile { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.15rem 0; font-size:.9rem; }

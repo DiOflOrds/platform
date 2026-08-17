@@ -10,7 +10,7 @@
 // aller Teams und Projekte auf einer Seite, gruppierbar nach Rolle. Steht direkt hinter
 // dem Cockpit, weil der Auftraggeber von dort kommt, wenn ihm die Kachel mit ihren drei
 // Einträgen nicht reicht — und das ist der Anlass des Wunsches.
-var TABS = [["uebersicht", "Cockpit"], ["aufgaben", "Aufgaben"], ["pool", "Projekt-Pool"], ["board", "Board"], ["inbox", "Inbox"],
+var TABS = [["uebersicht", "Cockpit"], ["dashboard", "Dashboard"], ["aufgaben", "Aufgaben"], ["pool", "Projekt-Pool"], ["board", "Board"], ["inbox", "Inbox"],
             ["chat", "Team-Chat"], ["team", "Team"], ["requirements", "Requirements"],
             ["trace", "Traceability"], ["architektur", "Architektur"], ["baselines", "Baselines"],
             ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
@@ -188,7 +188,20 @@ function pruefeInbox() {  // SWR-076 (pm/N-0016): Zähler frisch holen und Reite
 
 function zeige(elemente) {
   leeren(inhalt);
+  // ADR-P11-002 / SWR-135: die Breiten-Ausnahme wird bei JEDEM regulären Zeichnen
+  // **abgeräumt**. Ohne diese Zeile bliebe `breit` nach einem Besuch des Dashboards an
+  // `main` hängen, und jede folgende Ansicht hätte den Korridor verloren — die Ausnahme
+  // wäre dann faktisch global, obwohl der ADR sie ausdrücklich auf eine Ansicht begrenzt.
+  // ⚠ Der Aufräumer gehört hierher und nicht in die Dashboard-Funktion: dort müsste ihn
+  // jede künftige Ansicht kennen, hier keine.
+  inhalt.classList.remove("breit");
   elemente.forEach(function (e) { inhalt.appendChild(e); });
+}
+
+function zeigeBreit(elemente) {
+  // SWR-135: derselbe Weg wie `zeige`, nur mit der Ausnahme — kein zweiter Zeichenpfad.
+  zeige(elemente);
+  inhalt.classList.add("breit");
 }
 
 // ---------- Ansichten ----------
@@ -1628,11 +1641,80 @@ function ladeAufgaben() {
   });
 }
 
+// --------------------------------------------------------------------------
+// SWR-135 (projects/p11/T-0010): das Widget-Dashboard — Kacheln in die Breite.
+//
+// Löst zwei Festlegungen ein, die seit Sprint 9 vorliegen und nie gebaut wurden:
+//   * DR `p11/T-0006`, vom Auftraggeber 2026-08-17 08:11 mit LAY-a entschieden — das
+//     Dashboard darf den 62rem-Korridor verlassen, alle anderen Ansichten nicht.
+//   * `ADR-P11-002` — die Ausnahme sitzt AN DER ANSICHT (Klasse `breit`), nicht am
+//     Korridor. Die globale Regel in `index.html` bleibt ausnahmslos.
+//
+// Anlass ist eine Messung, keine Idee: `pm/T-0068` hat an zwei Aufnahmen des
+// Auftraggeber-Bildschirms (4K) gezählt, dass **drei** Projektkacheln ohne Scrollen
+// sichtbar sind, während links und rechts je rund ein Fünftel der Breite leer liegt.
+// --------------------------------------------------------------------------
+
+function kompaktKachel(kachel) {
+  var karte = el("div", { "class": "kompakt" });
+  karte.appendChild(el("h4", {},
+    el("a", { href: "#/uebersicht/" + kachel.projekt, "class": "tlink" }, kachel.projekt),
+    " ", pille(kachel.status || "", kachel.status === "aktiv" ? "open" : "done")));
+  karte.appendChild(el("p", { "class": "satz" }, kachel.beschreibung || ""));
+  var dl = el("dl", {});
+  Regeln.kachelFelder(kachel).forEach(function (f) {
+    dl.appendChild(el("dt", {}, f.titel));
+    // ⚠ „keine Daten" bekommt eine eigene Klasse und sieht damit ANDERS aus als eine 0.
+    // Die Unterscheidung im Payload (SWR-108) wäre wertlos, wenn beide gleich gerendert
+    // würden — der Widget-Vertrag verlangt, dass ein fehlender Beitrag als fehlend
+    // sichtbar ist.
+    dl.appendChild(el("dd", f.zustand === "nicht_geliefert" ? { "class": "leer" } : {},
+                      f.text));
+  });
+  karte.appendChild(dl);
+  return karte;
+}
+
+function ladeDashboard() {
+  return api("/api/dashboard").then(function (d) {
+    var kacheln = (d && d.kacheln) || [];
+    var teile = [];
+    var kopf = el("div", { "class": "zeile" },
+      el("h3", { style: "margin:0" }, "Dashboard — alle Teams und Projekte"));
+    kopf.appendChild(pille(kacheln.length + " Kacheln", "open"));
+    if (d && d.vertrag) kopf.appendChild(pille("Widget-Vertrag v" + d.vertrag, "done"));
+    var o = (d && d.organisation) || null;
+    if (o && o.wartet_auf_mensch_gesamt) {
+      kopf.appendChild(pille(o.wartet_auf_mensch_gesamt + "× wartet auf dich", "in_review"));
+    }
+    teile.push(kopf);
+    if (!kacheln.length) {
+      // Der leere Fall wird benannt — „nichts da" und „nicht geladen" dürfen nicht gleich
+      // aussehen (SWR-114/SWR-122).
+      teile.push(el("p", { "class": "leer" },
+        "Keine Kachel geliefert. (Die Antwort kam an und war leer — kein Ladefehler.)"));
+      zeigeBreit(teile);
+      return;
+    }
+    Regeln.dashboardGruppen(kacheln).forEach(function (g) {
+      // Zähler am Titel, dieselbe Funktion wie im Cockpit und in der Aufgabenliste
+      // (SWR-132/133): ein Titelformat, nicht drei.
+      teile.push(el("h3", { style: "margin:.8rem 0 .3rem" },
+        Regeln.gruppenTitel({ rolle: g.titel, aufgaben: g.kacheln })));
+      var raster = el("div", { "class": "raster" });
+      g.kacheln.forEach(function (k) { raster.appendChild(kompaktKachel(k)); });
+      teile.push(raster);
+    });
+    zeigeBreit(teile);
+  });
+}
+
 function lade() {
   zeigeTabs();
   zeichneProjektwahl();  // SWR-082: aktueller Eintrag bleibt hervorgehoben
   zeige([el("p", { "class": "leer" }, "Lade …")]);
-  var ansichten = { uebersicht: ladeUebersicht, aufgaben: ladeAufgaben,
+  var ansichten = { uebersicht: ladeUebersicht, dashboard: ladeDashboard,
+                    aufgaben: ladeAufgaben,
                     board: ladeBoard, inbox: ladeInbox,
                     chat: ladeChat, team: ladeTeam, ticket: ladeTicket,
                     pool: ladePool,  // SWR-086 (pm/N-0020)

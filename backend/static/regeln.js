@@ -244,7 +244,105 @@ var Regeln = (function () {
     return z === undefined ? !!standard : !!z;
   }
 
-  return { istGruppeOffen: istGruppeOffen,
+  // --------------------------------------------------------------------------
+  // SWR-135 (projects/p11/T-0010): Kompaktkacheln des Widget-Dashboards.
+  // --------------------------------------------------------------------------
+
+  var KEINE_DATEN = "keine Daten";
+
+  //: Beschriftung je Kachelfeld. Kurz, weil eine Kompaktkachel schmal ist — und an
+  //: EINER Stelle, weil zwei Beschriftungslisten zwei Namen fuer dasselbe Feld sind.
+  var FELD_TITEL = { aufgaben_offen: "offen", briefe_offen: "Briefe",
+                     unterminiert: "ohne Termin", tickets_gesamt: "Tickets",
+                     letzte_baseline: "Baseline", team: "Digest" };
+
+  /** Was zeigt die Kachel fuer dieses Feld? — die Regel aus dem Widget-Vertrag.
+   *
+   * Der Vertrag (`zustaende`) verlangt drei Faelle und schliesst zwei Verwechslungen
+   * ausdruecklich aus:
+   *
+   * * `echte_null` → **als 0 anzeigen, nie als „keine Daten"**. *„0 offene Briefe ist ein
+   *   Ergebnis, kein Loch."*
+   * * `nicht_geliefert` → **als „keine Daten" anzeigen, nie als 0**, nie als leere Zelle.
+   *   *„Ein fehlender Beitrag muss als fehlend sichtbar sein."*
+   *
+   * ⚠ Die Verwechslung ist nicht theoretisch: `team: null` (das Projekt fuehrt keine
+   * Digests) und `briefe_offen: 0` (es gibt keine offenen Briefe) kommen aus derselben
+   * Antwort und sehen ohne diese Regel gleich aus. Genau diese Gleichheit hat in SWR-128
+   * fuenf Sprints lang „null JS-Tests" verborgen — dort sahen „nicht gelaufen" und
+   * „gruen" gleich aus.
+   *
+   * Das **Fakt** (welcher Zustand) kommt aus `aggregation._zustand`; hier steht nur, wie
+   * er aussieht. Zwei Orte, zwei verschiedene Fragen — kein B033.
+   */
+  function feldText(feld) {
+    feld = feld || {};
+    if (feld.zustand === "nicht_geliefert") return KEINE_DATEN;
+    if (feld.zustand === "echte_null") return "0";
+    // ⚠ Ein Feld OHNE bekannten Zustand gilt als `nicht_geliefert` und nicht als Wert.
+    // Der erste Entwurf fiel hier durch bis `String(feld.wert)` und haette bei einem
+    // unvollstaendigen Payload die Zeichenkette „undefined" auf den Schirm gebracht — eine
+    // Anzeige, die aussieht wie ein Inhalt und keiner ist. „Keine Daten" ist in diesem
+    // Fall die einzige wahre Aussage, die wir haben.
+    if (feld.zustand !== "wert") return KEINE_DATEN;
+    var w = feld.wert;
+    if (w && typeof w === "object") {
+      // `team` ist im Vertrag ein Objekt (`felder_innen: [letzter_digest]`) — die Kachel
+      // zeigt dessen Inhalt und nicht "[object Object]".
+      var d = w.letzter_digest;
+      if (d === null || d === undefined) return KEINE_DATEN;
+      return String(d) || "0";
+    }
+    return String(w);
+  }
+
+  /** Die Felder einer Kompaktkachel als `[{name, titel, text, zustand}]`, in Reihenfolge.
+   *
+   * Die Reihenfolge kommt aus dem **Backend** (`KACHEL_FELDER`) und wird hier nicht
+   * wiederholt: `Object.keys` folgt der Einfuegereihenfolge, und eine zweite Liste im
+   * Frontend waere eine zweite Aussage darueber, was eine Kachel zeigt (B033).
+   */
+  function kachelFelder(kachel) {
+    var felder = (kachel || {}).felder || {};
+    return Object.keys(felder).map(function (name) {
+      return { name: name, titel: FELD_TITEL[name] || name,
+               text: feldText(felder[name]), zustand: felder[name].zustand };
+    });
+  }
+
+  /** Dashboard-Kacheln nach Gruppe: `[{gruppe, titel, kacheln}]` in fester Reihenfolge.
+   *
+   * ⚠ **Feste Reihenfolge und nicht alphabetisch**: „Feste Teams" vor „Projekt-Teams" vor
+   * „Aktive Projekte" vor „Abgeschlossen" ist die Ordnung, die das Cockpit seit SWR-067
+   * benutzt. Eine zweite Ordnung derselben Gruppen waere fuer den Leser eine zweite
+   * Organisation.
+   *
+   * ⚠ **Leere Gruppen fallen weg, unbekannte nicht.** Eine Kachel mit einer Gruppe, die
+   * hier nicht steht, landet in `sonstige` statt zu verschwinden (SWR-096) — sonst
+   * verliert ein neuer Gruppenname stillschweigend Projekte, und niemand merkt es.
+   */
+  function dashboardGruppen(kacheln) {
+    var ordnung = [["festes-team", "Feste Teams"], ["projekt-team", "Projekt-Teams"],
+                   ["aktiv", "Aktive Projekte"], ["abgeschlossen", "Abgeschlossen"]];
+    var bekannt = {}, nach = {};
+    ordnung.forEach(function (g) { bekannt[g[0]] = true; nach[g[0]] = []; });
+    nach.sonstige = [];
+    (kacheln || []).forEach(function (k) {
+      var g = (k && k.gruppe) || "";
+      (bekannt[g] ? nach[g] : nach.sonstige).push(k);
+    });
+    var raus = ordnung.filter(function (g) { return nach[g[0]].length; })
+      .map(function (g) { return { gruppe: g[0], titel: g[1], kacheln: nach[g[0]] }; });
+    if (nach.sonstige.length) {
+      raus.push({ gruppe: "sonstige", titel: "Ohne bekannte Gruppe",
+                  kacheln: nach.sonstige });
+    }
+    return raus;
+  }
+
+  return { feldText: feldText, kachelFelder: kachelFelder,
+           dashboardGruppen: dashboardGruppen, KEINE_DATEN: KEINE_DATEN,
+           istGruppeOffen: istGruppeOffen,
            urheber: urheber, beitragKopf: beitragKopf, istWiederOffen: istWiederOffen,
            verlauf: verlauf, sortiereBriefe: sortiereBriefe,
            briefIdAusFehler: briefIdAusFehler,

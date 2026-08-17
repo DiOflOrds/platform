@@ -836,6 +836,109 @@ def cockpit_alle(root, heute=None, jetzt=None):
             "organisation": organisation(root)}  # SWR-117 (pm/T-0047)
 
 
+#: SWR-096/108 + Widget-Vertrag `zustaende`: die drei Zustände, die ein Widget je Feld
+#: unterscheiden MUSS. Sie stehen als Konstanten hier, damit `dashboard` und seine Tests
+#: dieselben Namen benutzen wie der Vertrag — eine vierte Schreibweise von „keine Daten"
+#: wäre genau die Bauart, die SWR-131 gekostet hat.
+ZUSTAND_WERT = "wert"
+ZUSTAND_ECHTE_NULL = "echte_null"
+ZUSTAND_NICHT_GELIEFERT = "nicht_geliefert"
+
+#: Felder der Kompaktkachel, in Anzeigereihenfolge. ⚠ **Jeder Name steht im
+#: Widget-Vertrag** (`team-dashboard/vertrag/widget-vertrag-v2.yaml`) — `dashboard` fügt
+#: **kein** Feld hinzu, es ordnet vorhandene. Ein Test hält das gegen den Vertrag.
+KACHEL_FELDER = ["aufgaben_offen", "briefe_offen", "unterminiert", "tickets_gesamt",
+                 "letzte_baseline", "team"]
+
+
+def _zustand(wert):
+    """Welcher der drei Vertragszustände liegt für diesen Wert vor? (SWR-096/108)
+
+    ⚠ **Die ganze Anforderung hängt an der Unterscheidung von `None` und `0`.** Der
+    Widget-Vertrag sagt es wörtlich: *„0 offene Briefe ist ein Ergebnis, kein Loch"* — und
+    umgekehrt darf `nicht_geliefert` **nie** als `0` erscheinen. `aggregation.cockpit`
+    liefert seit SWR-108 genau diesen Unterschied (`team: null` heißt „führt kein Team",
+    `briefe_offen: 0` heißt „keine offenen Briefe"), und bis hierher hat ihn niemand
+    ausgewertet.
+
+    Ein leerer String und eine leere Liste sind **echte Nullen**, nicht Löcher: sie sind
+    die Antwort „nichts vorhanden" auf eine Frage, die zutrifft. Nur `None` ist das Loch.
+    """
+    if wert is None:
+        return ZUSTAND_NICHT_GELIEFERT
+    if wert == 0 or wert == "" or wert == [] or wert == {}:
+        return ZUSTAND_ECHTE_NULL
+    return ZUSTAND_WERT
+
+
+def dashboard(root, heute=None, jetzt=None):
+    """SWR-135 (projects/p11/T-0010): Kompaktkacheln für das Widget-Dashboard.
+
+    **Lesend, und ohne zweiten Erhebungsweg.** Diese Funktion ruft `cockpit_alle` und
+    formt um — sie liest **kein** Ticket, ruft **kein** git, öffnet **keine** Datei. Das ist
+    nicht Sparsamkeit, sondern Risiko R1 aus dem Sprint-0-Plan von P11 und die Regel
+    `quelle.regel` des Widget-Vertrags (SWR-092): *driftet ein Widget vom Cockpit ab, ist
+    das ein Fehler des Widgets.* Der Test dazu ersetzt `cockpit_alle` durch eine Attrappe
+    und prüft, dass **nichts** übrig bleibt, was nicht von dort kam.
+
+    **Was hinzukommt, ist keine Information, sondern deren Zustand.** Je Feld der
+    Kompaktkachel wird `{wert, zustand}` geliefert, `zustand` aus
+    `{wert, echte_null, nicht_geliefert}`. ⚠ Diese Unterscheidung liefert `cockpit` seit
+    SWR-108 (`team: null` vs. `briefe_offen: 0`), und **ausgewertet hat sie bisher
+    niemand** — die Anzeige entschied selbst, was ein leeres Feld bedeutet, und damit gäbe
+    es so viele Antworten wie Leser (B033).
+
+    **Kein neues Feld.** `KACHEL_FELDER` nennt ausschließlich Namen, die der
+    Widget-Vertrag führt; ein Test hält die Liste gegen die Vertragsdatei. Ein Endpunkt,
+    der ein eigenes Feld erfindet, hätte den Vertrag gebrochen, den B066 gerade erst
+    prüfbar gemacht hat.
+
+    Rückgabe:
+        `{"kacheln": [{projekt, beschreibung, gruppe, status, felder: {name: {...}}}],
+          "organisation": {...}, "vertrag": "2.4"}`
+    """
+    roh = cockpit_alle(root, heute, jetzt)
+    kacheln = []
+    for eintrag in roh["projekte"]:
+        felder = {}
+        for name in KACHEL_FELDER:
+            wert = eintrag.get(name)
+            felder[name] = {"wert": wert, "zustand": _zustand(wert)}
+        kacheln.append({
+            # Diese vier tragen die Kachel selbst und sind im Vertrag `pflicht: true` —
+            # sie brauchen keine Zustandsangabe, weil sie immer belegt sind.
+            "projekt": eintrag.get("projekt"),
+            "beschreibung": eintrag.get("beschreibung"),
+            "gruppe": eintrag.get("gruppe"),
+            "status": eintrag.get("status"),
+            "felder": felder,
+        })
+    return {"kacheln": kacheln,
+            # Der Org-Kopfblock unverändert weitergegeben (SWR-117): dieselbe Quelle wie
+            # im Cockpit, damit Dashboard und Cockpit nicht verschieden zählen.
+            "organisation": roh.get("organisation"),
+            # Die Vertragsversion, gegen die diese Antwort gebaut ist — der Vertrag
+            # verlangt in `pflege`, dass ein Widget sie nennt.
+            "vertrag": vertrag_version(root)}
+
+
+def vertrag_version(root):
+    """Die `version:` aus `widget-vertrag-v2.yaml` — oder `""`, wenn die Datei fehlt.
+
+    ⚠ Gelesen, nicht eingetragen. Eine Konstante im Code wäre eine zweite Aussage über
+    dieselbe Sache und würde beim nächsten Vertrags-Bump still falsch (B033).
+    """
+    pfad = os.path.join(root, "team-dashboard", "vertrag", "widget-vertrag-v2.yaml")
+    try:
+        with open(pfad, encoding="utf-8") as f:
+            for zeile in f:
+                if zeile.startswith("version:"):
+                    return zeile.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
 def lade_baselines(root):
     """SWR-032: annotierte Tags (Baselines/Releases) je Repo unter der Wurzel."""
     import subprocess
