@@ -1,13 +1,14 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-17 · Tickets: 20 · davon wiederkehrend: 1
+Stand: 2026-08-17 · Tickets: 21 · davon wiederkehrend: 1
 
 
-## open (2)
+## open (3)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
+| [T-0021](tickets/T-0021.md) | Der Commit hinterlässt die Sperre für den nächsten: tmp_obj-Reste auf einem Mount ohne unlink-Recht | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0020](tickets/T-0020.md) | Die Matrix schrumpft still: kein Vergleich mit dem Bestand beim Schreiben | problem | einmalig | cm | Team | mittel | 0 | T-0019 |
 
 ## done (18)
