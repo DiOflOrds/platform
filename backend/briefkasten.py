@@ -116,6 +116,25 @@ def sende(root, projekt, text, von="E. John"):
                             ["commit", "-m", f"Briefkasten {brief_id}: Nachricht vom Menschen"],
                             capture_output=True, text=True, encoding="utf-8", errors="replace")
     if add.returncode or commit.returncode:
-        raise BriefkastenFehler(503, "Git-Commit fehlgeschlagen: " +
-                                (add.stderr + commit.stderr).strip()[:400])
+        # SWR-121 (pm/T-0055, Brief pm/N-0039): Die Nachricht steht zu diesem Zeitpunkt
+        # BEREITS auf der Platte — sie wird oben geschrieben, bevor Git überhaupt läuft.
+        # Scheitert der Commit, ist sie also gespeichert und nur nicht verbucht.
+        #
+        # ⚠ Die alte Meldung sagte nur „Git-Commit fehlgeschlagen" samt Git-Rohtext. Für
+        # den Leser liest sich das wie „deine Nachricht ist weg" — und das ist die
+        # falsche Hälfte der Wahrheit. Der Auftraggeber hat es am 2026-08-17 gemeldet und
+        # sich die richtige Hälfte selbst erschlossen („wird aber trotzdem gespeichert").
+        # Am Bestand belegt: `pm/N-0038` hat nie einen eigenen Commit bekommen und wurde
+        # erst zwei Stunden später von einem fremden Commit mitgenommen; `pm/N-0039` —
+        # die Meldung über genau diesen Fehler — kam durch. Beide standen bis dahin
+        # unverbucht in der Arbeitskopie, also in dem Zustand, den SWR-110 zum Befund
+        # erklärt.
+        #
+        # Eine Fehlermeldung, die den Ausgang schlechter darstellt, als er ist, kostet
+        # dasselbe wie eine, die ihn besser darstellt: Der Leser handelt am Sachverhalt
+        # vorbei — hier, indem er die Nachricht ein zweites Mal schickt.
+        raise BriefkastenFehler(503,
+            f"Deine Nachricht ist GESPEICHERT ({brief_id}) — aber noch nicht in Git "
+            f"verbucht. Bitte NICHT erneut senden; die nächste Routine-Session nimmt sie "
+            f"mit. Ursache: " + (add.stderr + commit.stderr).strip()[:300])
     return {"brief": brief_id, "projekt": projekt, "zeit": zeit}
