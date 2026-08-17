@@ -9,17 +9,12 @@ Stand: 2026-08-17 · Tickets: 6 · davon wiederkehrend: 1
 |---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | hoch | 0 | — |
 
-## in_progress (1)
-
-| ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|
-| [T-0006](tickets/T-0006.md) | CR: Der Cockpit-Payload unterscheidet „echte Null\" nicht von „nicht geliefert\" — Eingangsbedingung für SWR-096 | change-request | einmalig | cm | hoch | 0 | — |
-
-## in_review (1)
+## in_review (2)
 
 | ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|
 | [T-0004](tickets/T-0004.md) | CR: Ein rotes CI-Ergebnis soll den fehlgeschlagenen Schritt nennen — sonst ist ROT kein Befund, sondern eine Farbe | change-request | einmalig | cm | hoch | 0 | — |
+| [T-0006](tickets/T-0006.md) | CR: Der Cockpit-Payload unterscheidet „echte Null\" nicht von „nicht geliefert\" — Eingangsbedingung für SWR-096 | change-request | einmalig | cm | hoch | 0 | — |
 
 ## done (3)
 
