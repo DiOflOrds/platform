@@ -670,6 +670,33 @@ def verantwortlich_wert(t):
     return wert if wert in VERANTWORTLICH else VERANTWORTLICH_DEFAULT
 
 
+def wartet_auf_mensch(t):
+    """SWR-120: Muss der MENSCH handeln? — die eine Antwort für alle Anzeigen.
+
+    ⚠ **Beim Bau von SWR-119/120 haben zwei Anzeigen sich widersprochen.** Die
+    Board-Spalte las `verantwortlich_wert` und schrieb bei `projects/p11/T-0006`
+    „Team"; der Org-Zähler zählte dasselbe Ticket als „wartet auf den Menschen", weil
+    es ein `decision-request` ist. Beide Aussagen waren für sich begründet und
+    zusammen falsch — zwei Leser, zwei Antworten auf eine Frage (B033), und zwar
+    entstanden **im selben Lauf**, in dem die zweite Anzeige gebaut wurde.
+
+    Diese Funktion ist deshalb die eine Stelle. Sie ist **nicht** dasselbe wie
+    `verantwortlich_wert`, und die Trennung ist Absicht:
+
+    * `verantwortlich_wert` beantwortet, was das **Feld** sagt (mit Default). Sie ist
+      der Auflösungspunkt aus SWR-116 und bleibt unverändert.
+    * `wartet_auf_mensch` beantwortet, ob der **Mensch am Zug** ist. Das ist das Feld
+      **oder** der Typ `decision-request` — ein DR liegt qua Typ beim Auftraggeber,
+      auch wenn niemand das Feld gesetzt hat.
+
+    Ein DR bekommt also **nicht** still `verantwortlich: mensch` untergeschoben: das
+    Feld bliebe sonst leer und läse sich trotzdem als gesetzt, und SWR-116 verlangt bei
+    `mensch` einen Abschnitt `## Handlung beim Menschen`, den ein DR nicht führt (seine
+    Handlung steht in `optionen` + `default`).
+    """
+    return verantwortlich_wert(t) == "mensch" or t.get("typ") == "decision-request"
+
+
 def offene_blocker(t, tickets_nach_id):
     """IDs der blocked_by-Tickets, die noch nicht done sind."""
     return [ref for ref in parse_liste(t.get("blocked_by"))
@@ -689,13 +716,29 @@ def generiere_board(tickets, stand=None):
         if not gruppe:
             continue
         zeilen.append(f"\n## {st} ({len(gruppe)})\n")
-        zeilen.append("| ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |")
-        zeilen.append("|---|---|---|---|---|---|---|---|")
+        # SWR-119 (pm/T-0050): Spalte „Verantwortlich" — steht NEBEN `Rolle` und nicht
+        # an deren Stelle. Die beiden beantworten verschiedene Fragen: `rolle` sagt,
+        # welche Disziplin zuständig ist (`pl`, `cm`, …), `verantwortlich` sagt, ob
+        # überhaupt das TEAM handelt oder der Mensch. Sie zusammenzulegen wäre B033 —
+        # und hätte `rolle: mensch` still zur zweiten Bedeutung gemacht, was SWR-116
+        # ausdrücklich vermeidet.
+        zeilen.append("| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio "
+                      "| Sprint | blockiert durch |")
+        zeilen.append("|---|---|---|---|---|---|---|---|---|")
         for t in sorted(gruppe, key=lambda x: (PRIO_RANG.get(x.get("prio"), 99), x.get("id", ""))):
             bb = ", ".join(parse_liste(t.get("blocked_by"))) or "—"
             takt = takt_klartext(t.get("takt"))  # SWR-074/104
+            # Der Wert kommt aus `verantwortlich_wert` und wird NICHT hier aufgelöst:
+            # eine zweite Auflösung des leeren Feldes wäre die zweite Antwort auf eine
+            # Frage, für die SWR-116 genau eine Stelle gebaut hat.
+            # SWR-119/120: EINE Antwort fuer Board-Spalte und Org-Zaehler. Vor der
+            # Zusammenlegung schrieb die Spalte bei einem `decision-request` „Team",
+            # waehrend der Zaehler dasselbe Ticket als „wartet auf den Menschen"
+            # fuehrte — zwei Leser, zwei Antworten (B033).
+            v_text = "MENSCH" if wartet_auf_mensch(t) else "Team"
             zeilen.append(f"| [{t['id']}](tickets/{t['id']}.md) | {t['titel']} | {t['typ']} "
-                          f"| {takt} | {t['rolle']} | {t['prio']} | {t['sprint']} | {bb} |")
+                          f"| {takt} | {t['rolle']} | {v_text} | {t['prio']} "
+                          f"| {t['sprint']} | {bb} |")
     return "\n".join(zeilen) + "\n"
 
 

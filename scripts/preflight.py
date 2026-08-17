@@ -222,6 +222,39 @@ def statusdrift(root):
         return None
 
 
+def wartet_auf_mensch(root):
+    """SWR-120 (pm/T-0051): Weiterleitung auf `aggregation.wartet_auf_mensch`.
+
+    Wie bei `unterminierte_tickets` (SWR-117) ist die Weiterleitung keine zweite
+    Quelle, sondern der Beleg, dass es nur eine gibt: Kopfblock und Preflight-Zeile
+    beantworten dieselbe Frage und dürfen nicht verschieden zählen (B033).
+
+    `None` heißt „konnte nicht prüfen" und nicht „nichts gefunden".
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from backend import aggregation as _aggregation
+        return _aggregation.wartet_auf_mensch(root)
+    except Exception:
+        return None
+
+
+def uebergangshistorie(root):
+    """SWR-118 (pm/T-0048): `(neue, altbestand, register)` oder `None`.
+
+    `None` heißt „konnte nicht prüfen" und ausdrücklich **nicht** „nichts gefunden" —
+    dieselbe Unterscheidung, die `statusdrift` oben trifft. Eine stille Erfolgsmeldung
+    an der Stelle eines Ausfalls ist genau die Sorte Fehler, die `pm/T-0049`
+    ausgelöst hat.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import uebergang_historie as _uh
+        return _uh.pruefe_alle(root)
+    except Exception:
+        return None
+
+
 def unterminierte_tickets(root):
     """SWR-114 (pm/T-0036 Teil b): offene Tickets ohne Frist — org-weit, MIT Referenzen.
 
@@ -382,6 +415,21 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         print(f"[org] {len(ohne_frist)} Ticket(s) ohne Frist: {', '.join(ohne_frist)}")
     else:
         print("[org] 0 Tickets ohne Frist.")
+    # SWR-120 (pm/T-0051): dieselbe Frage für den Menschen — wie viele offene Tickets
+    # liegen bei ihm, und WELCHE. Aus derselben Quelle wie der Cockpit-Kopfblock
+    # (`aggregation.wartet_auf_mensch`), damit Preflight und HMI nicht verschieden
+    # zählen (B033), und mit Namen statt nur einer Zahl (B038).
+    #
+    # Die Zeile erscheint auch bei 0 — dieselbe Begründung wie eine Zeile höher: ein
+    # stiller Check ist von einem nicht gelaufenen nicht zu unterscheiden.
+    wartend = wartet_auf_mensch(root)
+    if wartend is None:
+        print("[org] Wartet auf den Menschen: nicht prüfbar (Aggregation nicht ladbar).")
+    elif wartend:
+        print(f"[org] {len(wartend)} Ticket(s) warten auf den Menschen: "
+              f"{', '.join(wartend)}")
+    else:
+        print("[org] 0 Tickets warten auf den Menschen.")
     # SWR-115 (pm/T-0049): die STATUSSPALTE des Sprintplans gegen den Ticketstatus.
     # Hier und nicht später, weil Sprint 7 `platform/T-0010` vierfach als erledigt gemeldet
     # hat — an den Auftraggeber inbegriffen — und `sprint_vergangen` (SWR-112) den Fall
@@ -398,6 +446,34 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         befunde += 1
     else:
         print("[org] Statusdrift Plan/Ticket: 0.")
+    # SWR-118 (pm/T-0048): unzulässige Statusübergänge in der COMMITTETEN Historie.
+    #
+    # Die Übergangsprüfung in `board.py` hält die Arbeitskopie gegen HEAD und ist damit
+    # blind für einen Sprung, der schon committet ist — ihr Ergebnis hing an der
+    # REIHENFOLGE der Session. Diese Prüfung liest stattdessen die Folge der
+    # `status:`-Werte in der Historie: ein Sachverhalt, der sich nicht dadurch ändert,
+    # wann man ihn abfragt.
+    #
+    # Der Altbestand vor dem Stichtag wird GEMELDET und blockiert NICHT — nicht
+    # geglättet, aber auch kein Dauerbefund, der das Wegsehen trainiert.
+    uebergaenge = uebergangshistorie(root)
+    if uebergaenge is None:
+        print("[org] Statusübergänge (Historie): nicht prüfbar (Modul nicht ladbar).")
+    else:
+        neue, altbestand, register = uebergaenge
+        print(f"[org] Altbestand unzulässiger Statusübergänge (vor dem Stichtag, "
+              f"bewusst nicht geglättet): {len(altbestand)}.")
+        for z in register:
+            print(f"[org] BEFUND: {z}")
+            befunde += 1
+        if neue:
+            print(f"[org] BEFUND: {len(neue)} unzulässige(r) Statusübergang/-übergänge "
+                  f"seit dem Stichtag:")
+            for z in neue:
+                print(f"    {z}")
+            befunde += 1
+        else:
+            print("[org] Unzulässige Statusübergänge seit dem Stichtag: 0.")
     # SWR-051 (P4): Session-Routine "Briefkasten zuerst" — offene Briefe anzeigen (informativ)
     for name, pfad in projekte:
         verz = os.path.join(pfad, "management", "briefkasten")

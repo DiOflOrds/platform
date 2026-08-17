@@ -150,5 +150,82 @@ class BestandTest(unittest.TestCase):
                 self.assertIn(board.verantwortlich_wert(t), board.VERANTWORTLICH)
 
 
+class BoardSpalteTest(unittest.TestCase):
+    """Die BOARD.md-Spalte „Verantwortlich" (SWR-119, pm/T-0050).
+
+    Teil b) aus `pm/T-0038` — die Formataenderung, die jedes Repo-CI prueft und die
+    deshalb bewusst allein in einen Lauf gehoert. Sie war der Grund, mit dem `T-0038`
+    als Ganzes zweimal verschoben wurde, obwohl er nur fuer einen von fuenf Teilen galt.
+    """
+
+    def _ticket(self, tid, **felder):
+        t = {"id": tid, "titel": "T", "typ": "task", "rolle": "pl", "status": "open",
+             "prio": "mittel", "sprint": 0, "blocked_by": "[]"}
+        t.update(felder)
+        return t
+
+    def test_kopfzeile_traegt_die_spalte(self):
+        md = board.generiere_board([self._ticket("T-0001")], stand="2026-08-17")
+        self.assertIn("| Rolle | Verantwortlich | Prio |", md)
+
+    def test_trennzeile_hat_so_viele_spalten_wie_der_kopf(self):
+        """Ohne diesen Test faellt eine vergessene `---`-Spalte erst im CI auf — und
+        dann in allen 16 Repos gleichzeitig."""
+        md = board.generiere_board([self._ticket("T-0001")], stand="2026-08-17")
+        zeilen = [z for z in md.splitlines() if z.startswith("|")]
+        self.assertEqual(zeilen[0].count("|"), zeilen[1].count("|"))
+        self.assertEqual(zeilen[1].count("|"), zeilen[2].count("|"))
+
+    def test_mensch_erscheint_als_MENSCH(self):
+        md = board.generiere_board(
+            [self._ticket("T-0001", verantwortlich="mensch")], stand="2026-08-17")
+        self.assertIn("| MENSCH |", md)
+
+    def test_fehlendes_feld_erscheint_als_aufgeloester_default(self):
+        """DoD 4 des Tickets: „nicht angegeben" und „liegt beim Team" lesen sich gleich
+        — das ist genau, was der aufgeloeste Default bedeutet."""
+        md = board.generiere_board([self._ticket("T-0001")], stand="2026-08-17")
+        self.assertIn("| Team |", md)
+        self.assertNotIn("| MENSCH |", md)
+
+    def test_rolle_bleibt_daneben_stehen(self):
+        """DoD 3 / B033: die Spalte ersetzt `Rolle` NICHT. `rolle` nennt die Disziplin,
+        `verantwortlich` sagt, ob ueberhaupt das Team handelt — zwei Fragen, zwei
+        Spalten. Zusammengelegt haette `rolle: mensch` still eine zweite Bedeutung
+        bekommen, was SWR-116 ausdruecklich vermeidet."""
+        md = board.generiere_board(
+            [self._ticket("T-0001", rolle="cm", verantwortlich="mensch")],
+            stand="2026-08-17")
+        zeile = [z for z in md.splitlines() if "T-0001" in z][0]
+        self.assertIn("| cm |", zeile)
+        self.assertIn("| MENSCH |", zeile)
+
+    def test_rolle_mensch_allein_macht_die_spalte_nicht_zu_MENSCH(self):
+        """Die Gegenprobe zur Trennung: `rolle: mensch` ist ein Gate, keine Aussage
+        darueber, wer handelt. Ohne diesen Test waere die Trennung nicht widerlegbar."""
+        md = board.generiere_board([self._ticket("T-0001", rolle="mensch")],
+                                   stand="2026-08-17")
+        self.assertIn("| Team |", md)
+        self.assertNotIn("| MENSCH |", md)
+
+    def test_alle_boards_im_bestand_tragen_die_spalte(self):
+        """DoD 2: alle 16 Boards regeneriert und gruen. Am Bestand geprueft und nicht
+        an einem gebauten Fall — die Formataenderung gilt allen Repos gleichzeitig."""
+        root = os.path.join(os.path.dirname(__file__), "..", "..")
+        projekte = board.projekt_pfade(root)
+        if not projekte:
+            self.skipTest("kein Bestand")
+        for name, pfad in projekte:
+            datei = os.path.join(pfad, "BOARD.md")
+            if not os.path.exists(datei):
+                continue
+            with open(datei, encoding="utf-8") as f:
+                inhalt = f.read()
+            if "| ID | Titel |" not in inhalt:
+                continue  # Board ohne Tickets hat keine Tabelle
+            self.assertIn("| Rolle | Verantwortlich | Prio |", inhalt,
+                          "%s: BOARD.md nicht regeneriert" % name)
+
+
 if __name__ == "__main__":
     unittest.main()

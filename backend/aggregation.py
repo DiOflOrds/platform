@@ -607,6 +607,47 @@ def unterminierte_tickets(root):
     return treffer
 
 
+def wartet_auf_mensch(root):
+    """SWR-120 (pm/T-0051): offene Tickets, bei denen der MENSCH am Zug ist — mit Refs.
+
+    **Zwei Quellen, eine Frage — und das ist hier kein B033.** Ein Ticket wartet auf
+    den Menschen, wenn es `verantwortlich: mensch` trägt (SWR-116) **oder** wenn es ein
+    `decision-request` ist. Das zweite ist keine zweite Meinung über dasselbe, sondern
+    ein anderer Sachverhalt: ein DR liegt qua Typ beim Auftraggeber, auch ohne dass
+    jemand das Feld gesetzt hätte. Beide zusammen sind die vollständige Antwort auf die
+    Frage „liegt es bei uns oder bei dir?" — und die Vereinigung wird **hier** gebildet
+    und nicht in zwei Anzeigen, die dann verschieden zählen.
+
+    **Mit Referenzen, nicht nur der Zahl** (B038): ein Zähler, der „3" sagt, sagt nicht,
+    welche drei. SWR-114 hat dieselbe Entscheidung für „unterminiert" getroffen und ist
+    die Vorlage; `pm/T-0051` verlangt sie ausdrücklich.
+
+    **Geschlossene Tickets zählen nicht.** Ein entschiedener DR wartet auf niemanden.
+    """
+    treffer = []
+    for name, basis in board.projekt_pfade(root):
+        verz = os.path.join(basis, "tickets")
+        if not os.path.isdir(verz):
+            continue
+        for datei in sorted(os.listdir(verz)):
+            if not datei.endswith(".md"):
+                continue
+            try:
+                with open(os.path.join(verz, datei), encoding="utf-8") as f:
+                    fm, _ = board.parse_frontmatter(f.read())
+            except OSError:
+                continue
+            fm = fm or {}
+            if fm.get("status") in ("done", "rejected"):
+                continue
+            # Die Bedingung steht in `board.wartet_auf_mensch` und NICHT hier: die
+            # Board-Spalte (SWR-119) stellt dieselbe Frage, und zwei Formulierungen
+            # derselben Bedingung sind zwei Antworten in Wartestellung (B033).
+            if board.wartet_auf_mensch(fm):
+                treffer.append(ref(name, fm.get("id") or datei[:-3]))
+    return treffer
+
+
 def organisation(root):
     """SWR-117 (pm/T-0047): der Kopfblock — Aussagen über die ORGANISATION, nicht über
     ein Projekt.
@@ -629,7 +670,10 @@ def organisation(root):
     feststehende Form macht statt zu einer zweiten Vertragsfrage.
     """
     refs = unterminierte_tickets(root)
-    return {"unterminiert_gesamt": len(refs), "unterminiert_refs": refs}
+    wartend = wartet_auf_mensch(root)  # SWR-120 (pm/T-0051)
+    return {"unterminiert_gesamt": len(refs), "unterminiert_refs": refs,
+            "wartet_auf_mensch_gesamt": len(wartend),
+            "wartet_auf_mensch_refs": wartend}
 
 
 def cockpit_alle(root, heute=None, jetzt=None):

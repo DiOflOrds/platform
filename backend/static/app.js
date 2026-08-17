@@ -381,6 +381,11 @@ function orgKopfblock(o) {
   var kopf = el("div", { "class": "zeile" },
     el("h3", { style: "margin:0" }, "Organisation"));
   kopf.appendChild(pille(n + " ohne Frist", n ? "in_progress" : "done"));
+  // SWR-120 (pm/T-0051): die zweite Zahl im SELBEN Kopfblock. Sie kommt als weiterer
+  // Schluessel neben die erste — genau die Erweiterbarkeit, wegen der T-0047 den Block
+  // als Schwesterschluessel gebaut hat. Kein Leser aendert sich dafuer.
+  var m = o.wartet_auf_mensch_gesamt || 0;
+  kopf.appendChild(pille(m + "× wartet auf dich", m ? "in_review" : "done"));
   karte.appendChild(kopf);
   var refs = o.unterminiert_refs || [];
   if (refs.length) {
@@ -390,6 +395,10 @@ function orgKopfblock(o) {
     karte.appendChild(el("div", { "class": "hinweis" },
       "Kein offenes Ticket ohne Frist."));
   }
+  var mrefs = o.wartet_auf_mensch_refs || [];
+  karte.appendChild(el("div", { "class": mrefs.length ? "meldung" : "hinweis" },
+    mrefs.length ? "Wartet auf dich: " + mrefs.join(", ")
+                 : "Nichts wartet auf dich."));
   return karte;
 }
 
