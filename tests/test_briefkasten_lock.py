@@ -20,7 +20,7 @@ import unittest
 _HIER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HIER, ".."))
 sys.path.insert(0, os.path.join(_HIER, "..", "scripts"))
-from backend import briefkasten  # noqa: E402
+from backend import briefkasten, git_schreiben  # noqa: E402
 
 
 class LockRaeumenTest(unittest.TestCase):
@@ -62,31 +62,56 @@ class LockRaeumenTest(unittest.TestCase):
         self.assertIn("Briefkasten", log, "die Nachricht ist verbucht, nicht nur gespeichert")
         self.assertFalse(os.path.exists(os.path.join(self.repo, ".git", "index.lock")))
 
-    def test_geraeumt_wird_genau_einmal_und_wiederholt_wird_genau_einmal(self):
+    def test_nach_einem_fehlschlag_wird_genau_einmal_wiederholt(self):
         """Keine Schleife: ein echter Dauerfehler gehört gemeldet, nicht abgewartet.
 
-        Verifiziert: SWR-123.
+        ⚠ **In Sprint 16 verschärft statt abgeschwächt (SWR-139).** Diese Zusicherung
+        zählte bis dahin *alle* Räumaufrufe und verlangte **genau einen**. Seit SWR-139
+        räumt `_lauf` zusätzlich **zwischen** `add` und `commit` — erlaubt, weil ein
+        **gelungenes** `add` der Nachweis ist, dass die danach liegende Sperre die eigene
+        ist. Ihre Absicht war nie „einmal räumen", sondern **einmal wiederholen**:
+        gezählt werden ab jetzt die Wiederholungen des Paares und nicht die Räumungen.
+        Verifiziert: SWR-123, SWR-139.
         """
-        rufe = []
+        versuche = []
+        echt_lauf = git_schreiben._lauf
 
-        def zaehlend(repo):
-            rufe.append(repo)
-            return self._echt_entsperre(repo)
+        def zaehlend(*a, **kw):
+            versuche.append(1)
+            return echt_lauf(*a, **kw)
 
-        briefkasten._entsperre = zaehlend
-        self._lock()
-        self._sende()
-        self.assertEqual(len(rufe), 1)
+        git_schreiben._lauf = zaehlend
+        try:
+            self._lock()
+            self._sende()
+        finally:
+            git_schreiben._lauf = echt_lauf
+        self.assertEqual(len(versuche), 2,
+                         "genau ein Versuch und genau eine Wiederholung")
 
-    def test_ohne_sperre_wird_gar_nicht_geraeumt(self):
-        """Die Gegenprobe: der Normalfall fasst die Sperrdateien nicht an.
+    def test_ohne_sperre_wird_nicht_wiederholt(self):
+        """Die Gegenprobe: der Normalfall braucht keinen zweiten Versuch.
 
-        Verifiziert: SWR-123.
+        ⚠ **In Sprint 16 auf die Wiederholung umgestellt (SWR-139).** Sie hieß
+        *„der gelungene Commit räumt nichts"* und wurde rot, weil `_lauf` seit SWR-139
+        zwischen `add` und `commit` räumt. Was der Normalfall **nicht** tun darf, ist ein
+        zweiter Anlauf — und genau das wird jetzt gemessen, statt eine Räumung zu zählen,
+        deren Zulässigkeit inzwischen vom Nachweis abhängt und nicht vom Fehlschlag.
+        Verifiziert: SWR-123, SWR-139.
         """
-        rufe = []
-        briefkasten._entsperre = lambda repo: rufe.append(repo) or 0
-        self._sende()
-        self.assertEqual(rufe, [], "der gelungene Commit räumt nichts")
+        versuche = []
+        echt_lauf = git_schreiben._lauf
+
+        def zaehlend(*a, **kw):
+            versuche.append(1)
+            return echt_lauf(*a, **kw)
+
+        git_schreiben._lauf = zaehlend
+        try:
+            self._sende()
+        finally:
+            git_schreiben._lauf = echt_lauf
+        self.assertEqual(len(versuche), 1, "der gelungene Commit wird wiederholt")
 
     # --- die Grenze: was das Räumen NICHT heilt --------------------------------
 
