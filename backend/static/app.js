@@ -303,6 +303,10 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
       // G4) -> "keine Daten". "" = vorgesehen, aber noch keine -> "noch keine Baseline".
       // Ein leerer Wert wurde vorher stillschweigend weggelassen; genau das verbietet
       // SWR-096, weil ein fehlender Beitrag als fehlend sichtbar sein muss.
+      // SWR-111 (team-dashboard/T-0002): die Kachel zeigt NUR den Tag. Die Annotation
+      // steht in `letzte_baseline_text` (bei p1 284 Zeichen — mehr als eine Reihe fasst)
+      // und gehoert auf die Detailseite, wie die volle Aufgabenliste bei SWR-094.
+      // Nicht im Widget kuerzen: die Regel gehoert in die Quelle, nicht ins JavaScript.
       karte.appendChild(el("div", { "class": "zeile" }, "Letzte Baseline: " + (
         p.letzte_baseline === null ? "keine Daten"
           : p.letzte_baseline || "noch keine")));

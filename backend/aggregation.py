@@ -532,15 +532,28 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
     # Eine vorhandene, leere Registry meldet `{laeufe: 0}` — das ist eine Messung mit
     # dem Ergebnis null. Fehlt die Datei, wurde nichts erhoben, und 15 von 16 Einträgen
     # haben bis heute `0` gemeldet, als sei es gemessen worden (B038 in Zahlenform).
+    #
+    # SWR-111 (team-dashboard/T-0002): `letzte_baseline` trug TAG UND ANNOTATION in einem
+    # String — bei `p1` 300 Zeichen, mehr als eine Kachelreihe fasst. Das ist nicht in
+    # erster Linie ein Längen-, sondern ein B033-Problem: zwei Tatsachen unter einem Namen.
+    # Getrennt wird HIER, wo `git tag -n1` sie ohnehin durch Leerraum getrennt liefert —
+    # nicht im Vertrag und nicht im Widget (ADR-P11-001 Punkt 3: eine Kürzungsregel im
+    # JavaScript sucht niemand, und Cockpit und Dashboard sagten dann Verschiedenes).
+    # Die drei Zustände aus SWR-108 gelten für BEIDE Felder und dürfen nicht auseinander-
+    # laufen: kein Tag -> beide `None` bzw. beide `""`; Tag ohne Annotation -> Name und
+    # `""`, denn die Annotation ist dann eine echte Leere und keine fehlende Erhebung.
     if tags:
-        letzte_baseline = tags[-1].strip()
+        teile = tags[-1].strip().split(None, 1)
+        letzte_baseline = teile[0]
+        letzte_baseline_text = teile[1].strip() if len(teile) > 1 else ""
     elif stufe["profil"] in PROFILE_OHNE_G4:
-        letzte_baseline = None
+        letzte_baseline = letzte_baseline_text = None
     else:
-        letzte_baseline = ""
+        letzte_baseline = letzte_baseline_text = ""
     return {"projekt": projekt, "status_zahlen": status_zahlen,
             "tickets_gesamt": len(tickets), "offene_drs": drs,
             "letzte_baseline": letzte_baseline,
+            "letzte_baseline_text": letzte_baseline_text,  # SWR-111
             "briefe_offen": briefe_offen, "team": team,
             "beschreibung": stufe["beschreibung"], "status": status, "gruppe": gruppe,
             "aufgaben_offen": len(offene), "aufgaben": aufgaben,
