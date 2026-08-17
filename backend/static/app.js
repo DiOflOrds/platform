@@ -102,28 +102,26 @@ function ticketLink(ref, beschriftung, klasse, titel) {
   return el("a", attr, text);
 }
 
-function tlinks(text, proj) {
-  // T-xxxx im Text als Links auf die Detailansicht (SWR-040)
-  var knoten = [], rest = String(text || ""), m;
-  while ((m = rest.match(/T-\d{4}/))) {
-    if (m.index > 0) knoten.push(document.createTextNode(rest.slice(0, m.index)));
-    (function (id) {
-      // SWR-150: die Kennung entsteht in EINER Stelle, und fuer Fliesstext heisst sie
-      // `textRefAnnahme` — weil sie eine ist. Der `title` sagt es dem Leser.
-      var ref = Regeln.textRefAnnahme(proj, id), route = Regeln.ticketRoute(ref);
-      knoten.push(route
-        ? el("a", { "class": "tlink", href: route, title: "angenommen: " + ref }, id)
-        : document.createTextNode(id));
-    })(m[0]);
-    rest = rest.slice(m.index + 6);
-  }
-  if (rest) knoten.push(document.createTextNode(rest));
-  return knoten;
-}
-
+// SWR-098 (projects/p12/T-0006, ADR-P12-001 Entscheidung 1): `tlinks` ist ENTFALLEN.
+// Es war der zweite Wrapper um den Rohtext, den SWR-098 woertlich verbietet — er konnte
+// Ticketnummern und kein Markdown, waehrend `mdInline` Markdown konnte und keine
+// Ticketnummern. Die Erkennung sitzt jetzt im Inline-Pass, an EINER Stelle.
+//
+// ⚠ `preMitLinks` bleibt und ist KEIN zweiter Renderweg: es erzeugt kein DOM aus
+// Markdown-Bloecken, sondern zeigt Rohtext in einem `<pre>` und laesst die INLINE-Regeln
+// vom einen Inline-Pass anwenden. Die Block-Umstellung dieser vier Ansichten
+// (Ticket-Body, DR-Body, zwei Dokumentenansichten) ist der benannte Folgepunkt und
+// gehoert an den G4-Antrag — nicht in diesen Lauf.
 function preMitLinks(text, proj) {
   var p = el("pre", {});
-  tlinks(text, proj).forEach(function (k) { p.appendChild(k); });
+  // ⚠ ZEILENWEISE, und das ist eine Entscheidung: `mdInline` bekommt in `mdRender` immer
+  // eine Zeile bzw. einen Absatz. Auf ein ganzes Dokument losgelassen, spannte ein
+  // einzelnes `*` in Zeile 3 einen `<em>` bis zum naechsten `*` in Zeile 90 — ein
+  // Muster, das ueber Zeilengrenzen greift, findet in einem langen Text immer ein Paar.
+  String(text || "").split("\n").forEach(function (z, idx) {
+    if (idx) p.appendChild(document.createTextNode("\n"));
+    mdInline(z, p, proj);
+  });
   return p;
 }
 
@@ -399,7 +397,7 @@ function sessionKachel(s) {
     karte.appendChild(el("div", { "class": "meldung fehler" },
       s.hinweis + " — der geplante Lauf ist ausgefallen oder Cowork ist zu."));
   }
-  karte.appendChild(s.text ? mdRender(s.text)
+  karte.appendChild(s.text ? mdRender(s.text, projekt)
     : el("p", { "class": "leer" }, "Kein Block „Das Wichtigste“ in " + s.quelle + "."));
   karte.appendChild(el("div", { "class": "zeile" },
     "Quelle: " + s.quelle + " · Zeitstempel aus dem Git-Commit, nicht aus dem Text."));
@@ -826,7 +824,17 @@ function ladeTicket() {  // SWR-040: Detailansicht
     var bb = t.blocked_by;
     if (bb && bb.length && String(bb) !== "[]") {
       var z = el("div", { "class": "zeile" }, "Blockiert durch: ");
-      tlinks(String(bb), projekt).forEach(function (k) { z.appendChild(k); });
+      // ⚠ `blocked_by` ist eine LISTE von Kennungen und kein Fliesstext. Sie hier durch
+      // eine Textsuche zu schicken war der bequeme Weg — die Liste weiss, wo ihre
+      // Kennungen anfangen und aufhoeren, eine Textsuche muss es raten.
+      (Array.isArray(bb) ? bb : (String(bb).match(/T-\d{4}/g) || []))
+        .forEach(function (id, idx) {
+          var kennung = String(id).trim();
+          var ref = Regeln.textRefAnnahme(projekt, kennung);
+          if (idx) z.appendChild(document.createTextNode(", "));
+          z.appendChild(ticketLink(ref, kennung, "tlink",
+                                   ref ? "angenommen: " + ref : ""));
+        });
       kopf.appendChild(z);
     }
     // SWR-077 (P10, pm/N-0014): offene Aufgaben sind hier nicht mehr nur lesbar.
@@ -940,7 +948,7 @@ function ladeInbox() {
         historie.forEach(function (e) {
           var z = el("div", { "class": "zeile" },
             ticketLink(e.ref, e.ref), " ", pille(e.status, e.status), " ");  // SWR-087/150
-          tlinks(e.entscheidung, e.projekt).forEach(function (k) { z.appendChild(k); });
+          mdInline(String(e.entscheidung || ""), z, e.projekt);  // SWR-098
           h.appendChild(z);
         });
         teile.push(h);
@@ -994,7 +1002,8 @@ function ladeChat() {  // SWR-050/051 (P4): Briefkasten-Konversation mit dem Tea
         kasten.appendChild(el("div", { "class": "wer" },
           (beitrag.absender || "(ohne Absender)")
           + (beitrag.zeit ? " · " + beitrag.zeit : "")));
-        kasten.appendChild(preMitLinks(beitrag.text, projekt));
+        // SWR-097 (p12/T-0006): Briefe laufen ueber den EINEN Renderer.
+        kasten.appendChild(mdRender(beitrag.text, projekt));
         karte.appendChild(kasten);
       });
 
@@ -1075,7 +1084,8 @@ function neuerBriefKarte(nutzer) {
 function ladeReports() {
   return api("/api/reports?projekt=" + encodeURIComponent(projekt)).then(function (antwort) {
     zeige(antwort.reports.length ? antwort.reports.map(function (r) {
-      return el("div", { "class": "karte" }, el("h3", {}, r.sprint), preMitLinks(r.text, projekt));
+      // SWR-097 (p12/T-0006): Sprint-Reports laufen ueber den EINEN Renderer.
+      return el("div", { "class": "karte" }, el("h3", {}, r.sprint), mdRender(r.text, projekt));
     }) : [el("p", { "class": "leer" }, "Noch keine Sprint-Reports.")]);
   });
 }
@@ -1103,7 +1113,11 @@ function tabelle(t) {  // SWR-043/044: sortier- und filterbare Tabelle
   var filter = el("input", { placeholder: "Filtern …", oninput: function () { baue(); } });
   var wrap = el("div", { "class": "tabellenwrap" });
   function zelleMitLinks(td, text) {
-    tlinks(String(text).replace(/\*\*/g, ""), projekt).forEach(function (k) { td.appendChild(k); });
+    // ⚠⚠ Hier stand `tlinks(String(text).replace(/\*\*/g, ""), projekt)`. Der Aufrufer
+    // hat den FETTDRUCK WEGGEWORFEN, damit der Link-Weg nicht daran scheitert — der
+    // Beleg von ADR-P12-001, dass der falsche Weg genommen wurde. Der Inline-Pass kann
+    // beides, also faellt beides weg: der Wegwurf und der zweite Weg.
+    mdInline(String(text), td, projekt);
     return td;
   }
   function baue() {
@@ -1372,10 +1386,14 @@ function ladeArchitektur() {  // SWR-045: generiertes Bild aus komponenten.yaml
 // P7 SWR-059: kleiner Markdown-Renderer (DOM-basiert, keine Bibliothek — ADR-002).
 // Unterstützt: #..#### Überschriften, Absätze, **fett**, *kursiv*, `code`,
 // nummerierte/ungeordnete Listen, Pipe-Tabellen, --- Trennlinien.
-function mdInline(text, ziel) {
+function mdInline(text, ziel, proj) {
   var rest = String(text || ""), m;
   // SWR-060 (Betriebs-CR aus team-mail/N-0001): [text](https://...) als Link.
-  var muster = /(\[([^\]]*)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/;
+  // SWR-098 (p12/T-0006): `T-nnnn` ist ein Zweig DIESES Musters und kein zweiter Wrapper.
+  // ⚠ Die REIHENFOLGE ist Teil der Entscheidung (ADR-P12-001): der Backtick-Zweig steht
+  // vor dem Ticket-Zweig. Ein `T-0042` in Backticks ist ein ZITAT und darf kein Link
+  // werden — sonst verlinkt die Dokumentation ueber den Renderer ihre eigenen Beispiele.
+  var muster = /(\[([^\]]*)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`|(T-\d{4}))/;
   while ((m = rest.match(muster))) {
     if (m.index > 0) ziel.appendChild(document.createTextNode(rest.slice(0, m.index)));
     if (m[2] !== undefined) {
@@ -1386,23 +1404,50 @@ function mdInline(text, ziel) {
     }
     else if (m[4] !== undefined) ziel.appendChild(el("strong", {}, m[4]));
     else if (m[5] !== undefined) ziel.appendChild(el("em", {}, m[5]));
-    else ziel.appendChild(el("code", {}, m[6]));
+    else if (m[6] !== undefined) ziel.appendChild(el("code", {}, m[6]));
+    else {
+      // ⚠ Der Inline-Pass baut KEINE Route (SWR-150): er erkennt eine Nummer und fragt
+      // die eine Stelle, ob sie ein Ziel hat. Weil der Text nicht sagt, aus welchem
+      // Projekt die Nummer kommt, heisst die Kennung `textRefAnnahme` — eine benannte
+      // ANNAHME, im `title` sichtbar. Ohne Ziel entsteht Text und kein Link.
+      var ref = Regeln.textRefAnnahme(proj, m[7]);
+      ziel.appendChild(ticketLink(ref, m[7], "tlink", ref ? "angenommen: " + ref : ""));
+    }
     rest = rest.slice(m.index + m[1].length);
   }
   if (rest) ziel.appendChild(document.createTextNode(rest));
 }
 
-function mdRender(text) {
+function mdRender(text, proj) {
   var wurzel = el("div", { "class": "md" });
   var zeilen = String(text || "").split("\n");
   var i = 0, liste = null;
   while (i < zeilen.length) {
     var strip = zeilen[i].trim();
     if (!strip) { i++; liste = null; continue; }
+    // SWR-099 (ADR-P12-001, Entscheidung 3): Code-Zaun VOR Ueberschrift, Tabelle, Liste.
+    // ⚠ Der Inhalt geht NICHT durch den Inline-Pass: in einem Codeblock ist `**` ein
+    // Sternchenpaar und `T-0042` eine Zeichenfolge. Ein Link im Codebeispiel ist ein
+    // Fehler, der wie eine Verbesserung aussieht.
+    if (strip.indexOf("```") === 0) {
+      var zaunInhalt = [];
+      i++;
+      while (i < zeilen.length && zeilen[i].trim().indexOf("```") !== 0) {
+        zaunInhalt.push(zeilen[i]); i++;
+      }
+      // ⚠ Ein NICHT geschlossener Zaun endet am Textende und verschluckt nichts —
+      // andernfalls entstuende aus einem vergessenen Zaun ein unsichtbarer Rest, und die
+      // Bilanz aus p12/T-0008 faende ihn als Vollstaendigkeitsverlust.
+      if (i < zeilen.length) i++;
+      // ⚠ Zeilenumbrueche bleiben: der Absatzpfad fuegt mit " " zusammen, der Zaun mit
+      // "\n". Genau dieses Zusammenfuegen war der Verlust — nicht an Zeichen, an Struktur.
+      wurzel.appendChild(el("pre", {}, el("code", {}, zaunInhalt.join("\n"))));
+      liste = null; continue;
+    }
     var h = strip.match(/^(#{1,4})\s+(.*)$/);
     if (h) {
       var hEl = el("h" + Math.min(h[1].length + 1, 5), {});
-      mdInline(h[2], hEl); wurzel.appendChild(hEl); i++; liste = null; continue;
+      mdInline(h[2], hEl, proj); wurzel.appendChild(hEl); i++; liste = null; continue;
     }
     if (strip.charAt(0) === "|") {  // Tabellenblock
       var tab = el("table", { "class": "tabelle" }), kopfzeile = true;
@@ -1413,7 +1458,7 @@ function mdRender(text) {
         var tr = el("tr", {});
         tz.replace(/^\||\|$/g, "").split("|").forEach(function (zelle) {
           var td = el(kopfzeile ? "th" : "td", {});
-          mdInline(zelle.trim(), td); tr.appendChild(td);
+          mdInline(zelle.trim(), td, proj); tr.appendChild(td);
         });
         tab.appendChild(tr); kopfzeile = false;
       }
@@ -1429,20 +1474,26 @@ function mdRender(text) {
       i++;  // Folgezeilen ohne eigenes Muster gehören zum Punkt (Umbruch im Editor)
       while (i < zeilen.length) {
         var f = zeilen[i].trim();
-        if (!f || /^(#{1,4}\s|\||[-*]\s|\d+\.\s|---)/.test(f)) break;
+        // ⚠ Der Zaun steht in DIESER Abbruchregel und nicht nur im Block-Pass: ein neuer
+        // Block-Zweig ist erst erreichbar, wenn die FORTSETZUNGSREGEL des vorherigen
+        // Blocks ihn kennt. Ohne diese Zeile schluckt der Listenpunkt den Zaun.
+        if (!f || /^(#{1,4}\s|\||[-*]\s|\d+\.\s|---|```)/.test(f)) break;
         puffer.push(f); i++;
       }
-      mdInline(puffer.join(" "), punkt); liste.appendChild(punkt); continue;
+      mdInline(puffer.join(" "), punkt, proj); liste.appendChild(punkt); continue;
     }
     if (/^---+$/.test(strip)) { wurzel.appendChild(el("hr", {})); i++; liste = null; continue; }
     var p = el("p", {}), absatz = [strip];
     i++;
     while (i < zeilen.length) {
       var w = zeilen[i].trim();
-      if (!w || /^(#{1,4}\s|\||[-*]\s|\d+\.\s|---)/.test(w)) break;
+      // ⚠ Siehe Listenpfad: derselbe Zaun in derselben Abbruchregel. Ohne sie zog der
+      // Absatz den Zaun und seinen Inhalt in sich hinein, und der Zaun-Zweig war
+      // unerreichbar — gefunden vom Verhaltenstest, nicht vom Zaehltest.
+      if (!w || /^(#{1,4}\s|\||[-*]\s|\d+\.\s|---|```)/.test(w)) break;
       absatz.push(w); i++;
     }
-    mdInline(absatz.join(" "), p); wurzel.appendChild(p); liste = null;
+    mdInline(absatz.join(" "), p, proj); wurzel.appendChild(p); liste = null;
   }
   return wurzel;
 }
@@ -1457,7 +1508,7 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
           el("div", { "class": "btnreihe" },
             el("button", { "class": "knopf zweit", onclick: function () { gehe("team", projekt); } },
               "← Zurück zum Team")),
-          mdRender(d.inhalt))]);  // SWR-059: formatiert statt Rohtext
+          mdRender(d.inhalt, projekt))]);  // SWR-059: formatiert statt Rohtext
       });
     }
     var kopf = el("div", { "class": "karte" }, el("h3", {}, s.name || t.projekt));
@@ -1596,7 +1647,7 @@ function ladeTeam() {  // P7 SWR-054/057: Team-Tab — Digest-Verlauf, Steckbrie
     }
 
     var chartaKarte = el("div", { "class": "karte" }, el("h3", {}, "Charter"),
-      t.charta ? mdRender(t.charta) : el("p", { "class": "leer" }, "Keine Charter-Datei."));  // SWR-059
+      t.charta ? mdRender(t.charta, projekt) : el("p", { "class": "leer" }, "Keine Charter-Datei."));  // SWR-059
     zeige([kopf, digestKarte, konfigKarte, chartaKarte]);
   }).catch(function (fehler) {
     var text = String(fehler.message || fehler);

@@ -19,75 +19,8 @@ const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
 
-const WURZEL = path.resolve(__dirname, "..", "..", "..");
-const APP = path.join(WURZEL, "platform", "backend", "static", "app.js");
-
-/** Ein Knoten, der genau so viel kann, wie der Renderer verlangt. */
-function knoten(tag) {
-  return {
-    tagName: tag, kinder: [], className: "", attrs: {},
-    appendChild(k) { this.kinder.push(k); return k; },
-    addEventListener() {},
-    setAttribute(k, v) { this.attrs[k] = v; },
-    get textContent() {
-      return this.kinder.map((k) => (k.text !== undefined ? k.text : k.textContent))
-        .join("");
-    },
-  };
-}
-
-/** `mdRender` aus der ECHTEN app.js, in einem Kontext mit Mini-DOM. */
-function ladeRenderer() {
-  const quelle = fs.readFileSync(APP, "utf8");
-  const dokument = {
-    createElement: (t) => knoten(t),
-    createTextNode: (t) => ({ text: String(t), textContent: String(t) }),
-    // ⚠ `getElementById` liefert einen Knoten und nicht `null`: app.js haengt beim Start
-    // Ereignisse an feste Elemente. Mit `null` stirbt der Ladevorgang, und der Nachweis
-    // waere still uebersprungen — die Lage aus SWR-114.
-    getElementById: () => knoten("div"),
-    querySelector: () => knoten("div"),
-    addEventListener() {},
-    querySelectorAll: () => [],
-    body: knoten("body"),
-  };
-  // ⚠ `location` steht als eigener Name im Kontext und nicht nur unter `window`: app.js
-  // liest beides. Ohne ihn wirft der Startlauf ASYNCHRON, nachdem der Test schon gruen
-  // gemeldet hat — Node meldet das als `unhandledRejection`, und der Testlauf ist rot,
-  // waehrend jede einzelne Zusicherung gruen dasteht. Das ist die unangenehmste
-  // Fehlerform, die diese Bauart hergibt.
-  const kontext = {
-    document: dokument, location: { hash: "", search: "" },
-    window: { location: { hash: "", search: "" }, addEventListener() {} },
-    console, setTimeout, clearTimeout, setInterval: () => 0, clearInterval: () => {},
-    // ⚠ Ein `fetch`, das NIE aufloest — und das ist eine Entscheidung, keine Bequemlichkeit.
-    // Der Startlauf von app.js haengt an `fetch`; loest es auf, laeuft danach die ganze
-    // Oberflaeche in einem Mini-DOM weiter und wirft ASYNCHRON, nachdem der Test schon
-    // gruen gemeldet hat. Node meldet das als `unhandledRejection`: jede Zusicherung gruen,
-    // der Lauf rot. Statt dem DOM-Ersatz eine API nach der anderen nachzuruesten — was ihn
-    // in einen zweiten Browser verwandelte — wird der Start hier SAUBER ANGEHALTEN. Geladen
-    // wird die Datei fuer ihre Funktionsdeklarationen; ihre Oberflaeche prueft dieser Test
-    // ausdruecklich nicht.
-    fetch: () => new Promise(() => {}),
-    URLSearchParams, encodeURIComponent, decodeURIComponent, Promise, Date, JSON, Math,
-    localStorage: { getItem: () => null, setItem() {} },
-  };
-  vm.createContext(kontext);
-  // ⚠ Der Modulaufbau von app.js ist eine Folge von Funktionsdeklarationen ohne
-  // Seiteneffekt beim Laden bis auf den Start am Ende — der laeuft ins Leere, weil das
-  // Mini-DOM nichts findet. Ein Fehler dabei ist KEIN Grund, den Nachweis ausfallen zu
-  // lassen: er wuerde ihn still ueberspringen, und das ist die Lage aus SWR-114.
-  try {
-    vm.runInContext(quelle, kontext, { filename: "app.js" });
-  } catch (e) {
-    throw new Error("app.js liess sich nicht laden: " + e.message);
-  }
-  assert.strictEqual(typeof kontext.mdRender, "function",
-                     "mdRender nicht gefunden — der Nachweis prueft sonst nichts");
-  return kontext.mdRender;
-}
+const { ladeRenderer, WURZEL } = require("./_app_laden.cjs");
 
 /** Die Zeichen, die SWR-099 als **Markup** ausnimmt — und sonst keine. */
 const MARKUP = /[#*`|\-\[\]()>_\s]/g;
