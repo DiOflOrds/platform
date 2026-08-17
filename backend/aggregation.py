@@ -738,6 +738,67 @@ def wartet_auf_mensch(root):
     return treffer
 
 
+def fuer_dich_handlungen(root):
+    """SWR-138 (pm/T-0052): offene Tickets, bei denen der Mensch **handeln** soll.
+
+    Das ist die **Ergänzung** zur Inbox, nicht ihre Wiederholung. Die Frage des
+    Auftraggebers lautete: *„Warum sind die Tasks nicht in der Inbox, wenn sie an Menschen
+    gerichtet sind?"* — und die Antwort ist, dass die Inbox sie nicht **ablehnt**, sondern
+    nicht **kennt**: sie zeigt unentschiedene `decision-request`s (SWR-039/042). Ein
+    Ticket mit `verantwortlich: mensch` und `typ: problem` fällt durch jeden ihrer Filter.
+
+    > **Es fehlte kein Filter, sondern der Kanal.**
+
+    ⚠ **Warum die Liste hier die Differenz bildet und nicht zwei Listen entstehen.** Diese
+    Funktion ist eine **Teilmenge derselben Quelle** wie `wartet_auf_mensch` — dieselbe
+    Bauart wie die Rollen-Sicht in SWR-132 (*„eine Gruppierung derselben Liste, keine
+    zweite Ansicht"*). Ein Ticket kann deshalb **nicht** in beiden Abschnitten stehen: was
+    ein DR ist, gehört in die Entscheidungen, alles andere hierher. Zwei getrennte
+    Erhebungen hätten dieselbe Frage zweimal beantwortet und irgendwann verschieden (B033).
+
+    ⚠ **Ein Ticket, das beides erfüllt, gehört zu den Entscheidungen.** Ein
+    `decision-request`, der zusätzlich `verantwortlich: mensch` trägt, ist trotzdem eine
+    Entscheidung — dort hängen die Optionen, die Frist und der Vorgabewert (SWR-042). Ihn
+    hier zusätzlich zu zeigen, hieße ihn zweimal zu verlangen; die Reihenfolge der
+    Zuordnung ist deshalb festgelegt und nicht dem Zufall der Feldbelegung überlassen.
+    """
+    treffer = []
+    for name, basis in board.projekt_pfade(root):
+        verz = os.path.join(basis, "tickets")
+        if not os.path.isdir(verz):
+            continue
+        for datei in sorted(os.listdir(verz)):
+            if not datei.endswith(".md"):
+                continue
+            try:
+                with open(os.path.join(verz, datei), encoding="utf-8") as f:
+                    fm, _ = board.parse_frontmatter(f.read())
+            except OSError:
+                continue
+            fm = fm or {}
+            if fm.get("status") in ("done", "rejected"):
+                continue
+            # Dieselbe Bedingung wie in `wartet_auf_mensch`, aus `board` gelesen und nicht
+            # hier formuliert: die Board-Spalte (SWR-119), der Kopfblock (SWR-120) und
+            # dieser Abschnitt stellen **eine** Frage.
+            if not board.wartet_auf_mensch(fm):
+                continue
+            if (fm.get("typ") or "") == "decision-request":
+                continue  # gehört in „Für dich: Entscheidungen" (Inbox, SWR-042)
+            treffer.append({"ref": ref(name, fm.get("id") or datei[:-3]),
+                            "projekt": name,
+                            "id": fm.get("id") or datei[:-3],
+                            "titel": fm.get("titel") or "",
+                            "status": fm.get("status") or "",
+                            "rolle": fm.get("rolle") or "",
+                            # Als **Zahl**, gelesen von `board.parse_sprint_nr`: das Feld
+                            # darf laut SWR-106 „15", „Sprint 15" und „sprint15" heißen,
+                            # und die Ansicht ist der falsche Ort, das zu wissen.
+                            "geplant_sprint":
+                                board.parse_sprint_nr(fm.get("geplant_sprint"))})
+    return treffer
+
+
 def dr_entschieden_nicht_verbucht(root):
     """SWR-131 (platform/T-0014): DRs, deren Entscheidung vorliegt und **nicht verbucht** ist.
 

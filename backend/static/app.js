@@ -809,6 +809,22 @@ function ladeTicket() {  // SWR-040: Detailansicht
   });
 }
 
+// SWR-138 (pm/T-0052): eine Handlung — dieselbe Kartenform wie ein DR, aber **ohne
+// Entscheidungsknoepfe**. ⚠ Genau das ist der Grund fuer den eigenen Abschnitt: hier gibt
+// es keine `optionen`, keine `frist` und keinen `default`, weil hier nichts entschieden
+// wird. Ein Knopf, der nichts tut, waere schlimmer als kein Knopf.
+function handlungsKarte(h) {
+  var kopf = el("div", { "class": "zeile" },
+    el("a", { "class": "tlink", href: "#/ticket/" + h.projekt + "/" + h.id },
+      h.ref || (h.projekt + "/" + h.id)),  // SWR-087: die Kennung kommt vom Server
+    pille(h.status, h.status));
+  // `rolle` und `verantwortlich` bleiben getrennt (der Befund hinter SWR-116): die Rolle
+  // sagt, WER im Team zustaendig waere — dass es beim Menschen liegt, sagt der Abschnitt.
+  if (h.rolle) kopf.appendChild(pille("Rolle " + h.rolle));
+  if (h.geplant_sprint) kopf.appendChild(pille("Sprint " + h.geplant_sprint));
+  return el("div", { "class": "karte" }, el("h3", {}, h.titel || (h.ref || h.id)), kopf);
+}
+
 function drKarte(dr, entscheider) {  // SWR-042: Buttons statt Freitext, wo Optionen definiert sind
   var grund = el("textarea", { rows: "2", placeholder: "Begründung (optional)" });
   var wer = el("select", {});  // SWR-038
@@ -863,13 +879,30 @@ function drKarte(dr, entscheider) {  // SWR-042: Buttons statt Freitext, wo Opti
 }
 
 function ladeInbox() {
-  return Promise.all([api("/api/inbox"), api("/api/nutzer"), api("/api/inbox/historie")])
+  // SWR-138 (pm/T-0052): vier Aufrufe statt drei — der neue Abschnitt "Fuer dich:
+  // Handlungen". ⚠ `/api/fuer-dich` ist keine zweite Erhebung: die Route liefert die
+  // Teilmenge von `wartet_auf_mensch` ohne die DRs, gebildet im Backend an EINER Stelle.
+  return Promise.all([api("/api/inbox"), api("/api/nutzer"), api("/api/inbox/historie"),
+                      api("/api/fuer-dich")])
     .then(function (drei) {
       var offen = drei[0].inbox, historie = drei[2].historie;
+      var handlungen = (drei[3] && drei[3].handlungen) || [];
       var entscheider = drei[1].nutzer.filter(function (n) { return n.rolle === "entscheider"; });
       var teile = [];
-      if (!offen.length) teile.push(el("p", { "class": "leer" }, "Keine offenen Entscheidungen."));
-      offen.forEach(function (dr) { teile.push(drKarte(dr, entscheider)); });
+      Regeln.fuerDichAbschnitte(offen, handlungen).forEach(function (ab) {
+        teile.push(el("h3", { "class": "fuerdich" },
+                      ab.titel + " (" + ab.eintraege.length + ")"));
+        if (!ab.eintraege.length) {
+          teile.push(el("p", { "class": "leer" }, ab.leer));
+          return;
+        }
+        // ⚠ Die Verzweigung liest `ab.knoepfe` und fragt NICHT den Abschnittsnamen ab:
+        // wer die Knopf-Frage an der Beschriftung entscheidet, hat sie zweimal
+        // beantwortet, sobald die Beschriftung sich aendert.
+        ab.eintraege.forEach(function (e) {
+          teile.push(ab.knoepfe ? drKarte(e, entscheider) : handlungsKarte(e));
+        });
+      });
       if (historie.length) {
         var h = el("div", { "class": "karte" }, el("h3", {}, "Historie (" + historie.length + " entschieden)"));
         historie.forEach(function (e) {

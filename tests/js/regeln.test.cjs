@@ -355,3 +355,51 @@ test("jede Kachel erscheint in genau EINER Gruppe", () => {
   assert.strictEqual(flach.length, 3);
   assert.strictEqual(new Set(flach).size, 3);
 });
+
+// --------------------------------------------------------------- SWR-138 (pm/T-0052)
+// „Für dich" hat ZWEI Abschnitte. Der Grund ist B033: an der Entscheidungsliste hängen
+// die Knöpfe (SWR-042), und eine Liste, in der manche Einträge Knöpfe haben und manche
+// nicht, ist eine Fläche mit zwei Bedeutungen.
+
+test("fuerDichAbschnitte gibt genau zwei Abschnitte in fester Reihenfolge (SWR-138)", () => {
+  const a = R.fuerDichAbschnitte([], []);
+  assert.strictEqual(a.length, 2);
+  assert.deepStrictEqual(a.map(x => x.schluessel), ["entscheidungen", "handlungen"]);
+});
+
+test("nur der Entscheidungsabschnitt traegt Knoepfe (SWR-138)", () => {
+  // ⚠ Die Zusicherung, aus der der eigene Abschnitt ueberhaupt folgt. Ein Knopf ohne
+  // Optionen waere entweder wirkungslos oder eine zweite Bedeutung derselben Flaeche.
+  const a = R.fuerDichAbschnitte([{ id: "T-0001" }], [{ id: "T-0002" }]);
+  assert.strictEqual(a[0].knoepfe, true);
+  assert.strictEqual(a[1].knoepfe, false);
+  assert.notStrictEqual(a[0].knoepfe, a[1].knoepfe);
+});
+
+test("⚠ beide Abschnitte erscheinen AUCH LEER, mit eigenem Leertext (SWR-138)", () => {
+  // DoD 4. Ein Abschnitt, der bei 0 verschwindet, ist von einem nicht gebauten nicht zu
+  // unterscheiden — dieselbe Begruendung wie die Nullzeilen des Preflights (SWR-114/122).
+  const a = R.fuerDichAbschnitte([], []);
+  assert.strictEqual(a[0].eintraege.length, 0);
+  assert.strictEqual(a[1].eintraege.length, 0);
+  assert.strictEqual(a[0].leer, R.FUER_DICH_LEER_ENTSCHEIDUNGEN);
+  assert.strictEqual(a[1].leer, R.FUER_DICH_LEER_HANDLUNGEN);
+  assert.notStrictEqual(a[0].leer, a[1].leer);  // zwei Aussagen, zwei Texte
+});
+
+test("⚠ GEGENPROBE: fehlende Listen werden zu leeren, nicht zu undefined (SWR-138)", () => {
+  // Ohne diesen Fall wuerde ein Aussetzer einer der vier API-Aufrufe die ganze Ansicht
+  // mit `undefined.length` abwerfen — und der Auftraggeber saehe eine leere Seite statt
+  // eines leeren Abschnitts.
+  const a = R.fuerDichAbschnitte(undefined, null);
+  assert.deepStrictEqual(a[0].eintraege, []);
+  assert.deepStrictEqual(a[1].eintraege, []);
+});
+
+test("die Eintraege werden unveraendert durchgereicht (SWR-138)", () => {
+  // Die Reihenfolge kommt vom Server; eine stille Sortierung hier waere eine zweite
+  // Priorisierung neben der des Auftraggebers (dieselbe Ueberlegung wie SWR-132).
+  const handlungen = [{ ref: "p0/T-0002" }, { ref: "pm/T-0001" }];
+  const a = R.fuerDichAbschnitte([], handlungen);
+  assert.deepStrictEqual(a[1].eintraege.map(x => x.ref), ["p0/T-0002", "pm/T-0001"]);
+});

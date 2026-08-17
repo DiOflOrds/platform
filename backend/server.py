@@ -212,6 +212,16 @@ class Api(BaseHTTPRequestHandler):
                     return self._json(200, tickets.editor_daten(wurzel, projekt, tid))
                 except tickets.TicketFehler as e:
                     return self._json(e.code, {"fehler": str(e)})
+            # SWR-138 (pm/T-0052, Teil e aus pm/T-0038 / Brief pm/N-0031): der zweite
+            # Abschnitt neben der Inbox — Tickets, bei denen der Mensch **handeln** statt
+            # entscheiden soll. ⚠ Eigene Route und **keine** Erweiterung von `/api/inbox`:
+            # an der Inbox-Liste hängen die Entscheidungsknöpfe (SWR-042), und eine Liste,
+            # in der manche Einträge Knöpfe haben und manche nicht, wäre eine Fläche mit
+            # zwei Bedeutungen (B033). Die Daten sind trotzdem **eine** Quelle: die Route
+            # liefert die Teilmenge von `wartet_auf_mensch` ohne die DRs.
+            if pfad == "/api/fuer-dich":
+                return self._json(200, {"handlungen":
+                                        aggregation.fuer_dich_handlungen(wurzel)})
             if pfad == "/api/inbox/historie":  # SWR-042 (P3): entschiedene DRs
                 return self._json(200, inbox.historie(wurzel))
             if pfad == "/api/version":  # SWR-047 (P3): Prozess- vs. Code-Stand

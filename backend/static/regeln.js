@@ -340,7 +340,41 @@ var Regeln = (function () {
     return raus;
   }
 
+  // SWR-138 (pm/T-0052): die zwei Abschnitte von "Fuer dich". Die Titel und die
+  // Leertexte stehen HIER und nicht in `app.js`, weil ADR-008 genau diese Sorte
+  // Entscheidung pruefbar machen soll — und weil die Leertexte der DoD-Punkt 4 sind.
+  var FUER_DICH_LEER_ENTSCHEIDUNGEN = "Keine offenen Entscheidungen.";
+  var FUER_DICH_LEER_HANDLUNGEN = "Keine offenen Handlungen.";
+
+  /** Die beiden Abschnitte "Fuer dich", in fester Reihenfolge.
+   *
+   * ⚠ **Zwei Abschnitte und nicht eine Liste.** An der Entscheidungsliste haengen die
+   * Knoepfe (`optionen`/`default`/`frist`, SWR-042). Ein Eintrag ohne Optionen dort
+   * hiesse entweder Knoepfe, die nichts tun, oder eine Liste, in der manche Eintraege
+   * Knoepfe haben und manche nicht — eine Flaeche mit zwei Bedeutungen, also B033.
+   * `knoepfe` sagt es deshalb je Abschnitt ausdruecklich, statt es der Ansicht zu
+   * ueberlassen.
+   *
+   * ⚠ **Beide Abschnitte erscheinen immer**, auch leer. Ein Abschnitt, der bei 0
+   * verschwindet, ist von einem nicht gebauten nicht zu unterscheiden — dieselbe
+   * Begruendung, aus der der Preflight seine Nullzeilen druckt (SWR-114/SWR-122). Der
+   * Auftraggeber soll sehen, dass wir nachgesehen haben.
+   */
+  function fuerDichAbschnitte(entscheidungen, handlungen) {
+    return [
+      { schluessel: "entscheidungen", titel: "Für dich: Entscheidungen",
+        eintraege: entscheidungen || [], knoepfe: true,
+        leer: FUER_DICH_LEER_ENTSCHEIDUNGEN },
+      { schluessel: "handlungen", titel: "Für dich: Handlungen",
+        eintraege: handlungen || [], knoepfe: false,
+        leer: FUER_DICH_LEER_HANDLUNGEN }
+    ];
+  }
+
   return { feldText: feldText, kachelFelder: kachelFelder,
+           fuerDichAbschnitte: fuerDichAbschnitte,
+           FUER_DICH_LEER_ENTSCHEIDUNGEN: FUER_DICH_LEER_ENTSCHEIDUNGEN,
+           FUER_DICH_LEER_HANDLUNGEN: FUER_DICH_LEER_HANDLUNGEN,
            dashboardGruppen: dashboardGruppen, KEINE_DATEN: KEINE_DATEN,
            istGruppeOffen: istGruppeOffen,
            urheber: urheber, beitragKopf: beitragKopf, istWiederOffen: istWiederOffen,
