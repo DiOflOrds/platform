@@ -617,5 +617,171 @@ class TaktUhrzeitTest(unittest.TestCase):
         self.assertEqual(ohne.count("|"), mit.count("|"))  # gleiche Spaltenzahl
 
 
+class GitAusgabeKodierungTest(unittest.TestCase):
+    """platform/T-0007 — `status_in_head` liest die Git-Ausgabe fest als UTF-8, und ein
+    Lesefehler wird ein BEFUND statt eines Absturzes.
+
+    Anlass ist kein Testfall, sondern der Host: `pm/tickets/T-0042.md` trägt seit
+    Sprint 3 ein „⏳" (UTF-8 `e2 8f b3`) an Byte 10338. `text=True` ohne `encoding`
+    nimmt die Locale-Kodierung — auf dem Windows-Host cp1252, in der `8f` unbelegt
+    ist. Der Lese-Thread von `subprocess` starb, `out.stdout` wurde `None` bei
+    `returncode == 0`, und `parse_frontmatter(None)` warf einen `AttributeError`.
+    Folge: `board.py` brach ab, `preflight` meldete einen Befund, `abschluss.cmd`
+    brach ab — alle 15 Minuten, drei Sprints lang, ohne dass die Meldung die Datei
+    oder die Ursache nannte.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = self.tmp.name
+        os.makedirs(os.path.join(self.repo, "tickets"))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_cp1252_stellt_den_hostfehler_nach(self):
+        """Die nachgestellte FALSCHE Umsetzung: dieselbe Datei über cp1252 gelesen,
+        wie `text=True` es ohne `encoding` auf dem Host tut. `stdout` ist dann `None`
+        bei `returncode == 0` — genau der Zustand, an dem der Wächter starb.
+
+        Der Test belegt die URSACHE. Ohne ihn steht die Erklärung des Tickets nur da
+        (L-2026-08-17h: zu jedem verworfenen Weg gehört ein Test, der ihn nachstellt).
+        """
+        roh = "---\nstatus: open\n---\nStand: ⏳ warten\n".encode("utf-8")
+        self.assertIn(b"\x8f", roh)  # das Byte, das cp1252 nicht kennt
+        with self.assertRaises(UnicodeDecodeError):
+            roh.decode("cp1252")
+        # ... und als UTF-8 gelesen ist derselbe Inhalt unauffällig:
+        self.assertEqual(board.parse_frontmatter(roh.decode("utf-8"))[0]["status"], "open")
+
+    def test_stdout_none_ist_befund_und_kein_absturz(self):
+        """`stdout is None` bei `returncode == 0` liefert UNLESBAR — nicht `None`.
+
+        Der Unterschied ist der Kern der Korrektur: `None` heißt „Ticket ist neu" und
+        lässt die Übergangsprüfung ZU RECHT aus. Ein Lesefehler, der ebenfalls `None`
+        zurückgäbe, hätte den Absturz gegen eine still übersprungene Prüfung getauscht
+        — und das wäre die schlechtere Hälfte des Tauschs (B038).
+        """
+        class FakeErgebnis:
+            returncode = 0
+            stdout = None
+            stderr = ""
+
+        echt = board.subprocess.run
+        board.subprocess.run = lambda *a, **k: FakeErgebnis()
+        try:
+            self.assertIs(board.status_in_head(self.repo, "T-0001.md"), board.UNLESBAR)
+        finally:
+            board.subprocess.run = echt
+
+    def test_unlesbarer_vorgaenger_erscheint_als_befund_mit_datei(self):
+        """Der Befund läuft durch den normalen Meldeweg und nennt die Datei.
+
+        Gegen den Altstand steht hier ein `AttributeError: 'NoneType' object has no
+        attribute 'replace'` — eine Meldung, die weder das Repo noch das Ticket noch
+        die Kodierung nennt. Dieser Test hält fest, dass board.py stattdessen einen
+        lesbaren Befund liefert und weiterläuft.
+        """
+        schreibe(self.repo, "T-0001", status="in_progress")
+        tickets, _ = board.lade_tickets(self.repo)
+
+        class FakeErgebnis:
+            returncode = 0
+            stdout = None
+            stderr = ""
+
+        echt = board.subprocess.run
+        board.subprocess.run = lambda *a, **k: FakeErgebnis()
+        try:
+            probleme = board.validiere_alle(tickets, self.repo, git_pruefen=True)
+        finally:
+            board.subprocess.run = echt
+        self.assertEqual(len(probleme), 1, probleme)
+        self.assertIn("T-0001.md", probleme[0])
+        self.assertIn("nicht lesbar", probleme[0])
+
+    def test_fehlendes_git_bleibt_kein_befund(self):
+        """Gegenprobe: `OSError` (git gar nicht installiert) heißt weiter „kein Git"
+        und liefert `None`. Ohne diese Trennung würde die Korrektur auf einer Maschine
+        ohne git jedes Ticket als Befund melden — eine Reparatur, die lauter ist als
+        der Fehler, den sie behebt."""
+        echt = board.subprocess.run
+
+        def wirft(*a, **k):
+            raise OSError("git nicht gefunden")
+
+        board.subprocess.run = wirft
+        try:
+            self.assertIsNone(board.status_in_head(self.repo, "T-0001.md"))
+        finally:
+            board.subprocess.run = echt
+
+    def test_echter_umlaut_ueber_git_wird_korrekt_gelesen(self):
+        """Der Normalfall über den ECHTEN Git-Weg: ein Ticket mit „⏳" im Text wird
+        gelesen und sein Status korrekt zurückgegeben. Verifiziert: SWR-002."""
+        import subprocess as sp
+
+        def git(*args):
+            sp.run(["git", "-C", self.repo, "-c", "user.name=t", "-c", "user.email=t@t",
+                    *args], capture_output=True, text=True, encoding="utf-8",
+                   errors="replace", check=True)
+
+        git("init", "-q")
+        schreibe(self.repo, "T-0001", status="open", extra="")
+        pfad = os.path.join(self.repo, "tickets", "T-0001.md")
+        with open(pfad, "a", encoding="utf-8") as f:
+            f.write("\nStand: ⏳ warten auf den Hostlauf\n")
+        git("add", "-A")
+        git("commit", "-qm", "T-0001 angelegt")
+        self.assertEqual(board.status_in_head(self.repo, "T-0001.md"), "open")
+
+
+class SubprocessKodierungRegelTest(unittest.TestCase):
+    """platform/T-0007 — die Regel gilt für den GANZEN Produktionscode, nicht nur für
+    die eine Stelle, an der sie aufgefallen ist.
+
+    Der Anlass für diesen Test steht in `preflight.py`: dort trägt `git_laeuft()` seit
+    `pm/T-0024` ein `errors="replace"` samt Begründung — und die drei Nachbaraufrufe
+    derselben Datei haben es nie bekommen. Eine Lehre, die nur an ihrem Fundort steht,
+    schützt genau eine Zeile. Dieser Test macht aus ihr eine Regel, die von selbst
+    wieder auffällt (B049: eine Kachel gelesen ist keine Abschlussmeldung).
+
+    Testdateien sind bewusst ausgenommen: sie bauen ihre Eingaben selbst und scheitern
+    laut, wenn etwas nicht dekodiert — der stille Ausfall, gegen den die Regel steht,
+    kann dort nicht entstehen.
+    """
+
+    def test_kein_produktionsaufruf_liest_ohne_feste_kodierung(self):
+        import re
+        wurzel = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        funde = []
+        for ordner, unter, dateien in os.walk(wurzel):
+            unter[:] = [d for d in unter
+                        if d not in (".git", "__pycache__", "node_modules", "tests")]
+            for name in dateien:
+                if not name.endswith(".py"):
+                    continue
+                pfad = os.path.join(ordner, name)
+                quelle = open(pfad, encoding="utf-8").read()
+                for treffer in re.finditer(
+                        r"subprocess\.(run|Popen|check_output)\s*\(", quelle):
+                    i = quelle.index("(", treffer.start())
+                    tiefe = 0
+                    for j in range(i, len(quelle)):
+                        if quelle[j] == "(":
+                            tiefe += 1
+                        elif quelle[j] == ")":
+                            tiefe -= 1
+                            if tiefe == 0:
+                                break
+                    aufruf = quelle[treffer.start():j + 1]
+                    textmodus = "text=True" in aufruf or "universal_newlines=True" in aufruf
+                    if textmodus and "encoding=" not in aufruf:
+                        zeile = quelle[:treffer.start()].count("\n") + 1
+                        funde.append(f"{os.path.relpath(pfad, wurzel)}:{zeile}")
+        self.assertEqual(funde, [], "subprocess im Textmodus ohne encoding= "
+                                    "(platform/T-0007): " + ", ".join(funde))
+
+
 if __name__ == "__main__":
     unittest.main()

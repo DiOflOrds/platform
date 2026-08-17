@@ -202,11 +202,12 @@ def kandidat_anlegen(root, kategorie, kandidat, kurzbeschreibung, werte):
     open(pfad, "w", encoding="utf-8", newline="\n").write(neuer_text)
     repo = os.path.join(root, aggregation.POOL_DATEI[0])
     rel = os.path.join(*aggregation.POOL_DATEI[1:])
-    add = subprocess.run(["git", "-C", repo, "add", "--", rel], capture_output=True, text=True)
+    add = subprocess.run(["git", "-C", repo, "add", "--", rel], capture_output=True,
+        text=True, encoding="utf-8", errors="replace")
     commit = subprocess.run(
         ["git", "-C", repo] + COMMIT_IDENTITAET +
         ["commit", "-m", f"Projekt-Pool: Kandidat '{name}' angelegt (#{nummer}, {kategorie}) — {HERKUNFT}"],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if add.returncode or commit.returncode:
         open(pfad, "w", encoding="utf-8", newline="\n").write(text)  # Rücknahme (Muster tickets.py)
         raise PoolFehler(503, "Git-Commit fehlgeschlagen — die Änderung wurde zurückgenommen: "
@@ -526,11 +527,12 @@ def kandidat_starten(root, kandidat):
         raise
 
     add = subprocess.run(["git", "-C", projects_repo, "add", "--", neuer_name],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
     commit_msg = (f"{neuer_name}: aus dem Projekt-Pool gestartet („{name}“, "
                  f"Technik-Kandidat) — Ordner + G0-Antrag T-0001, {HERKUNFT}")
     commit = subprocess.run(["git", "-C", projects_repo] + COMMIT_IDENTITAET +
-                            ["commit", "-m", commit_msg], capture_output=True, text=True)
+                            ["commit", "-m", commit_msg], capture_output=True,
+                                text=True, encoding="utf-8", errors="replace")
     if add.returncode or commit.returncode:
         shutil.rmtree(projekt_pfad, ignore_errors=True)
         raise PoolFehler(503, "Git-Commit fehlgeschlagen — der Projektordner wurde nicht "
@@ -563,12 +565,13 @@ def kandidat_starten(root, kandidat):
     pm_repo = os.path.join(root, aggregation.POOL_DATEI[0])
     rel = os.path.join(*aggregation.POOL_DATEI[1:])
     open(pool_pfad, "w", encoding="utf-8", newline="\n").write(neuer_pool_text)
-    add2 = subprocess.run(["git", "-C", pm_repo, "add", "--", rel], capture_output=True, text=True)
+    add2 = subprocess.run(["git", "-C", pm_repo, "add", "--", rel], capture_output=True,
+        text=True, encoding="utf-8", errors="replace")
     commit2 = subprocess.run(
         ["git", "-C", pm_repo] + COMMIT_IDENTITAET +
         ["commit", "-m", f"Projekt-Pool: '{name}' gestartet als {neuer_name} (pm/T-0022 Teil 2) "
                          f"— nach 'Realisiert' verschoben (pm/T-0037) — {HERKUNFT}"],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if add2.returncode or commit2.returncode:
         open(pool_pfad, "w", encoding="utf-8", newline="\n").write(pool_text)  # Rücknahme nur hier
         return {"ok": True, "kandidat": name, "projekt": neuer_name, "ticket": "T-0001", "ref": ref,

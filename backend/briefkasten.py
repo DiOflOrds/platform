@@ -110,10 +110,11 @@ def sende(root, projekt, text, von="E. John"):
     with open(pfad, "w", encoding="utf-8", newline="\n") as f:
         f.write(f"---\nvon: {von}\nzeit: {zeit}\nstatus: offen\n---\n\n{text}\n")
     rel = os.path.relpath(pfad, repo)
-    add = subprocess.run(["git", "-C", repo, "add", "--", rel], capture_output=True, text=True)
+    add = subprocess.run(["git", "-C", repo, "add", "--", rel], capture_output=True,
+        text=True, encoding="utf-8", errors="replace")
     commit = subprocess.run(["git", "-C", repo] + COMMIT_IDENTITAET +
                             ["commit", "-m", f"Briefkasten {brief_id}: Nachricht vom Menschen"],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace")
     if add.returncode or commit.returncode:
         raise BriefkastenFehler(503, "Git-Commit fehlgeschlagen: " +
                                 (add.stderr + commit.stderr).strip()[:400])

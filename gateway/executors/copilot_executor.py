@@ -42,7 +42,8 @@ def fuehre_aus(rolle, aufgabe, kontext, cfg):
               f"## Auftrag\n\n{aufgabe}")
     kommando = [prompt if a == "{prompt}" else a for a in befehl]
     try:
-        lauf = subprocess.run(kommando, capture_output=True, text=True,
+        lauf = subprocess.run(kommando, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
                               timeout=int(p_cfg.get("timeout_s", 300)),
                               cwd=kontext.get("arbeitsverzeichnis"))
     except (OSError, subprocess.TimeoutExpired) as e:

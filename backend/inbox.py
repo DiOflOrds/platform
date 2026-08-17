@@ -181,10 +181,11 @@ def entscheide(root, ticket_id, option, begruendung="", projekt="p0", entscheide
         board.generiere_board(tickets))
     rel = [os.path.join("management", "decisions", "decision-log.md"),
            os.path.join("tickets", f"{ticket_id}.md"), "BOARD.md"]
-    add = subprocess.run(["git", "-C", p0, "add", "--"] + rel, capture_output=True, text=True)
+    add = subprocess.run(["git", "-C", p0, "add", "--"] + rel, capture_output=True,
+        text=True, encoding="utf-8", errors="replace")
     commit = subprocess.run(["git", "-C", p0] + COMMIT_IDENTITAET +
                             ["commit", "-m", f"{ticket_id}: Entscheidung via Inbox ({d_id})"],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace")
     if add.returncode or commit.returncode:
         raise InboxFehler(503, "Git-Commit fehlgeschlagen: " +
                           (add.stderr + commit.stderr + commit.stdout).strip()[:400])

@@ -49,7 +49,8 @@ def _geaenderte_dateien(verzeichnis):
     """git status --porcelain im Arbeitsverzeichnis (leer, wenn kein Git)."""
     try:
         out = subprocess.run(["git", "-C", verzeichnis, "status", "--porcelain"],
-                             capture_output=True, text=True, timeout=15)
+                             capture_output=True,
+                                 text=True, encoding="utf-8", errors="replace", timeout=15)
         if out.returncode != 0:
             return None
         return {z[3:].strip() for z in out.stdout.splitlines() if z.strip()}

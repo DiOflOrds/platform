@@ -249,12 +249,12 @@ def konfiguration_schreiben(root, projekt, werte):
         f.write("\n".join(zeilen))
     repo = os.path.join(root, projekt)
     subprocess.run(["git", "-C", repo, "add", "konfiguration.yaml"],
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
     lauf = subprocess.run(["git", "-C", repo] + _COMMIT_IDENT +
                           ["commit", "-m", f"Konfiguration via HMI: takte={takte}, "
                            f"rechnungen={_bool_text(rechnungen)}, mail={_bool_text(zustellung)}, "
                            f"modell={modell or 'automatisch'}, hinweis={'ja' if hinweis else 'nein'}"],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     if lauf.returncode != 0 and "nothing to commit" not in (lauf.stdout + lauf.stderr):
         raise TeamFehler(500, "Konfiguration geschrieben, aber Commit fehlgeschlagen: "
                               + (lauf.stderr or lauf.stdout)[:200])
@@ -273,7 +273,8 @@ def _standard_runner(root, projekt, *argumente):
 
     def runner(pfad):  # noqa: ANN001
         lauf = subprocess.run([_sys.executable, pfad, *argumente],
-                              capture_output=True, text=True, timeout=600,
+                              capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", timeout=600,
                               cwd=os.path.join(root, projekt))
         return lauf.returncode, (lauf.stdout + lauf.stderr).strip()
     return runner

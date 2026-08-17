@@ -90,7 +90,8 @@ def remote_slug(url):
 def _git(repo, *args):
     try:
         out = subprocess.run(["git", "-C", repo, *args],
-                             capture_output=True, text=True, timeout=15)
+                             capture_output=True,
+                                 text=True, encoding="utf-8", errors="replace", timeout=15)
         return out.stdout.strip() if out.returncode == 0 else ""
     except (OSError, subprocess.SubprocessError):
         return ""

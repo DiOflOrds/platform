@@ -60,7 +60,8 @@ def registriere(katalog_dir, eintrag):
 
 
 def _repo_tags(repo):
-    r = subprocess.run(["git", "-C", repo, "tag", "-l"], capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", repo, "tag", "-l"], capture_output=True,
+        text=True, encoding="utf-8", errors="replace")
     return set(r.stdout.split()) if r.returncode == 0 else set()
 
 

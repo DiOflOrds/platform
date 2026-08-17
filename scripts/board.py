@@ -457,18 +457,50 @@ def takt_ampel(t, jetzt=None):
     return frist_ampel(tm[0], jetzt) if tm else "grau"
 
 
+#: Rückgabe von `status_in_head`, wenn die Git-Ausgabe zwar da, aber nicht lesbar
+#: war. Ausdrücklich NICHT `None`: `None` heißt „das Ticket ist neu" und lässt die
+#: Übergangsprüfung zu Recht aus. Ein Lesefehler darf sie nicht stillschweigend
+#: auslassen — sonst schluckt die Reparatur einen Befund (B038).
+UNLESBAR = "\x00unlesbar"
+
+
 def status_in_head(repo, datei):
-    """Status des Tickets in Git HEAD (None wenn neu/kein Git)."""
+    """Status des Tickets in Git HEAD (None wenn neu/kein Git, UNLESBAR bei Lesefehler).
+
+    Die Git-Ausgabe wird AUSDRÜCKLICH als UTF-8 gelesen. Ohne `encoding` nimmt
+    `text=True` die Locale-Kodierung des Systems — auf dem Windows-Host cp1252.
+    Ein Zeichen wie „⏳" im Ticket (UTF-8 `e2 8f b3`) enthält dann das in cp1252
+    unbelegte Byte `8f`, der Lese-Thread von `subprocess` stirbt mit
+    `UnicodeDecodeError`, und `out.stdout` ist `None` — bei `returncode == 0`.
+
+    Befund 2026-08-17 (platform/T-0007): genau das ist passiert. `pm/T-0042.md`
+    trägt seit Sprint 3 ein „⏳" an Byte 10338; seither brach der Auto-Wächter am
+    Host alle 15 Minuten ab — `parse_frontmatter(None)` warf einen
+    `AttributeError`, der weder in der `except`-Liste stand noch die Datei nannte.
+    Jede DATEI-Lesung in diesem Modul war schon utf-8-fest, nur diese
+    GIT-Lesung nicht.
+    """
     try:
         out = subprocess.run(
             ["git", "-C", repo, "show", f"HEAD:tickets/{datei}"],
-            capture_output=True, text=True, timeout=10)
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=10)
         if out.returncode != 0:
             return None
+        if out.stdout is None:
+            # Kann mit `encoding`/`errors` oben nicht mehr aus der Kodierung kommen.
+            # Die Prüfung bleibt trotzdem stehen: sie trennt „kein Vorgänger" von
+            # „nicht gelesen", und das ist der Unterschied, an dem dieser Fehler
+            # drei Sprints lang unentdeckt blieb.
+            return UNLESBAR
         alt, err = parse_frontmatter(out.stdout)
         return None if err else alt.get("status")
-    except (OSError, subprocess.SubprocessError):
+    except OSError:
+        # Git gar nicht vorhanden — das ist „kein Git" und bleibt `None`, wie bisher.
         return None
+    except (subprocess.SubprocessError, UnicodeDecodeError, ValueError):
+        # Timeout oder unlesbare Ausgabe — ein Lesefehler, kein fehlender Vorgänger.
+        return UNLESBAR
 
 
 def validiere(t, alle_ids, repo=None, git_pruefen=True):
@@ -552,7 +584,13 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
     if git_pruefen and repo and t.get("_datei") and t.get("status") in STATUS \
             and t.get("rolle") != "mensch":
         alt = status_in_head(repo, t["_datei"])
-        if alt and alt in STATUS and alt != t["status"]:
+        if alt is UNLESBAR:
+            # Als Befund, nicht als übersprungene Prüfung: board.py meldet die DATEI
+            # und den Grund, statt mit einem `AttributeError` zu sterben, der beides
+            # verschweigt (platform/T-0007).
+            fehler.append("Vorgängerstand in Git nicht lesbar — "
+                          "Status-Übergang ungeprüft")
+        elif alt and alt in STATUS and alt != t["status"]:
             if t["status"] not in UEBERGAENGE.get(alt, []):
                 fehler.append(f"unzulässiger Status-Übergang: {alt} -> {t['status']}")
     return fehler

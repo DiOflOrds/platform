@@ -91,7 +91,8 @@ def _commit_zeiten(root, projekt=QUELLE_PROJEKT, datei=QUELLE_DATEI):
     repo = os.path.join(root, projekt)
     try:
         lauf = subprocess.run(["git", "-C", repo, "log", "--format=%cI", "--", datei],
-                              capture_output=True, text=True, timeout=10)
+                              capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", timeout=10)
     except (OSError, subprocess.SubprocessError):
         return []
     if lauf.returncode:

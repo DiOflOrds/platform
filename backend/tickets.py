@@ -106,7 +106,7 @@ def editor_daten(root, projekt, ticket_id):
 
 def _kurz_hash(repo):
     lauf = subprocess.run(["git", "-C", repo, "rev-parse", "--short", "HEAD"],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     return lauf.stdout.strip()
 
 
@@ -149,11 +149,12 @@ def speichere(root, projekt, ticket_id, werte):
 
     ziele = [os.path.join("tickets", f"{ticket_id}.md"), BOARD_DATEI]
     add = subprocess.run(["git", "-C", repo, "add", "--"] + ziele,
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
     nachricht = (f"{ticket_id}: Änderung via HMI ({', '.join(ergebnis['geaendert'])}) "
                  f"— {HERKUNFT}")
     commit = subprocess.run(["git", "-C", repo] + COMMIT_IDENTITAET +
-                            ["commit", "-m", nachricht], capture_output=True, text=True)
+                            ["commit", "-m", nachricht], capture_output=True,
+                                text=True, encoding="utf-8", errors="replace")
     if add.returncode or commit.returncode:
         zuruecknehmen()
         raise TicketFehler(503, "Git-Commit fehlgeschlagen — die Änderung wurde "

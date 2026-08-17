@@ -36,7 +36,8 @@ PRIO_RANG = board.PRIO_RANG
 # ---------- Git-Helfer ----------
 
 def git(repo, *args, fehler_ok=False):
-    out = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    out = subprocess.run(["git", "-C", repo, *args], capture_output=True,
+        text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0 and not fehler_ok:
         raise RuntimeError(f"git {' '.join(args)} in {repo}: {out.stderr.strip()}")
     return out.stdout.strip()

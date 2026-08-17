@@ -134,7 +134,8 @@ def _tags(pfad):
     """
     import subprocess
     return subprocess.run(["git", "-C", pfad, "tag", "-n1", "--sort=creatordate"],
-                          capture_output=True, text=True).stdout
+                          capture_output=True,
+                              text=True, encoding="utf-8", errors="replace").stdout
 
 
 def _tagnamen(tag_text):
@@ -565,7 +566,7 @@ def lade_baselines(root):
         if not os.path.isdir(os.path.join(root, d, ".git")):
             continue
         out = subprocess.run(["git", "-C", os.path.join(root, d), "tag", "-n1"],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
         tags = [z.strip() for z in out.stdout.splitlines() if z.strip()]
         ergebnis.append({"repo": d, "tags": tags})
     return {"repos": ergebnis}

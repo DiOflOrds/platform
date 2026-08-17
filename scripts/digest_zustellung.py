@@ -47,10 +47,10 @@ def _vermerken(root, projekt, name, heute):
         f.write(f"\n{VERMERK} {heute} per E-Mail (SWR-058).\n")
     repo = os.path.join(root, projekt)
     subprocess.run(["git", "-C", repo, "add", os.path.join("digest", name)],
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
     subprocess.run(["git", "-C", repo] + _COMMIT_IDENT +
                    ["commit", "-m", f"Digest {name}: Zustellvermerk (SWR-058)"],
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def lauf(root, sende, dry_run=False, heute=None):

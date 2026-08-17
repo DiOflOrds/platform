@@ -42,7 +42,8 @@ def _code_stand():
     """SWR-047 (P3): aktueller Code-Stand des platform-Repos (git, frisch je Aufruf)."""
     try:
         lauf = subprocess.run(["git", "-C", _PLATFORM_DIR, "rev-parse", "--short", "HEAD"],
-                              capture_output=True, text=True, timeout=5)
+                              capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", timeout=5)
         return lauf.stdout.strip() or "unbekannt"
     except OSError:
         return "unbekannt"

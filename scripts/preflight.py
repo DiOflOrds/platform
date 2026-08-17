@@ -58,11 +58,11 @@ def git_prozess_aktiv():
     try:
         if _platform.system() == "Windows":
             out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq git.exe"],
-                                 capture_output=True, text=True, timeout=10,
+                                 capture_output=True, text=True, encoding="utf-8", timeout=10,
                                  errors="replace")
             return "git.exe" in out.stdout
         out = subprocess.run(["pgrep", "-x", "git"], capture_output=True, text=True,
-                             timeout=10, errors="replace")
+                             encoding="utf-8", timeout=10, errors="replace")
         return out.returncode == 0
     except Exception as fehler:
         # Im Zweifel nichts löschen — aber nicht schweigend. Ein stiller Fallback auf
@@ -140,7 +140,7 @@ def entferne_artefakte(pfade):
 def repo_status(repo):
     """(dirty_zeilen, tracking_zeile) aus `git status --porcelain -b`."""
     out = subprocess.run(["git", "-C", repo, "status", "--porcelain", "-b"],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
     zeilen = out.stdout.splitlines()
     tracking = zeilen[0] if zeilen else ""
     return [z for z in zeilen[1:] if z.strip()], tracking
@@ -152,14 +152,16 @@ def board_check(projekt_repo):
         return False, f"Projekt-Repo fehlt: {projekt_repo}"
     skript = os.path.join(os.path.dirname(os.path.abspath(__file__)), "board.py")
     out = subprocess.run([sys.executable, skript, "--check"],
-                         capture_output=True, text=True, cwd=projekt_repo)
+                         capture_output=True,
+                             text=True, encoding="utf-8", errors="replace", cwd=projekt_repo)
     return out.returncode == 0, (out.stdout + out.stderr).strip()
 
 
 def unit_tests(platform_repo):
     """Unit-Tests wie in CI (python -m unittest discover tests). (ok, letzte Zeilen)."""
     out = subprocess.run([sys.executable, "-m", "unittest", "discover", "tests"],
-                         capture_output=True, text=True, cwd=platform_repo)
+                         capture_output=True,
+                             text=True, encoding="utf-8", errors="replace", cwd=platform_repo)
     tail = "\n".join((out.stdout + out.stderr).strip().splitlines()[-3:])
     return out.returncode == 0, tail
 
