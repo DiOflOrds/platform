@@ -11,7 +11,7 @@ Stand: 2026-08-17 · Tickets: 20 · davon wiederkehrend: 1
 | [T-0016](tickets/T-0016.md) | Die Drei-Zustände-Regel des Widget-Vertrags steht in der Cockpit-Ansicht dreimal inline | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0020](tickets/T-0020.md) | Die Matrix schrumpft still: kein Vergleich mit dem Bestand beim Schreiben | problem | einmalig | cm | Team | mittel | 0 | T-0019 |
 
-## in_progress (1)
+## in_review (1)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
