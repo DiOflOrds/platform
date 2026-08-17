@@ -290,15 +290,33 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
           el("a", { "class": "tlink", href: "#/chat/" + p.projekt }, "zum Team-Chat")));
       }
       if (p.team) {  // SWR-055 (P7): Team-Kachel mit letztem Digest
+        // SWR-108: `null` heisst "fuehrt keine Digests" und wird als "keine Daten"
+        // beschriftet; "" heisst "fuehrt Digests, hatte noch keinen" — eine echte Null,
+        // die weiterhin "noch kein Digest" sagt. Vorher waren beide Faelle derselbe Satz.
         karte.appendChild(el("div", { "class": "zeile" },
-          pille(p.team.letzter_digest ? "Digest " + p.team.letzter_digest : "noch kein Digest", "in_review"),
+          pille(p.team.letzter_digest === null ? "Digest: keine Daten"
+                : p.team.letzter_digest ? "Digest " + p.team.letzter_digest
+                : "noch kein Digest", "in_review"),
           el("a", { "class": "tlink", href: "#/team/" + p.projekt }, "zum Team")));
       }
-      if (p.letzte_baseline) {
-        karte.appendChild(el("div", { "class": "zeile" }, "Letzte Baseline: " + p.letzte_baseline));
+      // SWR-108: `null` = fuer diesen Eintrag ist keine Baseline vorgesehen (Profil ohne
+      // G4) -> "keine Daten". "" = vorgesehen, aber noch keine -> "noch keine Baseline".
+      // Ein leerer Wert wurde vorher stillschweigend weggelassen; genau das verbietet
+      // SWR-096, weil ein fehlender Beitrag als fehlend sichtbar sein muss.
+      karte.appendChild(el("div", { "class": "zeile" }, "Letzte Baseline: " + (
+        p.letzte_baseline === null ? "keine Daten"
+          : p.letzte_baseline || "noch keine")));
+      // SWR-108: ohne Run-Registry gibt es keine Messung — die 0 zu zeigen hiesse, eine
+      // Messung zu behaupten (B038). `p.kpi` ist dann `null`, und `.toFixed` darauf waere
+      // ein Absturz der ganzen Kachel: der Leser wird mitgezogen, nicht nur die Quelle.
+      var kpiZeile = el("div", { "class": "zeile" });
+      if (p.kpi === null) {
+        kpiZeile.appendChild(pille("KPI: keine Daten"));
+      } else {
+        kpiZeile.appendChild(pille(p.kpi.laeufe + " Läufe"));
+        kpiZeile.appendChild(pille(p.kpi.kosten_eur.toFixed(2) + " € API"));
       }
-      karte.appendChild(el("div", { "class": "zeile" },
-        pille(p.kpi.laeufe + " Läufe"), pille(p.kpi.kosten_eur.toFixed(2) + " € API")));
+      karte.appendChild(kpiZeile);
       karte.appendChild(el("button", { "class": "knopf", onclick: function () {
         gehe("board", p.projekt);
       } }, "Zum Board"));

@@ -3,11 +3,16 @@
 Stand: 2026-08-17 · Tickets: 6 · davon wiederkehrend: 1
 
 
-## open (2)
+## open (1)
 
 | ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | hoch | 0 | — |
+
+## in_progress (1)
+
+| ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|
 | [T-0006](tickets/T-0006.md) | CR: Der Cockpit-Payload unterscheidet „echte Null\" nicht von „nicht geliefert\" — Eingangsbedingung für SWR-096 | change-request | einmalig | cm | hoch | 0 | — |
 
 ## in_review (1)

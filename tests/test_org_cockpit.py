@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """P9-Tests SWR-066/068/070: Steckbrief, Status-Fallback, Gruppen, projects-Discovery.
 Hermetisch (gb-02): Temp-Root, eigene Git-Repos, kein Netz."""
+import json
 import os
 import shutil
 import subprocess
@@ -28,7 +29,8 @@ class RepoWelt(unittest.TestCase):
         self.root = tempfile.mkdtemp(prefix="orgcockpit-")
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
 
-    def _repo(self, name, steckbrief=None, team_typ=None, tag=None, nested=False):
+    def _repo(self, name, steckbrief=None, team_typ=None, tag=None, nested=False,
+              profil=None, sla=None, digests=None, registry=None):
         basis = os.path.join(self.root, "projects", name) if nested else os.path.join(self.root, name)
         os.makedirs(os.path.join(basis, "tickets"))
         with open(os.path.join(basis, "tickets", "T-0001.md"), "w", encoding="utf-8") as f:
@@ -37,8 +39,26 @@ class RepoWelt(unittest.TestCase):
             with open(os.path.join(basis, "steckbrief.yaml"), "w", encoding="utf-8") as f:
                 f.write(steckbrief)
         if team_typ:
+            # SWR-108: `profil` und `sla` sind optional — ohne sie bleibt team.yaml
+            # exakt wie bisher, damit die Bestandstests unverändert dasselbe prüfen.
+            text = f"typ: {team_typ}\n"
+            if profil:
+                text += f'profil: "{profil}"   # Kommentar hinter dem Wert\n'
+            if sla is not None:
+                text += "sla:\n" + "".join(f'  - "{s}"\n' for s in sla)
+                text += 'gegruendet: "2026-08-17"\n'  # beendet den sla-Block
             with open(os.path.join(basis, "team.yaml"), "w", encoding="utf-8") as f:
-                f.write(f"typ: {team_typ}\n")
+                f.write(text)
+        if digests is not None:  # SWR-108: leere Liste = Verzeichnis da, aber leer
+            os.makedirs(os.path.join(basis, "digest"))
+            for d in digests:
+                with open(os.path.join(basis, "digest", d), "w", encoding="utf-8") as f:
+                    f.write("x\n")
+        if registry is not None:  # SWR-108: leere Liste = Registry da, aber ohne Läufe
+            os.makedirs(os.path.join(basis, "management", "runs"))
+            with open(os.path.join(basis, "management", "runs", "run-registry.jsonl"),
+                      "w", encoding="utf-8") as f:
+                f.write("".join(json.dumps(z) + "\n" for z in registry))
         wurzel = os.path.join(self.root, "projects") if nested else basis
         if not os.path.isdir(os.path.join(wurzel, ".git")):
             _git(wurzel, "init", "-b", "main")
@@ -523,6 +543,137 @@ class BaselineImSammelRepoTest(RepoWelt):
         c = aggregation.cockpit(self.root, "p11")
         self.assertEqual(c["letzte_baseline"], "")
         self.assertEqual(c["status"], "aktiv")
+
+
+class EchteNullGegenNichtGeliefertTest(RepoWelt):
+    """SWR-108 (platform/T-0006): `null` heißt „nicht geliefert", der leere Wert des
+    Typs heißt „echte Null".
+
+    Anlass war der Widget-Vertrag: 15 von 16 Einträgen meldeten `kpi: {laeufe: 0}`,
+    obwohl nur `p0` eine Run-Registry führt. Ein Widget, das diese Null rendert,
+    behauptet fünfzehnmal eine Messung — in der Form, die am meisten nach Fakt aussieht.
+    """
+
+    # --- kpi ------------------------------------------------------------------
+    def test_ohne_run_registry_ist_kpi_nicht_geliefert(self):
+        """SWR-108: keine Registry-Datei -> `kpi is None`, nicht `{laeufe: 0}`."""
+        self._repo("ohne")
+        self.assertIsNone(aggregation.cockpit(self.root, "ohne")["kpi"])
+
+    def test_leere_registry_ist_eine_echte_null(self):
+        """SWR-108, die Gegenprobe zur Abkürzung „0 Läufe = nichts erhoben": eine
+        vorhandene, aber leere Registry ist eine Messung mit dem Ergebnis null und muss
+        `0` melden. Wer `null` an `laeufe == 0` festmachen würde, fällt hier um."""
+        self._repo("leer", registry=[])
+        c = aggregation.cockpit(self.root, "leer")
+        self.assertEqual(c["kpi"], {"laeufe": 0, "kosten_eur": 0})
+
+    def test_registry_mit_laeufen_bleibt_unveraendert(self):
+        """SWR-108: der Normalfall darf sich nicht verschieben."""
+        self._repo("voll", registry=[{"kosten_eur": 1.5}, {"kosten_eur": 0.25}])
+        c = aggregation.cockpit(self.root, "voll")
+        self.assertEqual(c["kpi"]["laeufe"], 2)
+        self.assertEqual(c["kpi"]["kosten_eur"], 1.75)
+
+    def test_lade_kpi_meldet_die_herkunft_und_behaelt_seine_felder(self):
+        """SWR-108: `registry_vorhanden` ist die einzige neue Angabe, und `/api/kpi`
+        (das `lade_kpi` unverändert durchreicht) verliert keinen Schlüssel."""
+        self._repo("ohne")
+        self._repo("leer", registry=[])
+        ohne = aggregation.lade_kpi(self.root, "ohne")
+        leer = aggregation.lade_kpi(self.root, "leer")
+        self.assertFalse(ohne["registry_vorhanden"])
+        self.assertTrue(leer["registry_vorhanden"])
+        for schluessel in ("laeufe", "kosten_eur_gesamt", "kosten_eur_je_monat",
+                           "laeufe_je_provider", "letzte"):
+            self.assertIn(schluessel, ohne)
+        self.assertEqual(ohne["laeufe"], 0)  # die Zahl selbst bleibt, wie sie war
+
+    # --- team.letzter_digest --------------------------------------------------
+    def test_team_ohne_digest_sla_liefert_keinen_digest(self):
+        """SWR-108: kein `digest` in der SLA -> das Team führt keine (None).
+        Belegt am echten Bestand: `team-dashboard` hat drei SLAs, keine davon ein
+        Digest — der erste Vertragsentwurf hielt es trotzdem für „hatte noch keinen"."""
+        self._repo("dash", team_typ="projekt", profil="wiederkehrend",
+                   sla=["widget-inhalte: in jeder Session aktuell"])
+        self.assertEqual(aggregation.cockpit(self.root, "dash")["team"],
+                         {"letzter_digest": None})
+
+    def test_digest_sla_ohne_digest_ist_eine_echte_null(self):
+        """SWR-108: Zusage da, Digest noch nicht -> `""`. Bewusst OHNE `digest/`-
+        Verzeichnis: eine Regel, die am Verzeichnis hinge, würde genau hier falsch
+        „führt keine Digests" sagen — im Moment vor dem allerersten Digest."""
+        self._repo("mail", team_typ="projekt", profil="wiederkehrend",
+                   sla=["digest: in jeder Session, in der er faellig ist"])
+        self.assertEqual(aggregation.cockpit(self.root, "mail")["team"],
+                         {"letzter_digest": ""})
+
+    def test_digest_sla_mit_digest_meldet_das_datum(self):
+        """SWR-108: der Normalfall bleibt unverändert."""
+        self._repo("mail", team_typ="projekt", profil="wiederkehrend",
+                   sla=["digest: taeglich"], digests=["2026-08-16-digest.md"])
+        self.assertEqual(aggregation.cockpit(self.root, "mail")["team"],
+                         {"letzter_digest": "2026-08-16"})
+
+    def test_ohne_team_yaml_bleibt_team_null(self):
+        """SWR-108: `team: null` heißt weiterhin „kein Team" — die Redewendung, die
+        hier erweitert und nicht neu erfunden wird."""
+        self._repo("projekt-ohne-team")
+        self.assertIsNone(aggregation.cockpit(self.root, "projekt-ohne-team")["team"])
+
+    # --- letzte_baseline ------------------------------------------------------
+    def test_profil_ohne_g4_liefert_keine_baseline(self):
+        """SWR-108: Profil `wiederkehrend` hat nach Playbook Kap. 15 „SLA statt G4" —
+        für so einen Eintrag ist eine Baseline nicht vorgesehen (None)."""
+        self._repo("crew", team_typ="pm", profil="wiederkehrend", sla=["lele: quartalsweise"])
+        self.assertIsNone(aggregation.cockpit(self.root, "crew")["letzte_baseline"])
+
+    def test_profil_mit_g4_ohne_tag_ist_eine_echte_null(self):
+        """SWR-108: Profil `entwicklung` fährt G0–G4 — keine Baseline heißt hier
+        „noch keine" und bleibt `""`."""
+        self._repo("dev", team_typ="aspice", profil="entwicklung", sla=["qualitaet: gruen"])
+        self.assertEqual(aggregation.cockpit(self.root, "dev")["letzte_baseline"], "")
+
+    def test_vorhandener_tag_schlaegt_das_profil(self):
+        """SWR-108, der Fall, der die Regel widerlegen würde: ein Team mit Profil
+        `wiederkehrend`, das trotzdem einen Tag trägt, muss ihn zeigen. Eine Tatsache
+        schlägt eine Erwartung — sonst unterdrückt der Vertrag einen realen Wert, und
+        genau dieser Fehler wurde am ersten Entwurf schon einmal gefunden."""
+        self._repo("crew", team_typ="pm", profil="wiederkehrend", tag="crew-v1.0")
+        baseline = aggregation.cockpit(self.root, "crew")["letzte_baseline"]
+        self.assertTrue(baseline.startswith("crew-v1.0"), baseline)
+
+    def test_projekt_ohne_team_yaml_meldet_echte_null(self):
+        """SWR-108: ein Projekt hat kein `profil` und damit keinen Grund, „nicht
+        vorgesehen" zu sagen — `p11`/`p12` bleiben bei `""` (noch keine Baseline)."""
+        self._repo("p11", nested=True)
+        self.assertEqual(aggregation.cockpit(self.root, "p11")["letzte_baseline"], "")
+
+    def test_gruppe_entscheidet_nicht_ueber_die_baseline(self):
+        """SWR-108: der Fehler des ersten Vertragsentwurfs, als Test festgehalten.
+        `platform` ist Gruppe `festes-team` UND Profil `entwicklung` — eine Regel über
+        die Gruppe hätte ihm die Baseline genommen, eine Regel über das Profil nicht."""
+        self._repo("asp", team_typ="aspice", profil="entwicklung")
+        c = aggregation.cockpit(self.root, "asp")
+        self.assertEqual(c["gruppe"], "festes-team")
+        self.assertEqual(c["letzte_baseline"], "")  # echte Null, nicht None
+
+    # --- steckbrief -----------------------------------------------------------
+    def test_steckbrief_liest_profil_und_sla_aus_derselben_datei(self):
+        """SWR-108: ein Leser, eine Datei. Der `sla:`-Block endet am nächsten
+        Schlüssel — ohne diese Grenze würde `gegruendet` als SLA-Art gelesen."""
+        basis = self._repo("t", team_typ="pm", profil="wiederkehrend",
+                           sla=["digest: taeglich", "lele: quartalsweise"])
+        sb = aggregation.steckbrief(basis)
+        self.assertEqual(sb["profil"], "wiederkehrend")
+        self.assertEqual(sb["sla_arten"], ["digest", "lele"])
+
+    def test_ohne_team_yaml_bleiben_profil_und_sla_leer(self):
+        """SWR-108: ein Projekt ohne team.yaml verhält sich exakt wie bisher."""
+        basis = self._repo("p")
+        sb = aggregation.steckbrief(basis)
+        self.assertEqual(sb["profil"], "")
+        self.assertEqual(sb["sla_arten"], [])
 
 
 if __name__ == "__main__":

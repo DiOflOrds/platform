@@ -64,8 +64,17 @@ def ref(projekt, ticket_id):
 
 
 def steckbrief(pfad):
-    """SWR-066 (P9): steckbrief.yaml (beschreibung, status) + typ aus team.yaml."""
-    info = {"beschreibung": "", "status": "", "typ": ""}
+    """SWR-066 (P9): steckbrief.yaml (beschreibung, status) + typ aus team.yaml.
+
+    SWR-108 (platform/T-0006): dazu `profil` aus **derselben** Datei und derselben
+    Schleife. Das Feld entscheidet nach Playbook Kap. 15, ob für diesen Eintrag
+    überhaupt ein G4 und damit eine Baseline vorgesehen ist — `wiederkehrend` hat
+    „SLA statt G4". Kein zweiter Leseweg: `process/teams/registry.yaml` ist die Quelle
+    der Wahrheit, `team.yaml` ihre bewusst gehaltene lokale Kopie (Kopfkommentar der
+    Registry); ein Eintrag antwortet damit über sich selbst, statt quer ins Repo
+    `process` zu greifen. Beide stimmen heute für alle vier Teams überein.
+    """
+    info = {"beschreibung": "", "status": "", "typ": "", "profil": "", "sla_arten": []}
     sp = os.path.join(pfad, "steckbrief.yaml")
     if os.path.isfile(sp):
         for zeile in open(sp, encoding="utf-8"):
@@ -76,11 +85,38 @@ def steckbrief(pfad):
                 info["status"] = z.split(":", 1)[1].strip()
     ty = os.path.join(pfad, "team.yaml")
     if os.path.isfile(ty):
+        in_sla = False
         for zeile in open(ty, encoding="utf-8"):
             z = zeile.split("#", 1)[0].strip()
             if z.startswith("typ:"):
                 info["typ"] = z.split(":", 1)[1].strip().strip('"')
+            elif z.startswith("profil:"):
+                info["profil"] = z.split(":", 1)[1].strip().strip('"')
+            elif z == "sla:":
+                in_sla = True
+            elif in_sla and z.startswith("- "):
+                # SWR-108: die SLA-Einträge sind nach Konvention `- "<art>: <text>"`; nur
+                # die Art vor dem Doppelpunkt wird gelesen, der Text ist Prosa für Menschen.
+                art = z[2:].strip().strip('"').split(":", 1)[0].strip()
+                if art:
+                    info["sla_arten"].append(art)
+            elif z:
+                in_sla = False
     return info
+
+
+# SWR-108 (platform/T-0006): Profile OHNE G4. Playbook Kap. 15 nennt für `wiederkehrend`
+# ausdrücklich „Statt G4 gilt ein SLA je Aufgabentyp" — für einen solchen Eintrag ist eine
+# Baseline nicht vorgesehen, `""` wäre dort eine Aussage, die niemand gemacht hat.
+# `entwicklung` fährt G0–G4 mit „Baselines als Tags + Manifest", `dienstleistung` hat G4
+# je Lieferung; beide erwarten also eine und melden `""` als echte Null.
+#
+# Die Unterscheidung hängt am `profil` und NICHT an der Cockpit-`gruppe`. Genau daran ist
+# der erste Entwurf des Widget-Vertrags gescheitert: „Teams haben kein G4" (also
+# festes-team/projekt-team) wurde von `platform` widerlegt — festes Team, aber Profil
+# `entwicklung`, und es trägt eine Baseline. Die Gruppe sagt, WER etwas ist; das Profil
+# sagt, WELCHE Gates gelten. Nur die zweite Frage ist hier gestellt.
+PROFILE_OHNE_G4 = ("wiederkehrend",)
 
 
 GRUPPEN_NAMEN = (("festes-team", "Feste Teams"), ("projekt-team", "Projekt-Teams"),
@@ -168,7 +204,11 @@ def einstufung(root, projekt, pfad=None, tag_text=None):
         gruppe = "projekt-team"
     else:
         gruppe = "abgeschlossen" if status == "abgeschlossen" else "aktiv"
-    return {"beschreibung": sb["beschreibung"], "status": status, "gruppe": gruppe}
+    # SWR-108: `profil` wird durchgereicht, nicht neu gelesen — `einstufung` ist seit
+    # SWR-082 die EINE Ableitung aus dem Steckbrief, und ein zweiter Leser derselben
+    # Datei wäre die geteilte Quelle mit zwei Auflösungen aus B059/B064.
+    return {"beschreibung": sb["beschreibung"], "status": status, "gruppe": gruppe,
+            "profil": sb["profil"], "sla_arten": sb["sla_arten"]}
 
 
 def navigation(root):
@@ -411,17 +451,33 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
             if name.endswith(".md") and "status: offen" in open(
                     os.path.join(brief_verz, name), encoding="utf-8").read(300):
                 briefe_offen += 1
-    # SWR-055 (P7): Team-Kachel — letzter Digest für Team-Repos (team.yaml)
-    team = None
-    if os.path.isfile(os.path.join(pfad, "team.yaml")):
-        dverz = os.path.join(pfad, "digest")
-        digests = sorted(n for n in os.listdir(dverz)
-                         if n.endswith(".md")) if os.path.isdir(dverz) else []
-        team = {"letzter_digest": digests[-1][:10] if digests else ""}
     # SWR-066/068 (P9): Steckbrief, Status-Fallback über Abschluss-Baseline, Gruppe, Aufgaben
     # SWR-082: gemeinsame Einstufung mit der Navigation — eine Quelle, keine Drift.
+    # SWR-108: steht jetzt VOR der Team-Kachel, weil diese `sla_arten` braucht. Die
+    # Alternative wäre ein zweiter Aufruf von `steckbrief` gewesen — dieselbe Datei mit
+    # zwei Lesern ist die Bauart von B059/B064 und wird hier nicht wiederholt.
     stufe = einstufung(root, projekt, pfad=pfad, tag_text=tag_text)
     status, gruppe = stufe["status"], stufe["gruppe"]
+    # SWR-055 (P7): Team-Kachel — letzter Digest für Team-Repos (team.yaml)
+    # SWR-108: `letzter_digest` unterscheidet jetzt zwei Fälle, die vorher beide `""`
+    # waren. Die Tatsache ist die **Zusage**, nicht das Verzeichnis: nennt die SLA des
+    # Teams keinen `digest`, führt das Team keine (nicht geliefert → None); nennt sie
+    # einen und es liegt noch keiner vor, ist das eine echte Null → "".
+    #
+    # Bewusst NICHT `os.path.isdir("digest")`: das Verzeichnis entsteht erst mit dem
+    # ersten Digest. Vor dem allerersten hätte die Verzeichnisregel „führt keine
+    # Digests" gesagt — und genau dieser Moment ist der, für den die Unterscheidung
+    # gebraucht wird. `team-mail` trägt die Zusage („digest: in jeder Session, in der
+    # er fällig ist"), war aber bis zur IMAP-Einrichtung ohne Verzeichnis.
+    team = None
+    if os.path.isfile(os.path.join(pfad, "team.yaml")):
+        if "digest" in stufe["sla_arten"]:
+            dverz = os.path.join(pfad, "digest")
+            digests = sorted(n for n in os.listdir(dverz)
+                             if n.endswith(".md")) if os.path.isdir(dverz) else []
+            team = {"letzter_digest": digests[-1][:10] if digests else ""}
+        else:
+            team = {"letzter_digest": None}
     offene = sorted((t for t in tickets if t.get("status") not in ("done", "rejected")),
                     key=lambda t: t.get("id", ""))
     aufgaben = [{"id": t.get("id"), "ref": ref(projekt, t.get("id")),  # SWR-087
@@ -463,9 +519,27 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
     unterminiert = sum(1 for t in offene
                        if not t.get("frist") and not t.get("takt")
                        and t.get("typ") != "decision-request")
+    # SWR-108: „nicht geliefert" ist `None`, „echte Null" bleibt der leere Wert des Typs.
+    #
+    # `letzte_baseline`: ein Eintrag mit einem Profil ohne G4 (Playbook Kap. 15) bekommt
+    # gar keine Baseline — dort ist `""` keine Aussage „noch keine", sondern gar keine.
+    # Sobald ein Tag da IST, wird er gezeigt, auch bei solch einem Profil: die Tatsache
+    # schlägt die Erwartung. Ohne diese Zeile hätte die Regel `platform` unterdrückt,
+    # und genau dieser Fehler wurde am ersten Vertragsentwurf schon einmal gefunden.
+    #
+    # `kpi`: entscheidend ist, ob die Run-Registry EXISTIERT, nicht ob sie Zeilen hat.
+    # Eine vorhandene, leere Registry meldet `{laeufe: 0}` — das ist eine Messung mit
+    # dem Ergebnis null. Fehlt die Datei, wurde nichts erhoben, und 15 von 16 Einträgen
+    # haben bis heute `0` gemeldet, als sei es gemessen worden (B038 in Zahlenform).
+    if tags:
+        letzte_baseline = tags[-1].strip()
+    elif stufe["profil"] in PROFILE_OHNE_G4:
+        letzte_baseline = None
+    else:
+        letzte_baseline = ""
     return {"projekt": projekt, "status_zahlen": status_zahlen,
             "tickets_gesamt": len(tickets), "offene_drs": drs,
-            "letzte_baseline": tags[-1].strip() if tags else "",
+            "letzte_baseline": letzte_baseline,
             "briefe_offen": briefe_offen, "team": team,
             "beschreibung": stufe["beschreibung"], "status": status, "gruppe": gruppe,
             "aufgaben_offen": len(offene), "aufgaben": aufgaben,
@@ -473,8 +547,9 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
             "ueberfaellig": ueberfaellig,  # SWR-091 (pm/T-0030, Brief pm/N-0025)
             "takt_faellig": takt_faellig,  # SWR-104 (pm/T-0032, Brief pm/N-0025)
             "unterminiert": unterminiert,  # SWR-091
-            "kpi": {"laeufe": kpi.get("laeufe", 0),
-                    "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}}
+            "kpi": ({"laeufe": kpi.get("laeufe", 0),
+                     "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}
+                    if kpi.get("registry_vorhanden") else None)}  # SWR-108
 
 
 def cockpit_alle(root, heute=None, jetzt=None):
@@ -497,10 +572,18 @@ def lade_baselines(root):
 
 
 def lade_kpi(root, projekt="p0"):
-    """Kosten/KPI aus der Run-Registry des Projekts (JSONL, append-only)."""
+    """Kosten/KPI aus der Run-Registry des Projekts (JSONL, append-only).
+
+    SWR-108 (platform/T-0006): `registry_vorhanden` meldet, ob es die Datei überhaupt
+    gibt. Das ist **keine** zweite Angabe neben `laeufe` (das wäre B033), sondern die
+    einzige Tatsache, die `laeufe: 0` deuten lässt: ohne Registry ist die Null nicht
+    gemessen, sondern nie erhoben. Die Zahlen selbst bleiben unverändert — wer die
+    Registry hat und keine Läufe, bekommt weiterhin 0.
+    """
     pfad = os.path.join(projekt_pfad(root, projekt), "management", "runs", "run-registry.jsonl")
     laeufe = []
-    if os.path.exists(pfad):
+    vorhanden = os.path.exists(pfad)
+    if vorhanden:
         for zeile in open(pfad, encoding="utf-8"):
             zeile = zeile.strip()
             if zeile:
@@ -517,4 +600,4 @@ def lade_kpi(root, projekt="p0"):
         je_provider[p] = je_provider.get(p, 0) + 1
     return {"laeufe": len(laeufe), "kosten_eur_gesamt": kosten_gesamt,
             "kosten_eur_je_monat": je_monat, "laeufe_je_provider": je_provider,
-            "letzte": laeufe[-5:]}
+            "letzte": laeufe[-5:], "registry_vorhanden": vorhanden}  # SWR-108
