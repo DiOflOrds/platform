@@ -26,6 +26,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import board  # noqa: E402  — gemeinsame Projekt-Discovery (SWR-070, p9/T-0007)
 import konsole  # noqa: E402  — Kodierung an beiden Enden eines Laufs (platform/T-0009)
+import js_tests  # noqa: E402  — JS-Teststrecke (SWR-128, ADR-008)
 
 REPOS = ["process", "platform", "p0"]
 
@@ -621,10 +622,24 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
                 print(f"[{name}] BRIEFKASTEN: {offen} offene(r) Brief(e) — zuerst beantworten!")
     if skip_tests:
         print("[platform] Unit-Tests übersprungen (--skip-tests)")
+        print("[platform] JS-Tests übersprungen (--skip-tests)")
     else:
         ok, tail = unit_tests(os.path.join(root, "platform"))
         print(f"[platform] Unit-Tests: {'OK' if ok else 'ROT'} — {tail.splitlines()[-1] if tail else ''}")
         if not ok:
+            befunde += 1
+        # SWR-128 (ADR-008): die JS-Teststrecke. Sie wird IMMER gemeldet — auch wenn sie
+        # nicht lief. Ein still übersprungener Test ist von einer Prüfung, die es gar nicht
+        # gibt, nicht zu unterscheiden (SWR-114/SWR-122) — und genau so ist der Zustand
+        # "741 Python-Tests, null JS-Tests" unbemerkt geblieben, obwohl SWR-098/099/100
+        # Nachweise an JavaScript verlangen.
+        # Rot zählt als Befund. "Übersprungen" zählt NICHT: solange p12/T-0007 nicht
+        # entschieden ist, ist Node keine Voraussetzung des Projekts, und ein fehlendes
+        # Werkzeug darf den Lauf des Menschen nicht blockieren. Gemeldet wird es trotzdem,
+        # und das genügt — eine Kennzahl steuert, sobald sie berichtet wird (SWR-125).
+        js = js_tests.lauf(root)
+        print(f"[platform] {js['meldung']}")
+        if js["zustand"] == "rot":
             befunde += 1
     # Schlusslauf (pm/T-0023): Die eigenen git-Aufrufe oben haben auf einem Mount ohne
     # unlink-Recht neue index.lock hinterlassen. Ohne dieses Aufräumen meldet Preflight
