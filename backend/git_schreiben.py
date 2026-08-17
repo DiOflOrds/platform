@@ -100,9 +100,23 @@ def entsperre(repo):
     Schlägt der Import fehl, ist das **kein** Fehler des Schreibwegs: dann bleibt es beim
     alten Verhalten, also bei der ehrlichen Meldung. Eine scheiternde Reparatur darf nie
     schlimmer sein als keine.
+
+    ⚠⚠ **Gemessener Fehler dieser Funktion, gefunden in Sprint 16 (SWR-143).** Bis dahin
+    stand hier ``skripte = os.path.dirname(__file__)`` — und das ist ``backend/``, nicht
+    ``scripts/``. ``import preflight`` scheiterte also, ``entsperre`` gab **0** zurück, und
+    die Räumung von SWR-134 lief **gar nicht** — es sei denn, der Aufrufer hatte
+    ``scripts/`` zufällig schon im Pfad. Genau das taten `board`, `preflight` und die
+    Tests, weshalb es nirgends aufgefallen ist.
+
+    > **Die Reparatur wirkte überall dort, wo der Aufrufer sie mitgebracht hat — also
+    > genau dort nicht, wo SWR-134 sie hinbringen wollte.**
+
+    Der Pfad wird deshalb **relativ zu dieser Datei** bestimmt (`../scripts`) und nicht
+    aus dem Zustand des Aufrufers geraten.
     """
     try:
-        skripte = os.path.dirname(os.path.abspath(__file__))
+        hier = os.path.dirname(os.path.abspath(__file__))
+        skripte = os.path.normpath(os.path.join(hier, "..", "scripts"))
         if skripte not in sys.path:
             sys.path.insert(0, skripte)
         import preflight as _preflight

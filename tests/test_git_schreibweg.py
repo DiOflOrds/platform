@@ -414,6 +414,37 @@ class EigeneSperreTest(unittest.TestCase):
         # zwischen dem gescheiterten `add` und dem `commit` steht KEINE Raeumung
         self.assertEqual(spur[:2], ["add", "commit"], spur)
 
+    def test_entsperre_findet_preflight_ohne_zutun_des_aufrufers(self):
+        """⚠⚠ Gemessener Fehler von SWR-134, gefunden in Sprint 16 (SWR-143).
+
+        `entsperre` legte `os.path.dirname(__file__)` in den Pfad — das ist `backend/`,
+        nicht `scripts/`. `import preflight` scheiterte, die Funktion gab **0** zurueck,
+        und die Raeumung lief **gar nicht**, es sei denn, der Aufrufer hatte `scripts/`
+        zufaellig schon im Pfad. `board`, `preflight` und **diese Testdatei** tun das,
+        weshalb es nirgends aufgefallen ist.
+
+        > **Die Reparatur wirkte ueberall dort, wo der Aufrufer sie mitgebracht hat —
+        > also genau dort nicht, wo SWR-134 sie hinbringen wollte.**
+
+        Der Test raeumt `scripts/` deshalb aus `sys.path` und aus `sys.modules`, bevor er
+        misst: ohne das prueft er den Zustand des Testlaeufers und nicht den der Funktion.
+        Verifiziert: SWR-143."""
+        skripte = os.path.normpath(os.path.join(_PLATFORM, "scripts"))
+        alt_pfad = list(sys.path)
+        alt_module = sys.modules.pop("preflight", None)
+        sys.path[:] = [p for p in sys.path
+                       if os.path.normpath(os.path.abspath(p)) != skripte]
+        try:
+            sperre = os.path.join(self.repo, ".git", "index.lock")
+            open(sperre, "w").close()
+            self.assertGreaterEqual(
+                git_schreiben.entsperre(self.repo), 1,
+                "entsperre findet preflight nicht ohne Zutun des Aufrufers")
+        finally:
+            sys.path[:] = alt_pfad
+            if alt_module is not None:
+                sys.modules["preflight"] = alt_module
+
     def test_ohne_pfade_gibt_es_kein_zwischenraeumen(self):
         """Ohne `add` gibt es keinen Nachweis und also auch nichts zu raeumen — der Fall
         'schon gestaget'. Verifiziert: SWR-139."""
