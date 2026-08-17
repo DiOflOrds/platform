@@ -9,17 +9,12 @@ Stand: 2026-08-17 · Tickets: 9 · davon wiederkehrend: 1
 |---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | hoch | 0 | — |
 
-## in_progress (1)
-
-| ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|
-| [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | mittel | 0 | — |
-
-## in_review (1)
+## in_review (2)
 
 | ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|
 | [T-0004](tickets/T-0004.md) | CR: Ein rotes CI-Ergebnis soll den fehlgeschlagenen Schritt nennen — sonst ist ROT kein Befund, sondern eine Farbe | change-request | einmalig | cm | hoch | 0 | — |
+| [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | mittel | 0 | — |
 
 ## done (6)
 
