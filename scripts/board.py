@@ -123,6 +123,23 @@ class KonfliktFehler(ValueError):
     409 statt 400 melden kann — es ist kein Eingabefehler des Menschen."""
 
 
+class KeineAenderung(ValueError):
+    """SWR-144: Die Felder tragen die gewünschten Werte bereits.
+
+    **Ein eigener Typ und kein Textvergleich auf die Meldung.** Bis Sprint 16 war
+    dieser Fall von einem abgewiesenen Schreibvorgang nur an seiner Prosa zu
+    unterscheiden — `tickets.speichere` übersetzte jeden `ValueError` in HTTP 400, und
+    ein bereits terminiertes Ticket antwortete damit in derselben Gestalt wie ein
+    Fehlschlag. Ein Aufrufer, der das trennen wollte, hätte auf den Wortlaut prüfen
+    müssen; dass eine Textsuche eine Warnung nicht von ihrem Gegenstand unterscheiden
+    kann, hat `L-2026-08-17ak` in Sprint 16 gemessen.
+
+    ⚠ Bleibt `ValueError`: jeder bestehende Aufrufer, der `ValueError` fängt, verhält
+    sich unverändert. Die Unterscheidung ist ein **Angebot** an den Aufrufer, der sie
+    braucht, und keine Umschreibung des Vertrags für die, die sie nicht brauchen.
+    """
+
+
 def projekt_pfade(wurzel):
     """SWR-025/ADR-004 + SWR-070: alle Projekte unter `wurzel` als (name, pfad).
 
@@ -1058,7 +1075,8 @@ def aktualisiere(repo, tid, aenderungen, body=None, erwarteter_fingerprint=None,
     if body is not None and neuer_body != t.get("_body", ""):
         geaendert.append("Fließtext")
     if not geaendert:
-        raise ValueError(f"{tid}: keine Änderung — die Felder tragen bereits diese Werte.")
+        raise KeineAenderung(
+            f"{tid}: keine Änderung — die Felder tragen bereits diese Werte.")
     stempel = zeitpunkt(jetzt)
     neu_text = _feld_schreiben(neu_text, "geändert", (jetzt or datetime.now()).date().isoformat())
     kopf = re.match(r"^---\n.*?\n---\n", neu_text, re.S).group(0)

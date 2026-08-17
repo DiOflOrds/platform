@@ -371,7 +371,50 @@ var Regeln = (function () {
     ];
   }
 
+  /** SWR-144 (pm/T-0065): die **Beschriftung** des Terminierungsknopfs — nicht seine Wirkung.
+   *
+   * Der Knopf setzt `geplant_sprint` auf den naechsten Sprint. Die Zahl kommt aus dem
+   * Payload (`naechster_sprint`, aus dem Register); gerechnet wird hier **nichts**. Ein
+   * `sprint_nr + 1` an dieser Stelle waere eine zweite Antwort auf "welcher ist der
+   * naechste Sprint?" (B033) — und sie waere genau dann falsch, wenn zwischen Laden und
+   * Klick ein Sprint gewechselt hat.
+   *
+   * ⚠ **Diese Funktion entscheidet nicht, ob geschrieben wird.** Der Server entscheidet
+   * das (und antwortet mit `unveraendert: true`, wenn nichts zu tun war). Hier steht nur,
+   * was der Knopf **verspricht** — und im Fall "steht schon dort" verspricht er nichts
+   * und sagt das:
+   *
+   * > **Ein Knopf, der bei jedem Klick dasselbe verspricht, sagt nicht mehr, ob er
+   * > gebraucht wird.**
+   *
+   * Rueckgabe: `{text, titel, wirkungslos}`. `wirkungslos` ist eine **Beschriftung** und
+   * keine Sperre: der Knopf bleibt klickbar, weil die Zahl im Payload alt sein kann und
+   * der Server die Wahrheit hat. Ein deaktivierter Knopf auf einer veralteten Zahl waere
+   * eine Sperre auf einer Vermutung.
+   */
+  function terminierKnopf(aufgabe, naechsterSprint) {
+    var n = parseInt(naechsterSprint, 10);
+    if (!(n > 0)) {
+      // Ohne Nummer wird nicht geraten. ⚠ `0` und "nicht geliefert" sind hier dieselbe
+      // Bauart wie im Widget-Vertrag: ein fehlender Wert bekommt einen eigenen Text.
+      return { text: "Sprint unbekannt", titel: "Das Sprintregister hat keine Nummer "
+               + "geliefert — ohne sie steht nicht fest, was 'der naechste Durchlauf' ist.",
+               wirkungslos: true };
+    }
+    var ist = String(((aufgabe || {}).geplant_sprint) || "").trim();
+    if (ist === String(n)) {
+      return { text: "steht auf " + n, titel: "Diese Aufgabe ist bereits auf Sprint " + n
+               + " terminiert. Ein Klick aendert nichts und committet nichts.",
+               wirkungslos: true };
+    }
+    return { text: "→ Sprint " + n,
+             titel: "Terminiert diese Aufgabe auf Sprint " + n
+             + " (setzt geplant_sprint; prio bleibt unberuehrt).",
+             wirkungslos: false };
+  }
+
   return { feldText: feldText, kachelFelder: kachelFelder,
+           terminierKnopf: terminierKnopf,
            fuerDichAbschnitte: fuerDichAbschnitte,
            FUER_DICH_LEER_ENTSCHEIDUNGEN: FUER_DICH_LEER_ENTSCHEIDUNGEN,
            FUER_DICH_LEER_HANDLUNGEN: FUER_DICH_LEER_HANDLUNGEN,

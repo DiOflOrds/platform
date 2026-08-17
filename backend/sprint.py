@@ -640,6 +640,13 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
             "status_drift": statusdrift,    # SWR-115 (pm/T-0049)
             "kennzahlen": zahlen,           # SWR-113 (pm/T-0046)
             "sprint_nr": jetzt_nr,          # SWR-106: der laufende Sprint
+            # SWR-144 (pm/T-0065): die Nummer, die der Knopf setzen wird — damit die
+            # Ansicht sie **beschriften** kann, ohne sie zu **rechnen**. `jetzt_nr + 1` in
+            # JavaScript wäre eine zweite Antwort auf „welcher ist der nächste Sprint?"
+            # (B033), und sie wäre genau dann falsch, wenn zwischen Laden und Klick ein
+            # Sprint gewechselt hat. Gesetzt wird der Wert trotzdem serverseitig neu
+            # geholt: diese Zahl ist eine Beschriftung, keine Anweisung.
+            "naechster_sprint": jetzt_nr + 1,
             "takt_min": takt_min,
             "stand": letzter,
             "veraltet": veraltet,

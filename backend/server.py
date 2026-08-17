@@ -316,6 +316,19 @@ class Api(BaseHTTPRequestHandler):
             except tickets.TicketFehler as e:
                 return self._json(e.code, {"fehler": str(e)})
             return self._json(200, erg)
+        # SWR-144 (pm/T-0065): der Knopf je Zeile der Aufgabenliste. PIN oben geprüft wie
+        # jeder Schreibweg. ⚠ Eigene Route und **kein** Sonderfall in `/api/ticket`: dort
+        # bringt der Client die Werte mit, hier bringt er **keine** — das ist der ganze
+        # Unterschied, an dem die Fingerprint-Begründung von SWR-144 hängt. Ein
+        # Feld-Parameter an `/api/ticket` hätte beide Fälle in einen Aufruf gelegt und die
+        # Begründung damit unprüfbar gemacht.
+        if self.path == "/api/ticket/terminieren":
+            try:
+                erg = tickets.terminiere(type(self).wurzel, daten.get("projekt", ""),
+                                         daten.get("id", ""))
+            except tickets.TicketFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
         if self.path == "/api/pool":  # SWR-088 (pm/T-0022, Teil "Anlegen"; PIN oben geprüft)
             try:
                 erg = pool.kandidat_anlegen(type(self).wurzel, daten.get("kategorie", ""),

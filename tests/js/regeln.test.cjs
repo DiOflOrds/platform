@@ -403,3 +403,67 @@ test("die Eintraege werden unveraendert durchgereicht (SWR-138)", () => {
   const a = R.fuerDichAbschnitte([], handlungen);
   assert.deepStrictEqual(a[1].eintraege.map(x => x.ref), ["p0/T-0002", "pm/T-0001"]);
 });
+
+// --------------------------------------------------------------------------
+// SWR-144 (pm/T-0065): die Beschriftung des Terminierungsknopfs.
+//
+// ⚠ Geprueft wird die **Beschriftung** und nicht die Wirkung — die Wirkung liegt im
+// Server (`test_terminieren.py`) und muss dort liegen: eine Regel, die in JavaScript
+// entscheidet, OB geschrieben wird, waere eine zweite Antwort neben der des Servers.
+// --------------------------------------------------------------------------
+
+test("der Knopf nennt die Nummer aus dem Payload und rechnet nichts (SWR-144)", () => {
+  const b = R.terminierKnopf({ geplant_sprint: "17" }, 18);
+  assert.strictEqual(b.text, "→ Sprint 18");
+  assert.strictEqual(b.wirkungslos, false);
+});
+
+test("⚠ die Nummer wird NICHT aus sprint_nr abgeleitet (SWR-144, B033)", () => {
+  // Die Gegenprobe zur Bequemlichkeit: `sprint_nr + 1` in der Ansicht waere genau dann
+  // falsch, wenn zwischen Laden und Klick ein Sprint gewechselt hat. Hier wird eine
+  // Nummer uebergeben, die zu KEINER Ableitung aus `geplant_sprint` passt — kaeme sie
+  // aus einer Rechnung, stuende hier etwas anderes.
+  const b = R.terminierKnopf({ geplant_sprint: "3" }, 99);
+  assert.strictEqual(b.text, "→ Sprint 99");
+});
+
+test("⚠ steht die Aufgabe schon auf dem naechsten Sprint, verspricht der Knopf nichts (SWR-144)", () => {
+  // DoD 4 in der Ansicht. Ein Knopf, der bei jedem Klick dasselbe verspricht, sagt nicht
+  // mehr, ob er gebraucht wird.
+  const b = R.terminierKnopf({ geplant_sprint: "18" }, 18);
+  assert.strictEqual(b.wirkungslos, true);
+  assert.match(b.text, /steht auf 18/);
+  assert.match(b.titel, /aendert nichts/);
+});
+
+test("⚠ wirkungslos SPERRT nicht — die Zahl im Payload kann alt sein (SWR-144)", () => {
+  // Der Unterschied, der hier zaehlt: `wirkungslos` ist eine Beschriftung, keine Sperre.
+  // Ein deaktivierter Knopf auf einer veralteten Zahl waere eine Sperre auf einer
+  // Vermutung — und die Wahrheit hat der Server.
+  const b = R.terminierKnopf({ geplant_sprint: "18" }, 18);
+  assert.strictEqual("deaktiviert" in b, false);
+  assert.strictEqual("disabled" in b, false);
+});
+
+test("eine Zahl als String zaehlt wie eine Zahl (SWR-144)", () => {
+  // `geplant_sprint` kommt als String aus dem Frontmatter, `naechster_sprint` als Zahl
+  // aus dem Register. Ein Vergleich ohne Normierung waere hier still falsch.
+  assert.strictEqual(R.terminierKnopf({ geplant_sprint: 18 }, "18").wirkungslos, true);
+});
+
+test("⚠ ohne Nummer wird NICHT geraten (SWR-144)", () => {
+  // Dieselbe Bauart wie `nicht_geliefert` im Widget-Vertrag: ein fehlender Wert bekommt
+  // einen eigenen Text und nicht die 1 aus `0 + 1`.
+  [undefined, null, 0, "", "keine"].forEach(function (n) {
+    const b = R.terminierKnopf({ geplant_sprint: "5" }, n);
+    assert.strictEqual(b.wirkungslos, true, "bei " + JSON.stringify(n));
+    assert.match(b.text, /unbekannt/);
+  });
+});
+
+test("eine Aufgabe ohne geplant_sprint bekommt einen wirksamen Knopf (SWR-144)", () => {
+  // Der haeufigste Fall im Bestand — ein Ticket ganz ohne Termin. Er darf nicht als
+  // „steht schon dort" gelesen werden, nur weil beide Werte leer aussehen.
+  const b = R.terminierKnopf({}, 18);
+  assert.strictEqual(b.wirkungslos, false);
+});

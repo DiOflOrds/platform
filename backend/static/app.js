@@ -1605,7 +1605,37 @@ var aufgabenGruppiert = true;   // Rollen-Sicht ist die Voreinstellung (pm/N-004
 // müsste beim Wiedersehen erklärt werden — sonst fehlt eine Gruppe und niemand weiß, warum.
 var faltung = {};
 
-function aufgabenZeile(a) {
+// SWR-144 (pm/T-0065, Brief pm/N-0038): der Knopf je Zeile. Ein Klick, ein Feld.
+//
+// ⚠ **Ein POST und kein Vorher-Lesen.** Der naheliegende Weg waere gewesen, erst
+// `/api/ticket/editor` zu holen (fuer den Fingerprint) und dann `/api/ticket` zu schicken.
+// Genau das ist der Weg, den SWR-144 verwirft: der Fingerprint schuetzt den Wert, den der
+// Client gesehen hat, und dieser Knopf bringt keinen mit. Sein einziger Wert ist die
+// Sprintnummer, und die holt der Server sich **im** Schreibvorgang aus dem Register.
+function terminierKnopf(a, naechster, melde) {
+  var b = Regeln.terminierKnopf(a, naechster);
+  var knopf = el("button", { "class": "knopf" + (b.wirkungslos ? " leer" : ""),
+                             title: b.titel, style: "padding:.15rem .5rem" }, b.text);
+  knopf.addEventListener("click", function () {
+    knopf.disabled = true;
+    api("/api/ticket/terminieren", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projekt: a.projekt, id: a.id })
+    }).then(function (r) {
+      // ⚠ Drei Zustaende, drei Gestalten: gruen (geschrieben), neutral (stand schon
+      // dort), rot (fehlgeschlagen). Beide Erfolge gleich zu beschriften haette DoD 4
+      // im Server erfuellt und in der Ansicht wieder verloren.
+      melde(r.meldung, r.unveraendert ? "" : "ok");
+      lade();
+    }).catch(function (e) {
+      knopf.disabled = false;
+      melde("Nicht terminiert — das Ticket steht unveraendert: " + e.message, "fehler");
+    });
+  });
+  return knopf;
+}
+
+function aufgabenZeile(a, naechster, melde) {
   var tr = el("tr", {});
   tr.appendChild(el("td", {}, el("a", { href: "#/ticket/" + a.projekt + "/" + a.id }, a.ref)));
   tr.appendChild(el("td", {}, a.titel || ""));
@@ -1618,15 +1648,20 @@ function aufgabenZeile(a) {
   tr.appendChild(el("td", {}, a.status || ""));
   tr.appendChild(el("td", {}, a.takt ? "je " + a.takt
     : (a.geplant_sprint ? "Sprint " + a.geplant_sprint : "—")));
+  // ⚠ Takt-Dauerlaeufer bekommen KEINEN Knopf: sie laufen in jedem Sprint und tragen
+  // absichtlich kein `geplant_sprint` (eine Nummer daneben waere B033). Ein Knopf, der
+  // ihnen eine Nummer gaebe, machte aus einer Dauerpflicht eine Einmalaufgabe.
+  tr.appendChild(el("td", {}, a.takt ? el("span", { "class": "leer" }, "je Sprint")
+    : terminierKnopf(a, naechster, melde)));
   return tr;
 }
 
-function aufgabenTabelle(liste) {
+function aufgabenTabelle(liste, naechster, melde) {
   var tab = el("table", { "class": "tab" });
   tab.appendChild(el("tr", {}, el("th", {}, "Aufgabe"), el("th", {}, "Titel"),
     el("th", {}, "Rolle"), el("th", {}, "Wer handelt"), el("th", {}, "Status"),
-    el("th", {}, "Termin")));
-  liste.forEach(function (a) { tab.appendChild(aufgabenZeile(a)); });
+    el("th", {}, "Termin"), el("th", {}, "Nächster Durchlauf")));
+  liste.forEach(function (a) { tab.appendChild(aufgabenZeile(a, naechster, melde)); });
   return tab;
 }
 
@@ -1641,6 +1676,13 @@ function ladeAufgaben() {
     // ein Fehler und keine Rundung; deshalb wird beides gezeigt.
     kopf.appendChild(pille(alle.length + " offen", "open"));
     if (s && s.sprint_nr) kopf.appendChild(pille("Sprint " + s.sprint_nr, "done"));
+    // SWR-144: die Zahl, auf die die Knoepfe zeigen — aus dem Payload, nicht gerechnet.
+    var naechster = s && s.naechster_sprint;
+    var meldeKasten = el("div", {});
+    function melde(text, klasse) {
+      meldeKasten.textContent = "";
+      meldeKasten.appendChild(el("div", { "class": "meldung " + (klasse || "") }, text));
+    }
     kopf.appendChild(el("button", {
       "class": "knopf", style: "margin-left:auto;padding:.3rem .8rem",
       onclick: function () { aufgabenGruppiert = !aufgabenGruppiert; lade(); }
@@ -1655,8 +1697,9 @@ function ladeAufgaben() {
       zeige([karte]);
       return;
     }
+    karte.appendChild(meldeKasten);
     if (!aufgabenGruppiert) {
-      karte.appendChild(aufgabenTabelle(Regeln.sortiereAufgaben(alle)));
+      karte.appendChild(aufgabenTabelle(Regeln.sortiereAufgaben(alle), naechster, melde));
       zeige([karte]);
       return;
     }
@@ -1667,7 +1710,7 @@ function ladeAufgaben() {
       var block = el("details", { open: "open" });
       block.appendChild(el("summary", { style: "cursor:pointer;font-weight:600;padding:.35rem 0" },
         Regeln.gruppenTitel(g)));
-      block.appendChild(aufgabenTabelle(g.aufgaben));
+      block.appendChild(aufgabenTabelle(g.aufgaben, naechster, melde));
       karte.appendChild(block);
     });
     zeige([karte]);

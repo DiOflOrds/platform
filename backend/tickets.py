@@ -20,6 +20,8 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 import board  # noqa: E402
+import sprint_register  # noqa: E402  — SWR-144: welcher Sprint der nächste ist, weiß das
+                       #                Register (SWR-136) und keine zweite Stelle.
 
 from . import aggregation  # noqa: E402
 from . import git_schreiben  # noqa: E402  — SWR-134: der eine Schreibweg nach Git
@@ -139,6 +141,19 @@ def speichere(root, projekt, ticket_id, werte):
                                       herkunft=HERKUNFT)
     except board.KonfliktFehler as e:
         raise TicketFehler(409, str(e))
+    except board.KeineAenderung as e:
+        # SWR-144, DoD 4 von pm/T-0065: „nichts passiert" ist ein **Erfolg** und kein
+        # Fehler. Vorher lief dieser Fall durch dieselbe 400 wie eine abgewiesene
+        # Eingabe — ein Knopf, dessen „schon erledigt" von seinem „hat nicht
+        # funktioniert" nicht zu unterscheiden ist, ist eine Anzeige ohne Aussage.
+        #
+        # ⚠ **Kein Commit.** Ein Commit ohne Änderung schriebe ein Ereignis in die
+        # Historie, das nicht stattgefunden hat — und die Historie ist bei uns die
+        # Quelle für `uebergang_historie` und `status_in_head`.
+        return {"ok": True, "unveraendert": True, "projekt": projekt,
+                "ticket": ticket_id, "ref": aggregation.ref(projekt, ticket_id),
+                "geaendert": [], "fingerprint": board.fingerprint(vorher_text),
+                "meldung": str(e)}
     except ValueError as e:
         raise TicketFehler(400, str(e))
 
@@ -166,3 +181,64 @@ def speichere(root, projekt, ticket_id, werte):
             "fingerprint": ergebnis["fingerprint"], "commit": _kurz_hash(repo),
             "meldung": (f"Gespeichert und committet ({', '.join(ergebnis['geaendert'])}) "
                         f"— {ergebnis['zeitpunkt']}.")}
+
+
+#: SWR-144: Die **einzige** Feldmenge, die eine Terminierung anfasst. Als Konstante und
+#: nicht als Literal im Aufruf, weil die Zusicherung sie messen muss: das Argument, warum
+#: dieser Weg seinen Fingerprint selbst lesen darf, hängt daran, dass es **ein** Feld ist
+#: und sein Wert nicht vom Client kommt. Käme ein zweites dazu, wäre das Argument still
+#: falsch — deshalb steht die Menge an einer Stelle, die ein Test lesen kann.
+TERMINIER_FELDER = ("geplant_sprint",)
+
+
+def naechster_sprint(root):
+    """Die Sprintnummer, auf die der Knopf terminiert: der laufende **+ 1**.
+
+    ⚠ Aus dem **Register** und nicht aus der Ansicht. Der Brief `pm/N-0038` sagt „für den
+    nächsten Durchlauf"; welcher das ist, weiß das Sprintregister (SWR-136) und niemand
+    sonst. Eine Nummer, die der Client mitbringt, wäre eine zweite Antwort auf dieselbe
+    Frage (B033) — und sie wäre genau dann falsch, wenn zwischen Anzeige und Klick ein
+    Sprint gewechselt hat.
+    """
+    return int(sprint_register.aktuell(root) or 0) + 1
+
+
+def terminiere(root, projekt, ticket_id):
+    """SWR-144 (pm/T-0065): `geplant_sprint` auf den nächsten Sprint setzen — ein Klick.
+
+    **Kein zweiter Schreibweg.** Die Funktion rechnet die Zielnummer aus und übergibt
+    dann an `speichere()` — dieselbe Validierung, dieselbe Rücknahme, derselbe Commit
+    mit derselben Identität. Ein eigener Schreibweg daneben wäre die Bauart, die B033
+    heißt, und der Knopf ist ihr denkbar schlechtester Anlass: er ändert **ein** Feld,
+    das `board.EDITIERBARE_FELDER` seit SWR-077 führt.
+
+    ⚠ **`prio` bleibt unberührt** (Festlegung aus `pm/T-0054`): „für den nächsten
+    Durchlauf" ist eine Aussage über den Termin, nicht über die Wichtigkeit.
+
+    ⚠ **Warum der Fingerprint hier selbst gelesen wird, obwohl SWR-080 existiert.**
+    SWR-080 schützt gegen ein **veraltetes Formular**: der Mensch sieht Werte, die
+    Routine ändert sie, das Formular schreibt die alten zurück. Geschützt ist der Wert,
+    den der Client gesehen hat. Eine Terminierung bringt **keinen** Wert mit — ihr
+    einziger Wert ist `naechster_sprint(root)`, und der wird **innerhalb** des
+    Schreibvorgangs aus dem Register geholt. Es gibt also nichts Veraltetes zu
+    überschreiben. Dieses Argument gilt **genau so lange, wie es ein Feld ist**; darum
+    steht die Feldmenge in `TERMINIER_FELDER` und wird zugesichert.
+    """
+    ziel = naechster_sprint(root)
+    repo = _repo(root, projekt)
+    try:
+        text, _t = board.lies_ticket(repo, ticket_id)
+    except ValueError as e:
+        raise TicketFehler(404, str(e))
+    werte = {"felder": {f: str(ziel) for f in TERMINIER_FELDER},
+             "fingerprint": board.fingerprint(text)}
+    erg = speichere(root, projekt, ticket_id, werte)
+    erg["geplant_sprint"] = ziel
+    if erg.get("unveraendert"):
+        # SWR-144: Der Klartext, der „schon terminiert" von „hat nicht funktioniert"
+        # trennt. Die Meldung von `board` nennt nur „keine Änderung"; hier steht, welche
+        # Nummer schon dasteht — ohne sie müsste der Leser das Ticket öffnen, um zu
+        # wissen, ob der Knopf etwas gemeint hat.
+        erg["meldung"] = (f"{erg['ref']} steht bereits auf Sprint {ziel} — nichts zu tun. "
+                          f"Das Ticket ist unverändert und es wurde nichts committet.")
+    return erg
