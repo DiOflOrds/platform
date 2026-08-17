@@ -95,6 +95,71 @@ def _naechste_nummer(text):
     return (max(ids) + 1) if ids else 1
 
 
+# SWR-124 (pm/T-0057): ab wann ein Freitext NICHT mehr in die Tabellenzelle gehört.
+#
+# ⚠ Die Zahl ist gemessen, nicht geschätzt. Die längsten Zellen im Bestand vor diesem
+# Ticket: 229 und 153 Zeichen (die 229 ist die Handreparatur aus Sprint 9). Der Fall,
+# der das Ticket ausgelöst hat, hatte rund 9.000. 400 liegt deutlich über allem, was je
+# als Tabellenzelle gemeint war, und weit unter dem, was eine Tabelle unlesbar macht.
+#
+# **Das ist keine Inhaltsgrenze.** Der Auftraggeber wird zu nichts gezwungen: Text
+# oberhalb der Schwelle wird ausgelagert und verlinkt, nicht abgelehnt und nicht
+# gekürzt. `FELD_MAX` bleibt daneben stehen, weil es eine andere Frage beantwortet
+# (Notbremse gegen einen versehentlichen Mega-Paste), und wird davon nicht berührt.
+ZELLE_MAX = 400
+KANDIDATEN_VERZ = ("pm", "management", "kandidaten")
+
+
+UMLAUTE = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}
+
+
+def _slug(wert):
+    """Dateinamensicherer Kurzname — kebab-case, wie die Kandidatennamen selbst.
+
+    Umlaute werden umschrieben statt entfernt: aus „CSV-Export für Reports" wird
+    `csv-export-fuer-reports` und nicht `csv-export-f-r-reports`. Der Dateiname wird
+    von Menschen gelesen, und ein Wort mit einem Loch darin ist schlechter zu finden
+    als eines mit einer Umschrift.
+    """
+    s = str(wert or "").lower()
+    for a, b in UMLAUTE.items():
+        s = s.replace(a, b)
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return (s or "kandidat")[:60]
+
+
+def _auslagern(root, name, feld, wert):
+    """SWR-124: langen Freitext in eine eigene Datei legen, Zelle wird Kurztext + Verweis.
+
+    **Warum auslagern und nicht begrenzen.** Eine Zeichengrenze im Formular zwänge den
+    Auftraggeber, seinen Text zu kürzen — das ist die schlechtere Hälfte einer Wahl, bei
+    der es eine bessere gibt. Der Text ist nicht das Problem; die **Tabellenzelle** ist
+    der falsche Ort dafür.
+
+    **Der Wortlaut wird nicht angetastet** — bis auf die Zeilenumbrüche, die
+    `_text_bereinigen` schon vorher zu Leerzeichen gemacht hat. Rekonstruieren wäre
+    Raten (B038); die Datei sagt deshalb ausdrücklich, dass sie den Text so führt, wie
+    er angekommen ist.
+
+    Rückgabe: `(zellentext, geschriebene_datei|None)`.
+    """
+    if len(wert) <= ZELLE_MAX:
+        return wert, None
+    verz = os.path.join(root, *KANDIDATEN_VERZ)
+    os.makedirs(verz, exist_ok=True)
+    datei = f"{_slug(name)}-{_slug(feld)}.md"
+    pfad = os.path.join(verz, datei)
+    kopf = (f"# {name} — {feld}\n\n"
+            f"> Angelegt über das Pool-Formular. Der Text steht hier **im Wortlaut, wie er "
+            f"angekommen ist**: Zeilenumbrüche werden vom Formular zu Leerzeichen "
+            f"zusammengezogen und lassen sich nicht zurückrechnen (SWR-124, pm/T-0057).\n\n")
+    with open(pfad, "w", encoding="utf-8", newline="\n") as f:
+        f.write(kopf + wert.strip() + "\n")
+    rel = "/".join(KANDIDATEN_VERZ[1:]) + "/" + datei     # relativ zur Pool-Datei im pm-Repo
+    kurz = wert[:ZELLE_MAX // 2].rstrip()
+    return f"{kurz} … ([Volltext](../{rel}))", pfad
+
+
 def _zeile_bauen(nummer, kategorie, kat, name, kurzbeschreibung, werte):
     kandidat_zelle = f"**{name}** — {kurzbeschreibung}" if kategorie == "team" else name
     zellen = [str(nummer), kandidat_zelle] + [
@@ -173,6 +238,20 @@ def kandidat_anlegen(root, kategorie, kandidat, kurzbeschreibung, werte):
         werte_bereinigt[feld] = wert  # bereinigt weiterreichen (_zeile_bauen liest daraus)
     werte = werte_bereinigt
 
+    # SWR-124 (pm/T-0057): Freitext oberhalb von ZELLE_MAX wandert in eine eigene Datei;
+    # die Tabelle behält Kurztext + Verweis. Erst hier, nach der Bereinigung — sonst
+    # entschiede die Länge VOR dem Zusammenziehen der Umbrüche über die Auslagerung, und
+    # zwei Texte mit gleichem Inhalt landeten verschieden.
+    ausgelagert = []
+    if kategorie == "team" and kurz:
+        kurz, datei = _auslagern(root, name, "Kurzbeschreibung", kurz)
+        if datei:
+            ausgelagert.append(datei)
+    for feld in list(werte):
+        werte[feld], datei = _auslagern(root, name, feld, werte[feld])
+        if datei:
+            ausgelagert.append(datei)
+
     pfad = os.path.join(root, *aggregation.POOL_DATEI)
     if not os.path.isfile(pfad):
         raise PoolFehler(404, "Projekt-Pool-Datei fehlt — " + "/".join(aggregation.POOL_DATEI))
@@ -202,7 +281,11 @@ def kandidat_anlegen(root, kategorie, kandidat, kurzbeschreibung, werte):
     open(pfad, "w", encoding="utf-8", newline="\n").write(neuer_text)
     repo = os.path.join(root, aggregation.POOL_DATEI[0])
     rel = os.path.join(*aggregation.POOL_DATEI[1:])
-    add = subprocess.run(["git", "-C", repo, "add", "--", rel], capture_output=True,
+    # SWR-124: die ausgelagerten Volltexte gehören in DENSELBEN Commit wie die Zeile, die
+    # auf sie verweist. Getrennt committet gäbe es einen Zustand, in dem die Tabelle auf
+    # eine Datei zeigt, die es in Git nicht gibt — ein toter Verweis, den niemand sieht.
+    pfade = [rel] + [os.path.relpath(p, repo) for p in ausgelagert]
+    add = subprocess.run(["git", "-C", repo, "add", "--"] + pfade, capture_output=True,
         text=True, encoding="utf-8", errors="replace")
     commit = subprocess.run(
         ["git", "-C", repo] + COMMIT_IDENTITAET +
@@ -210,6 +293,13 @@ def kandidat_anlegen(root, kategorie, kandidat, kurzbeschreibung, werte):
         capture_output=True, text=True, encoding="utf-8", errors="replace")
     if add.returncode or commit.returncode:
         open(pfad, "w", encoding="utf-8", newline="\n").write(text)  # Rücknahme (Muster tickets.py)
+        # SWR-124: die Rücknahme muss auch die ausgelagerten Dateien mitnehmen — sonst
+        # bliebe der Volltext eines Kandidaten liegen, den es im Pool nicht gibt.
+        for p in ausgelagert:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
         raise PoolFehler(503, "Git-Commit fehlgeschlagen — die Änderung wurde zurückgenommen: "
                           + (add.stderr + commit.stderr + commit.stdout).strip()[:400])
     return {"ok": True, "kategorie": kategorie, "kandidat": name, "nummer": nummer,
