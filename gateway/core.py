@@ -43,6 +43,14 @@ class Ergebnis:
     kosten_eur: float = 0.0
     dauer_s: float = 0.0
     meldung: str = ""
+    # SWR-137 (promt-team/T-0004): die Token-Baseline, getrennt nach statisch (Systemprompt,
+    # harte Regeln, Tool-Definitionen, eingebettetes Wissen) und dynamisch (Eingabe,
+    # Retrieval, Tool-Ergebnisse, Verlauf). ⚠ Vorgabe ist `None` und ausdrücklich **nicht**
+    # `0`: ein Executor, der nichts meldet, hat nicht null Token verbraucht, sondern nicht
+    # gemessen. Eine 0 hier wäre eine Schätzung, die wie ein Ergebnis aussieht — genau der
+    # Fall, den der Bestand siebenmal als `kosten_eur: 0.0` trägt.
+    token_statisch: int = None
+    token_dynamisch: int = None
 
 
 def _geaenderte_dateien(verzeichnis):
@@ -129,6 +137,11 @@ def _protokolliere(registry_pfad, rolle, aufgabe, kontext, erg):
             "status": erg.status,
             "kosten_eur": round(erg.kosten_eur, 4),
             "dauer_s": round(erg.dauer_s, 1),
+            # SWR-137: durchgereicht, **nicht** normalisiert. `None` bleibt `None` —
+            # ein `round(None or 0)` wäre die Stelle, an der die fehlende Messung zur
+            # gemessenen Null wird.
+            "token_statisch": erg.token_statisch,
+            "token_dynamisch": erg.token_dynamisch,
             "artefakte": erg.artefakte,
             "meldung": erg.meldung,
         })

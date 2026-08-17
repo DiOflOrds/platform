@@ -80,10 +80,32 @@ def aktion_verboten(cfg, aktion):
 
 
 def schreibe_run(registry_pfad, eintrag):
-    """Run-Registry-Eintrag (JSONL, append-only). Pflicht laut logging.run_registry."""
+    """Run-Registry-Eintrag (JSONL, append-only). Pflicht laut logging.run_registry.
+
+    ⚠ **SWR-137 (promt-team/T-0004):** hier — und nur hier — wird die Lauftelemetrie
+    angehängt. `backend.telemetrie` liefert je Feld `{wert, zustand}` und die
+    **namentliche** Liste der fehlenden Pflichteingaben. Der Grund, dass es an dieser
+    einen Stelle geschieht: `schreibe_run` ist der einzige Schreibweg in die Run-Registry
+    (`core._protokolliere` ist ihr einziger Aufrufer). Die Ergänzung in den Aufrufer zu
+    legen hieße, dass jeder künftige Schreiber sie kennen muss — dieselbe Lage, die
+    SWR-134 mit acht Git-Schreibwegen gekostet hat.
+
+    ⚠ Nichts wird ergänzt, was nicht gemessen wurde. Fehlt eine Zahl, steht sie in
+    `blocker` und **nicht** als `0` im Feld: der Auftrag von `promt-team/T-0001` verbietet
+    das Schätzen wörtlich, und eine `0` an der Stelle einer fehlenden Messung ist die
+    teuerste Form der Schätzung, weil sie wie ein Ergebnis aussieht.
+    """
     os.makedirs(os.path.dirname(registry_pfad), exist_ok=True)
     eintrag = dict(eintrag)
     eintrag.setdefault("zeit", datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    try:
+        # Import in der Funktion: `gateway` ist ohne `backend` lauffähig (der Gateway
+        # kennt die Organisation nicht), und eine fehlende Telemetrie darf einen Lauf
+        # nicht verlieren — die Registry-Pflicht wiegt schwerer als ihre Anreicherung.
+        from backend import telemetrie
+        eintrag = telemetrie.ergaenze(eintrag)
+    except ImportError:  # pragma: no cover — Gateway ohne backend auf dem Pfad
+        pass
     with open(registry_pfad, "a", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(eintrag, ensure_ascii=False) + "\n")
     return eintrag
