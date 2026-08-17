@@ -121,12 +121,18 @@ class OrgKopfblockTest(unittest.TestCase):
     # ---------------------------------------------------------------- Abgrenzung
 
     def test_abgrenzung_ist_die_von_swr_091(self):
-        """SWR-117: Frist, Takt, decision-request und geschlossene Tickets sind
+        """SWR-117: Termin, Takt, decision-request und geschlossene Tickets sind
         ausgenommen — dieselbe Grenze wie die Kachelzahl, sonst zaehlten zwei Stellen
-        verschieden (B033)."""
-        self.ticket("T-0001", frist="2026-08-30")
+        verschieden (B033).
+
+        ⚠ SWR-125: 'Termin' heisst ab Sprint 11 `geplant_sprint`, beim DR weiter `frist`.
+        Zwei Provokationen sind mitgewandert, die ZUSAGE dieses Tests ist unveraendert —
+        er prueft, dass Kachel und Org-Summe dieselbe Grenze ziehen, nicht welche.
+        Der DR bekommt seine `frist`, weil der Test sie im Docstring als Steuerung nennt
+        und sie vorher NICHT hatte (derselbe Fall wie in test_preflight_unterminiert)."""
+        self.ticket("T-0001", geplant_sprint="12")
         self.ticket("T-0002", takt="je-session")
-        self.ticket("T-0003", typ="decision-request")
+        self.ticket("T-0003", typ="decision-request", frist="2026-08-20")
         self.ticket("T-0004", status="done")
         self.ticket("T-0005", status="rejected")
         block = aggregation.organisation(self.root)

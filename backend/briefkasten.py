@@ -21,6 +21,73 @@ COMMIT_IDENTITAET = ["-c", "user.name=Mensch via Briefkasten",
 ANTWORT_KOPF = re.compile(r"(?m)^## Antwort\b(.*)$")
 DATUM_IM_KOPF = re.compile(r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?")
 
+# SWR-126 (pm/T-0059, Brief pm/N-0031): Ein Brief ist ein VERLAUF aus Beiträgen.
+# Jede `##`-Zeile, die ein Beitragskopf ist, beginnt einen neuen Beitrag.
+JEDE_H2 = re.compile(r"(?m)^## (?P<titel>.+?)[ \t]*$")
+# Die Klammer am Ende einer Überschrift — dort steht bei einem Beitrag die Zeit.
+KLAMMER_AM_ENDE = re.compile(r"\(([^)]*)\)\s*$")
+# Format neuer Beiträge: `## <Absender> (<ISO-Zeit>)`
+BEITRAG_FORMAT = "## %s (%s)"
+
+
+def _ist_beitragskopf(titel):
+    """Beginnt diese `##`-Zeile einen Beitrag — oder ist sie ein Abschnitt darin?
+
+    **Diese Unterscheidung ist der ganze Kern von `pm/T-0059`**, und sie ist gemessen
+    und nicht geraten. Im Bestand vom 2026-08-17 stehen in 41 Briefen:
+
+    * **52** Überschriften `## Antwort…` — **alle** mit ISO-Datum. (52 > 41: es gibt
+      längst Briefe mit **mehreren** Team-Beiträgen, von Hand angelegt. Der Wunsch des
+      Auftraggebers beschreibt also keine neue Idee, sondern eine bestehende Praxis
+      ohne Werkzeug.)
+    * **11** andere `##`-Überschriften, die **Abschnitte innerhalb** einer Antwort sind
+      (`## 1. Was heute fehlt`, `## 3. Was davon eine Entscheidung von dir braucht`).
+      Genau **eine** davon trägt ein ISO-Datum in Klammern:
+      `## Vollzug (Team, 2026-08-16, Routine-Session)` in `pm/N-0015` — und die **ist**
+      ein zweiter Beitrag, kein Abschnitt.
+
+    Ein naives „jede `##` ist ein Beitrag" zerlegte also **11 Briefe falsch**. Die Regel
+    lautet deshalb: Beitragskopf ist, was mit `Antwort` beginnt (der Einstieg aus B054,
+    verallgemeinert statt ersetzt) **oder** eine Klammer am Ende trägt, in der ein
+    ISO-Datum steht. Beides trifft auf alle 52 zu, auf `Vollzug` — und auf keinen der
+    zehn Abschnitte (`Frist 23.08.` ist kein ISO-Datum).
+    """
+    if titel.startswith("Antwort"):
+        return True
+    klammer = KLAMMER_AM_ENDE.search(titel)
+    return bool(klammer and DATUM_IM_KOPF.search(klammer.group(1)))
+
+
+def beitraege(body):
+    """Body -> Liste von Beiträgen `[{absender, zeit, text, ist_erstbeitrag}]` (SWR-126).
+
+    **Keine zweite Parserlogik neben `spalte_antwort`** (B033): `spalte_antwort` ist ab
+    hier eine Sicht **auf** dieser Funktion, kein eigener Leser. B054 hat gezeigt, was
+    passiert, wenn zwei Stellen dieselbe Datei verschieden lesen — dort blieb bei zehn
+    von dreißig Briefen die Antwort unsichtbar.
+
+    **Die 41 Bestandsbriefe bleiben ohne Migration lesbar.** Der Text vor dem ersten
+    Beitragskopf ist der Erstbeitrag des Menschen; sein Absender und seine Zeit stehen
+    nicht in einer Überschrift, sondern im Frontmatter (`von`, `zeit`). Deshalb bleiben
+    die beiden Felder hier **leer** statt geraten — sie zu erfinden wäre B038. Der
+    Aufrufer kennt sie.
+    """
+    koepfe = [m for m in JEDE_H2.finditer(body) if _ist_beitragskopf(m.group("titel"))]
+    erst = body[:koepfe[0].start()] if koepfe else body
+    liste_ = []
+    if erst.strip():
+        liste_.append({"absender": "", "zeit": "", "text": erst.strip(),
+                       "ist_erstbeitrag": True})
+    for i, m in enumerate(koepfe):
+        ende = koepfe[i + 1].start() if i + 1 < len(koepfe) else len(body)
+        titel = m.group("titel").strip()
+        datum = DATUM_IM_KOPF.search(titel)
+        klammer = KLAMMER_AM_ENDE.search(titel)
+        absender = (titel[:klammer.start()] if klammer else titel).strip()
+        liste_.append({"absender": absender, "zeit": datum.group(0) if datum else "",
+                       "text": body[m.end():ende].strip(), "ist_erstbeitrag": False})
+    return liste_
+
 
 class BriefkastenFehler(Exception):
     def __init__(self, code, meldung):
@@ -120,13 +187,22 @@ def spalte_antwort(body):
     Erkannt wird deshalb die **Überschrift**, nicht ihre Fassung; das Datum wird aus
     der Kopfzeile gelesen (mit Uhrzeit, wenn sie dasteht). Getrennt wird weiterhin
     an der **ersten** Antwort-Überschrift — alles darunter gehört zur Antwort.
+
+    **SWR-126 (pm/T-0059): ab jetzt eine Sicht auf `beitraege`, kein eigener Leser.**
+    Zwei Stellen, die dieselbe Datei verschieden zerlegen, sind B033 — und B054 ist der
+    Beleg, was das kostet. Die Zusage dieser Funktion bleibt unverändert: zwei Blöcke,
+    der zweite mit **allem** darunter, damit die Chat-Ansicht (`app.js`: `if (b.antwort)`)
+    weiterarbeitet, solange `pm/T-0060` die Verlaufsansicht nicht gebaut hat.
     """
-    m = ANTWORT_KOPF.search(body)
-    if not m:
+    liste_ = beitraege(body)
+    team = [b for b in liste_ if not b["ist_erstbeitrag"]]
+    if not team:
         return body.strip(), "", ""
-    datum = DATUM_IM_KOPF.search(m.group(1) or "")
-    return (body[:m.start()].strip(), body[m.end():].strip(),
-            datum.group(0) if datum else "")
+    # Der erste Beitragskopf trennt; darunter bleibt alles zusammen (Zusage s. o.).
+    koepfe = [m for m in JEDE_H2.finditer(body) if _ist_beitragskopf(m.group("titel"))]
+    erster = koepfe[0]
+    return (body[:erster.start()].strip(), body[erster.end():].strip(),
+            team[0]["zeit"])
 
 
 def _parse(pfad):
@@ -140,11 +216,19 @@ def _parse(pfad):
                 felder[k.strip()] = v.strip()
         body = m.group(2).strip()
     nachricht, antwort, antwort_datum = spalte_antwort(body)
+    # SWR-126: der Verlauf zusätzlich zu den beiden Blöcken. Kein Ersatz — `pm/T-0060`
+    # baut die Ansicht darauf; bis dahin liest `app.js` weiter `nachricht`/`antwort`.
+    verlauf = beitraege(body)
+    for b in verlauf:
+        if b["ist_erstbeitrag"]:
+            b["absender"] = felder.get("von", "?")
+            b["zeit"] = felder.get("zeit", "")
     return {"id": os.path.splitext(os.path.basename(pfad))[0],
             "von": felder.get("von", "?"), "zeit": felder.get("zeit", ""),
             "status": felder.get("status", "offen"),
             "nachricht": nachricht, "antwort": antwort,
-            "antwort_datum": antwort_datum}
+            "antwort_datum": antwort_datum,
+            "beitraege": verlauf}
 
 
 def liste(root, projekt="p0"):
@@ -163,8 +247,79 @@ def offene(root, projekt):
     return sum(1 for b in liste(root, projekt)["briefe"] if b["status"] == "offen")
 
 
-def sende(root, projekt, text, von="E. John"):
-    """SWR-050: Brief als Datei + sofortiger Commit. Gibt Brief-ID zurück."""
+def _beitrag_anhaengen(repo, verz, projekt, brief_id, text, von):
+    """SWR-126: einen Beitrag an einen bestehenden Brief hängen. Siehe `sende`.
+
+    Die ID wird geprüft, bevor irgendetwas geschrieben wird — und **nicht** durch
+    Zusammensetzen von Pfaden aus Nutzereingabe. `N-\\d{4}` ist die einzige zulässige
+    Form; alles andere wird abgelehnt, statt einen Pfad daraus zu bauen (ein `..` in
+    einer ID darf nie ein Verzeichnis verlassen).
+    """
+    if not re.fullmatch(r"N-\d{4}", brief_id):
+        raise BriefkastenFehler(400, f"Keine gültige Brief-Kennung: {brief_id!r}")
+    pfad = os.path.join(verz, f"{brief_id}.md")
+    if not os.path.isfile(pfad):
+        raise BriefkastenFehler(404, f"Brief {brief_id} gibt es nicht in {projekt}")
+    with open(pfad, encoding="utf-8") as f:
+        alt = f.read()
+    zeit = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    kopf = BEITRAG_FORMAT % (von, zeit)
+    neu, status_geaendert = _status_auf_offen(alt)
+    neu = neu.rstrip("\n") + f"\n\n{kopf}\n\n{text}\n"
+    with open(pfad, "w", encoding="utf-8", newline="\n") as f:
+        f.write(neu)
+    rel = os.path.relpath(pfad, repo)
+    ok, fehler, _wiederholt = _verbuche(
+        repo, rel, f"Briefkasten {brief_id}: weiterer Beitrag vom Menschen"
+                   + (" (Status zurück auf offen)" if status_geaendert else ""))
+    if not ok:
+        # Dieselbe Ehrlichkeit wie in `sende` (SWR-121): der Beitrag steht auf der
+        # Platte, bevor Git läuft. „Nicht verbucht" ist nicht „verloren".
+        raise BriefkastenFehler(503,
+            f"Dein Beitrag zu {brief_id} ist GESPEICHERT — aber noch nicht in Git "
+            f"verbucht. Bitte NICHT erneut senden; die nächste Routine-Session nimmt "
+            f"ihn mit. Ursache: " + fehler[:300])
+    return {"brief": brief_id, "projekt": projekt, "zeit": zeit,
+            "beitrag": True, "status_zurueckgesetzt": status_geaendert}
+
+
+def _status_auf_offen(text):
+    """Frontmatter-Status auf `offen` zurücksetzen (SWR-126, DoD 3 von pm/T-0059).
+
+    **Ohne diesen Schritt wäre der CR schädlich statt nützlich**, und das ist keine
+    Vorsicht, sondern gemessen: `offene()` trägt die Preflight-Zeile
+    `[pm] BRIEFKASTEN: N offene(r) Brief(e) — zuerst beantworten!` und die
+    Cockpit-Kachel. Ein Beitrag an einem bereits `beantwortet`-en Brief würde von
+    **keiner** Session gesehen — der Auftraggeber hätte geschrieben, das System hätte
+    es angenommen, und niemand hätte es gelesen. Das ist B038 in seiner teuersten
+    Form: eine Zusage, die nur aussieht wie eine.
+
+    Gibt `(neuer_text, geaendert)` zurück. Fehlt das Feld, wird nichts erfunden —
+    `status` ist Pflicht im Format, und ein fehlendes Feld ist ein anderer Fehler.
+    """
+    neu, n = re.subn(r"(?m)^status:[ \t]*\S.*$", "status: offen", text, count=1)
+    return neu, bool(n) and neu != text
+
+
+def sende(root, projekt, text, von="E. John", brief=None):
+    """SWR-050: Brief als Datei + sofortiger Commit. Gibt Brief-ID zurück.
+
+    **SWR-126 (pm/T-0059, Brief pm/N-0031): mit `brief="N-0031"` wird angehängt**
+    statt neu angelegt — der Wunsch des Auftraggebers, *„auf meine Fragen und deine
+    Antworten direkt weiter zu kommentieren"*. Fehlt `brief`, bleibt alles wie zuvor;
+    der Bestandspfad ist unberührt.
+
+    Zwei Dinge passieren dabei **im selben Commit** wie der neue Beitrag: der Text wird
+    angehängt **und** `status` geht auf `offen` zurück. Getrennte Commits wären zwei
+    Zustände, von denen einer ohne den anderen sichtbar werden kann — dieselbe Regel wie
+    bei SWR-124 (ausgelagerter Volltext im Commit seiner Zeile).
+
+    Dass hier immer der **Mensch** schreibt, ist keine Annahme: `COMMIT_IDENTITAET` steht
+    fest auf „Mensch via Briefkasten", dies ist der HMI-Schreibpfad. Das Team antwortet,
+    indem es die Datei bearbeitet — nicht über diese Funktion. Deshalb wird der Status
+    unbedingt zurückgesetzt und nicht an einer Absenderprüfung aufgehängt, die sich
+    fälschen ließe.
+    """
     text = (text or "").strip()
     if not text:
         raise BriefkastenFehler(400, "Nachricht darf nicht leer sein")
@@ -175,6 +330,8 @@ def sende(root, projekt, text, von="E. John"):
     except ValueError as e:
         raise BriefkastenFehler(404, str(e))
     verz = _verzeichnis(root, projekt)
+    if brief is not None:
+        return _beitrag_anhaengen(repo, verz, projekt, str(brief).strip(), text, von)
     os.makedirs(verz, exist_ok=True)
     nummern = [int(m.group(1)) for n in os.listdir(verz)
                if (m := re.fullmatch(r"N-(\d{4})\.md", n))]

@@ -315,9 +315,14 @@ class Api(BaseHTTPRequestHandler):
                 return self._json(e.code, {"fehler": str(e)})
             return self._json(200, erg)
         if self.path == "/api/briefkasten":  # SWR-050 (P4): Nachricht ans Team
+            # SWR-126 (pm/T-0059): optionales `brief` hängt an einen bestehenden Brief an.
+            # Fehlt es, ist der Aufruf byte-identisch zu vorher — `None` heißt „neu".
+            # Die Kennung wird in `briefkasten` geprüft, nicht hier: eine zweite Prüfung
+            # daneben wäre B033, und die tiefere ist die, die den Pfad baut.
             try:
                 erg = briefkasten.sende(type(self).wurzel, daten.get("projekt", "p0"),
-                                        daten.get("text", ""), daten.get("von", "E. John"))
+                                        daten.get("text", ""), daten.get("von", "E. John"),
+                                        brief=daten.get("brief") or None)
             except briefkasten.BriefkastenFehler as e:
                 return self._json(e.code, {"fehler": str(e)})
             return self._json(200, erg)

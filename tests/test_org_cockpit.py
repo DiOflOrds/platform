@@ -178,8 +178,13 @@ class UeberfaelligTest(RepoWelt):
         Tagen-über — nicht nur irgendwo in der auf drei gekürzten Aufgabenliste."""
         basis = self._repo("pm-test", team_typ="pm")
         os.remove(os.path.join(basis, "tickets", "T-0001.md"))
-        self._ticket(basis, "T-0001", typ="change-request", frist="2026-08-12")
-        self._ticket(basis, "T-0002", typ="change-request", frist="2026-08-30")
+        # ⚠ SWR-125: `geplant_sprint` dazu, weil ein Datum allein ab Sprint 11 kein
+        # Termin mehr ist. Die Zusage dieses Tests — "ueberfaellig kommt aus der FRIST" —
+        # ist unberuehrt; nur die Provokation ist vollstaendig gemacht.
+        self._ticket(basis, "T-0001", typ="change-request", frist="2026-08-12",
+                     geplant_sprint="11")
+        self._ticket(basis, "T-0002", typ="change-request", frist="2026-08-30",
+                     geplant_sprint="11")
         c = aggregation.cockpit(self.root, "pm-test", heute=self.HEUTE)
         self.assertEqual([u["id"] for u in c["ueberfaellig"]], ["T-0001"])
         self.assertEqual(c["ueberfaellig"][0]["frist"], "2026-08-12")
@@ -196,7 +201,7 @@ class UeberfaelligTest(RepoWelt):
         self.assertEqual(c["ueberfaellig"], [])
 
     def test_unterminierte_tickets_werden_gezaehlt_takte_nicht(self):
-        """SWR-091: Ein offenes Backlog-Ticket ohne Frist ist unterminiert und wird
+        """SWR-091: Ein offenes Backlog-Ticket ohne Termin ist unterminiert und wird
         als solches benannt. Takt-Tickets (SWR-074) tragen ihr Zeitkonzept im Feld
         `takt` und zählen deshalb nicht mit — sonst stünde die Kachel dauerhaft auf
         Alarm und die Zahl verlöre ihre Bedeutung."""
@@ -204,7 +209,9 @@ class UeberfaelligTest(RepoWelt):
         os.remove(os.path.join(basis, "tickets", "T-0001.md"))
         self._ticket(basis, "T-0001", typ="change-request")
         self._ticket(basis, "T-0002", typ="task", takt="je-session")
-        self._ticket(basis, "T-0003", typ="change-request", frist="2026-08-30")
+        # ⚠ SWR-125: das Gegenstueck traegt jetzt eine SPRINTNUMMER. Mit `frist` allein
+        # wuerde es mitzaehlen — und genau das ist die Umkehrung, nicht ein Fehler hier.
+        self._ticket(basis, "T-0003", typ="change-request", geplant_sprint="12")
         c = aggregation.cockpit(self.root, "pm-ohne", heute=self.HEUTE)
         self.assertEqual(c["unterminiert"], 1)
         self.assertEqual(c["ueberfaellig"], [])
