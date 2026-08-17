@@ -106,7 +106,13 @@ def execute(rolle, aufgabe, kontext):
         erg = Ergebnis(status="ok", provider=provider, modell=roh.get("modell", ""),
                        log=roh.get("log", ""), meldung=roh.get("log", ""),  # BB-1: Log in die
                        kosten_eur=float(roh.get("kosten_eur", 0.0)),        # Registry (Diagnose)
-                       dauer_s=time.time() - start)
+                       dauer_s=time.time() - start,
+                       # SWR-141: durchgereicht, NICHT normalisiert. Ein Executor, der
+                       # nichts meldet, liefert `None` — ein `roh.get("token_statisch", 0)`
+                       # wäre die Stelle, an der die fehlende Messung zur gemessenen Null
+                       # wird (derselbe Fehler wie `kosten_eur: 0.0`, SWR-137).
+                       token_statisch=roh.get("token_statisch"),
+                       token_dynamisch=roh.get("token_dynamisch"))
         nachher = _geaenderte_dateien(kontext["arbeitsverzeichnis"])
         if vorher is not None and nachher is not None:
             erg.artefakte = sorted(nachher - vorher)  # nur durch diesen Lauf geänderte Dateien
