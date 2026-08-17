@@ -64,15 +64,38 @@ class SchreibwegTest(unittest.TestCase):
         self.assertTrue(v.ok, v.fehler)
         self.assertTrue(v.wiederholt, "die Wiederholung muss stattgefunden haben")
 
-    def test_ohne_sperre_wird_gar_nicht_geraeumt(self):
-        """Gegenprobe: der gewöhnliche Weg räumt nicht — sonst räumte jeder Schreibvorgang."""
+    def test_vor_dem_ersten_versuch_wird_nicht_geraeumt(self):
+        """Gegenprobe: **vorsorglich** wird nicht geräumt — eine Sperre, die ein
+        laufender Prozess hält, beiseite zu benennen wäre schlimmer als der Fehler
+        (`platform/T-0015` DoD 2).
+
+        ⚠ **Diese Zusicherung ist in Sprint 16 verschärft und nicht abgeschwächt worden.**
+        Sie hieß bis dahin *„ohne Fehlschlag darf gar nicht geräumt werden"* und wurde von
+        SWR-139 rot — dort räumt `_lauf` **zwischen** `add` und `commit`. Ihre *Absicht*
+        war aber nie „nie räumen", sondern **kein vorsorgliches Räumen ohne Nachweis**:
+        das gelungene `add` ist der Nachweis, dass die danach liegende Sperre die eigene
+        ist, denn hätte sie vorher gelegen, wäre das `add` an ihr gescheitert. Was hier
+        verboten bleibt, ist die Räumung **vor** dem ersten Git-Aufruf — dort gibt es
+        keinen Nachweis. Zugesichert wird deshalb ab jetzt die **Reihenfolge** und nicht
+        mehr die Abwesenheit. Verifiziert: SWR-134, SWR-139."""
         self._datei()
-        gerufen = []
-        v = git_schreiben.verbuche(self.repo, ["a.txt"], "Commit",
-                                   entsperren=lambda r: gerufen.append(r) or 1)
+        spur = []
+        echt = subprocess.run
+
+        def beobachte(befehl, *a, **kw):
+            if isinstance(befehl, (list, tuple)) and "git" in befehl[0]:
+                spur.append("git")
+            return echt(befehl, *a, **kw)
+
+        subprocess.run = beobachte
+        try:
+            v = git_schreiben.verbuche(self.repo, ["a.txt"], "Commit",
+                                       entsperren=lambda r: spur.append("raeumt") or 1)
+        finally:
+            subprocess.run = echt
         self.assertTrue(v.ok, v.fehler)
         self.assertFalse(v.wiederholt)
-        self.assertEqual(gerufen, [], "ohne Fehlschlag darf nicht geräumt werden")
+        self.assertEqual(spur[0], "git", f"vor dem ersten Git-Aufruf geräumt: {spur}")
 
     def test_geraeumt_wird_genau_einmal(self):
         """Keine Schleife: ein dauerhafter Fehler wird gemeldet, nicht ausgesessen."""
@@ -309,6 +332,96 @@ class GenauEineStelleTest(unittest.TestCase):
                 text = f.read()
             self.assertIn("git_schreiben", text,
                           f"{rel} schreibt nach Git, kennt den Schreibweg aber nicht")
+
+
+class EigeneSperreTest(unittest.TestCase):
+    """⚠⚠ Nebenbefund an SWR-134, gemessen in Sprint 15 (SWR-139, platform/T-0017 DoD 6).
+
+    `verbuche()` ruft `add`, dann `commit`. Auf diesem Mount hinterlaesst **das eigene
+    `add`** eine `index.lock`, an der das folgende `commit` scheitert; die Wiederholung
+    raeumt und wiederholt das **Paar** — und laeuft in dieselbe Folge, weil die Sperre bei
+    jedem Versuch **neu** entsteht. Gemessen an drei Commits, die `FEHLER | geraeumt: 19`
+    quittierten.
+
+    > **Der Rueckfall ist gegen die Sperre eines FREMDEN Laufs gebaut. Gegen die eigene
+    > hilft er nicht, weil er sie zwischen seinen beiden Haelften selbst erzeugt.**
+
+    ⚠ Die Raeumung **zwischen** `add` und `commit` ist erlaubt, und der Grund muss
+    ausgesprochen werden statt vorausgesetzt: **ein gelungenes `add` ist der Nachweis,
+    dass beim Start keine Sperre lag** — die danach liegende ist also nachweislich die
+    eigene. Nach einem **gescheiterten** `add` gibt es diesen Nachweis nicht, und dann
+    wird dort auch nicht geraeumt. Die beiden Haelften stehen in **getrennten**
+    Zusicherungen, weil eine einzelne durch Verschieben der Regel in die eine oder andere
+    Richtung gruen zu bekommen waere.
+
+    Verifiziert: SWR-139.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.repo = os.path.join(self.root, "repo")
+        os.makedirs(self.repo)
+        subprocess.run(["git", "-C", self.repo, "init", "-q", "-b", "main"],
+                       capture_output=True)
+        with open(os.path.join(self.repo, "a.txt"), "w", encoding="utf-8") as f:
+            f.write("x")
+
+    def test_nach_gelungenem_add_wird_zwischen_add_und_commit_geraeumt(self):
+        """Die Raeumung laeuft NACH dem `add` und VOR dem `commit` — an der Aufrufreihen-
+        folge zugesichert, nicht am Endergebnis. Verifiziert: SWR-139."""
+        spur = []
+        echt = subprocess.run
+
+        def beobachte(befehl, *a, **kw):
+            if isinstance(befehl, (list, tuple)) and "add" in befehl:
+                spur.append("add")
+            elif isinstance(befehl, (list, tuple)) and "commit" in befehl:
+                spur.append("commit")
+            return echt(befehl, *a, **kw)
+
+        subprocess.run = beobachte
+        try:
+            git_schreiben.verbuche(self.repo, ["a.txt"], "m",
+                                   entsperren=lambda r: spur.append("raeumt") or 0)
+        finally:
+            subprocess.run = echt
+        self.assertEqual(spur[:3], ["add", "raeumt", "commit"], spur)
+
+    def test_nach_gescheitertem_add_wird_dort_nicht_geraeumt(self):
+        """⚠ Die andere Haelfte des Nachweises: scheitert das `add`, ist die Sperre
+        NICHT nachweislich die eigene — dann wird zwischen den Haelften nicht geraeumt.
+        Verifiziert: SWR-139."""
+        spur = []
+        echt = subprocess.run
+
+        class Fehl:
+            returncode, stderr, stdout = 128, "fatal: index.lock", ""
+
+        def beobachte(befehl, *a, **kw):
+            if isinstance(befehl, (list, tuple)) and "add" in befehl:
+                spur.append("add")
+                return Fehl()
+            if isinstance(befehl, (list, tuple)) and "commit" in befehl:
+                spur.append("commit")
+            return echt(befehl, *a, **kw)
+
+        subprocess.run = beobachte
+        try:
+            git_schreiben.verbuche(self.repo, ["a.txt"], "m",
+                                   entsperren=lambda r: spur.append("raeumt") or 0)
+        finally:
+            subprocess.run = echt
+        # zwischen dem gescheiterten `add` und dem `commit` steht KEINE Raeumung
+        self.assertEqual(spur[:2], ["add", "commit"], spur)
+
+    def test_ohne_pfade_gibt_es_kein_zwischenraeumen(self):
+        """Ohne `add` gibt es keinen Nachweis und also auch nichts zu raeumen — der Fall
+        'schon gestaget'. Verifiziert: SWR-139."""
+        spur = []
+        subprocess.run(["git", "-C", self.repo, "add", "-A"], capture_output=True)
+        git_schreiben.verbuche(self.repo, [], "m",
+                               entsperren=lambda r: spur.append("raeumt") or 0)
+        self.assertNotIn("raeumt", spur)
 
 
 if __name__ == "__main__":

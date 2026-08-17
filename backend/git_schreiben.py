@@ -165,13 +165,41 @@ def ruf(repo, args, identitaet=None, entsperren=None):
     return _einmal_wiederholen(versuch, repo, entsperren)
 
 
-def _lauf(repo, pfade, meldung, identitaet):
+def _lauf(repo, pfade, meldung, identitaet, entsperren=None):
+    """`add` + `commit` als Paar — mit der Räumung **zwischen** beiden (SWR-139).
+
+    ⚠⚠ **Nebenbefund an SWR-134, gemessen in Sprint 15.** Der Rückfall in
+    :func:`_einmal_wiederholen` ist gegen die Sperre eines **fremden** Laufs gebaut.
+    Gegen die **eigene** hilft er nicht: auf diesem Mount hinterlässt das eigene `add`
+    eine `index.lock`, an der das folgende `commit` scheitert — und die Wiederholung
+    fährt das **Paar** noch einmal, erzeugt die Sperre also erneut. Drei Commits von
+    Sprint 15 quittierten `FEHLER | geraeumt: 19` und gingen erst nach einem getrennten
+    Lock-Lauf durch.
+
+    > **Der Rückfall ist gegen die Sperre eines fremden Laufs gebaut. Gegen die eigene
+    > hilft er nicht, weil er sie zwischen seinen beiden Hälften selbst erzeugt.**
+
+    ⚠ Hier **vor** einem Fehlschlag zu räumen sieht wie das vorsorgliche Räumen aus, das
+    `platform/T-0015` DoD 2 ausdrücklich verworfen hat — und ist es nicht. Der
+    Unterschied ist ein **Nachweis**: ein `add`, das **gelingt**, belegt, dass beim
+    Start keine Sperre lag; die danach liegende ist damit nachweislich die eigene.
+    Genau deshalb wird nach einem **gescheiterten** `add` hier nicht geräumt (dann
+    gehört die Sperre womöglich einem laufenden Prozess), und ohne `pfade` gibt es kein
+    `add` und also auch keinen Nachweis.
+    """
     add_ok, add_err, add_out = True, "", ""
     if pfade:
         add = subprocess.run(["git", "-C", repo, "add", "--"] + list(pfade),
                              capture_output=True, text=True, encoding="utf-8",
                              errors="replace")
         add_ok, add_err, add_out = add.returncode == 0, add.stderr, add.stdout
+        if add_ok:
+            # Eingefasst wie in `_einmal_wiederholen`: eine scheiternde Reparatur darf
+            # nie schlimmer sein als keine.
+            try:
+                (entsperren or entsperre)(repo)
+            except Exception:
+                pass
     commit = subprocess.run(["git", "-C", repo] + list(identitaet) + ["commit", "-m", meldung],
                             capture_output=True, text=True, encoding="utf-8",
                             errors="replace")
@@ -203,5 +231,5 @@ def verbuche(repo, pfade, meldung, identitaet=None, entsperren=None):
     """
     identitaet = list(identitaet if identitaet is not None else TEAM_IDENTITAET)
     pfade = [pfade] if isinstance(pfade, str) else list(pfade or [])
-    return _einmal_wiederholen(lambda: _lauf(repo, pfade, meldung, identitaet),
+    return _einmal_wiederholen(lambda: _lauf(repo, pfade, meldung, identitaet, entsperren),
                                repo, entsperren)

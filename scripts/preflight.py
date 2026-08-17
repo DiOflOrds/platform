@@ -499,6 +499,26 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
                 befunde += 1
         else:
             print(f"[{name}] sauber — {tracking}")
+    # SWR-139 (platform/T-0017), DoD 4: unverbuchte STATUS-Stände als eigener Befund.
+    # SWR-110 oben meldet jede geänderte Datei; was fehlte, ist die Zuspitzung auf
+    # `status`. Der Unterschied ist keine Feinheit: ein ergänzter Tickettext ist kein
+    # verlorener Zustand, ein nicht gebuchter Statuswechsel ist einer — der nächste
+    # Wechsel überschreibt ihn, und in der Historie fehlt eine Stufe (gemessen an
+    # `pm/T-0052`, Sprint 15). Nach SWR-122 legt die Prüfung hier ihren Leser fest.
+    for _name, _pfad in (board.projekt_pfade(root) or []):
+        try:
+            _offen = board.unverbuchte_status(_pfad)
+        except Exception as e:  # eine scheiternde Prüfung meldet sich, statt zu schweigen
+            print(f"[{_name}] unverbuchte Statuswechsel: NICHT PRÜFBAR — {e}")
+            continue
+        if not _offen:
+            continue
+        for _zeile in _offen:
+            print(f"  UNVERBUCHTER STATUS  {_zeile}")
+        print(f"[{_name}] BEFUND: {len(_offen)} Statuswechsel geschrieben und nicht "
+              f"gebucht. Ein Zustandswechsel ist EIN Vorgang (SWR-139) — buchen, sonst "
+              f"überschreibt ihn der nächste Wechsel lautlos.")
+        befunde += 1
     # SWR-029: board-check über ALLE Projekte (Discovery-Konvention, ADR-004);
     # SWR-070/p9-T-0007: inkl. Projektordner im Sammel-Repo projects/ (pm/D003).
     projekte = board.projekt_pfade(root) or [("p0", os.path.join(root, "p0"))]

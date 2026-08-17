@@ -805,14 +805,90 @@ def generiere_board(tickets, stand=None):
     return "\n".join(zeilen) + "\n"
 
 
-def setze_status(repo, tid, neu, reviewer=None, notiz=None):
-    """T-0062: Statuswechsel als Skript-Route — Übergangsprüfung gegen den
-    AKTUELLEN Dateizustand, Pflichtfeld-Logik (reviewer bei in_review),
-    geändert-Datum, Validierung, BOARD-Regeneration. Wirft ValueError bei
-    unzulässigem Übergang (Session und Tick nutzen denselben Pfad)."""
+def unverbuchte_status(repo):
+    """Tickets, deren `status` in der Arbeitskopie von `HEAD` abweicht (SWR-139).
+
+    ⚠ **Die Zuspitzung auf `status` ist der Punkt.** SWR-110 meldet die Arbeitskopie
+    ohnehin; ein Befund über *jede* Änderung wäre bei laufender Arbeit dauernd rot und
+    trainierte das Wegsehen an — dieselbe Falle wie die 42 Alt-DRs in SWR-131. Ein
+    ergänzter Tickettext ist kein verlorener Zustand; ein nicht gebuchter
+    **Statuswechsel** ist einer, weil der nächste Wechsel ihn überschreibt.
+
+    Gelesen wird durch :func:`status_in_head` — die Funktion, die es **schon gab**.
+    ⚠ Beim Bau von SWR-139 wurde daneben eine zweite gleichen Namens geschrieben, die
+    die erste stillschweigend überschrieb; Python meldet das nicht. Gefunden hat es
+    `test_board.VerschachteltesRepoUebergangTest`, weil die vorhandene Fassung drei
+    Dinge kann, die die neue nicht konnte: den Monorepo-Präfix `p11/tickets/…`
+    (platform/T-0008), das ausdrückliche UTF-8 (platform/T-0007) und die Unterscheidung
+    von „neu" (`None`) und „unlesbar" (:data:`UNLESBAR`).
+
+    :data:`UNLESBAR` ist hier **kein** Befund: `validiere_alle` meldet ihn bereits, und
+    ein zweiter Melder derselben Sache wäre B033.
+
+    Rückgabe: Liste von Meldungen, jede nennt Ticket, Dateistand und HEAD-Stand (B038).
+    """
+    befunde = []
+    tickets, _ = lade_tickets(repo)
+    for t in tickets:
+        if not t.get("_datei"):
+            continue
+        in_head = status_in_head(repo, t["_datei"])
+        if in_head is None or in_head is UNLESBAR:
+            continue
+        if in_head != t.get("status"):
+            befunde.append(f"{os.path.basename(os.path.abspath(repo))}/{t.get('id')}: "
+                           f"Statuswechsel unverbucht — Datei '{t.get('status')}', "
+                           f"HEAD '{in_head}'")
+    return befunde
+
+
+def setze_status(repo, tid, neu, reviewer=None, notiz=None, meldung=None,
+                 head_pruefen=True, _verbuche=None):
+    """T-0062 / SWR-139: Statuswechsel als **ein** Vorgang — schreiben **und** buchen.
+
+    Übergangsprüfung gegen den AKTUELLEN Dateizustand, Pflichtfeld-Logik (reviewer bei
+    in_review), geändert-Datum, Validierung, BOARD-Regeneration. Wirft ValueError bei
+    unzulässigem Übergang (Session und Tick nutzen denselben Pfad).
+
+    ⚠⚠ **Warum diese Funktion committet.** Bis Sprint 15 war ein Statuswechsel zwei
+    Aufrufe: erst schreiben, dann buchen. Scheitert der zweite an einer verwaisten
+    `.git/index.lock`, steht der Zustand in der Datei und **nicht** in der Historie —
+    der nächste Wechsel überschreibt ihn, und eine Stufe fehlt. Das ist in **einem** Lauf
+    zweimal eingetreten und einmal committet worden (`pm/T-0052`: `in_progress -> done`).
+
+    > **Ein Zustandswechsel, der aus zwei Vorgängen besteht, hat einen Zwischenzustand —
+    > und jeder Zwischenzustand, den niemand bucht, ist ein verlorener Zustand.**
+
+    `meldung` ist die Commit-Meldung; der Aufrufer **baut keinen Commit**. Ohne `meldung`
+    wird wie bisher nur geschrieben — die bestehenden Aufrufer (Orchestrator-Tick,
+    `feedback_route`) schreiben mitten in ihrer **eigenen** Transaktion und dürfen davon
+    nicht überrascht werden.
+
+    **Scheitert die Buchung, gilt der Wechsel als nicht geschehen**: Ticketdatei und
+    `BOARD.md` werden auf ihre Bytes von vorher zurückgesetzt und der Fehler geworfen.
+    ⚠ Das ist die wichtigere Hälfte — ein Wechsel, der die Datei ändert und den Fehler
+    *nur meldet*, ist genau der Zustand, gegen den SWR-139 existiert.
+
+    `head_pruefen=False` wählt die Prüfung „kein zweiter Wechsel auf einem unverbuchten"
+    ab; sie ist für den Aufrufer gedacht, der selbst mitten in einer Transaktion steckt
+    (der Tick schreibt drei Stände innerhalb eines Branches).
+
+    `_verbuche` ist die **Naht für die Gegenprobe** und keine Konfiguration: ohne sie
+    ließe sich die Zusicherung „gescheiterte Buchung = kein Wechsel" nicht prüfen, und
+    eine Zusicherung ohne Prüfung ist die Lage aus SWR-125.
+    """
     pfad = os.path.join(repo, "tickets", f"{tid}.md")
     if not os.path.exists(pfad):
         raise ValueError(f"unbekanntes Ticket: {tid}")
+    if head_pruefen:
+        in_head = status_in_head(repo, f"{tid}.md")
+        if in_head is not None and in_head is not UNLESBAR:
+            _text, _t = lies_ticket(repo, tid)
+            if _t.get("status") != in_head:
+                raise ValueError(
+                    f"{tid}: unverbuchter Statuswechsel — die Datei steht auf "
+                    f"'{_t.get('status')}', HEAD auf '{in_head}'. Erst buchen, dann "
+                    f"weiterbewegen (SWR-139).")
     text = open(pfad, encoding="utf-8").read().replace("\r\n", "\n")
     t, err = parse_frontmatter(text)
     if err:
@@ -834,13 +910,40 @@ def setze_status(repo, tid, neu, reviewer=None, notiz=None):
             text = re.sub(r"(?m)^erstellt:", f"{feld}: {wert}\nerstellt:", text, count=1)
     if notiz:
         text = text.rstrip() + f"\n\n{notiz}\n"
+    # Bytes von VORHER merken — sie sind der Rückweg, falls die Buchung scheitert.
+    board_pfad = os.path.join(repo, "BOARD.md")
+    alt_ticket = open(pfad, "rb").read()
+    alt_board = open(board_pfad, "rb").read() if os.path.exists(board_pfad) else None
     open(pfad, "w", encoding="utf-8", newline="\n").write(text)
     tickets, probleme = lade_tickets(repo)
     probleme += validiere_alle(tickets, repo, git_pruefen=False)
     if probleme:
+        open(pfad, "wb").write(alt_ticket)
         raise ValueError("Ticket-Update invalide: " + "; ".join(probleme))
-    open(os.path.join(repo, "BOARD.md"), "w", encoding="utf-8", newline="\n").write(
-        generiere_board(tickets))
+    open(board_pfad, "w", encoding="utf-8", newline="\n").write(generiere_board(tickets))
+    if not meldung:
+        return
+    verbuche = _verbuche
+    if verbuche is None:
+        hier = os.path.dirname(os.path.abspath(__file__))
+        oben = os.path.normpath(os.path.join(hier, ".."))
+        if oben not in sys.path:
+            sys.path.insert(0, oben)
+        from backend import git_schreiben  # in der Funktion: sonst Zyklus (SWR-134)
+        verbuche = git_schreiben.verbuche
+    ergebnis = verbuche(repo, [os.path.relpath(pfad, repo), "BOARD.md"], meldung)
+    if getattr(ergebnis, "ok", False):
+        return
+    # Gescheiterte Buchung: der Wechsel gilt als NICHT GESCHEHEN.
+    open(pfad, "wb").write(alt_ticket)
+    if alt_board is None:
+        if os.path.exists(board_pfad):
+            os.remove(board_pfad)
+    else:
+        open(board_pfad, "wb").write(alt_board)
+    raise ValueError(
+        f"{tid}: Buchung gescheitert, Wechsel {alt} -> {neu} zurückgenommen — "
+        f"{(getattr(ergebnis, 'stderr', '') or '').strip()[:300]}")
 
 
 def ticket_pfad(repo, tid):
@@ -980,9 +1083,15 @@ def aktualisiere(repo, tid, aenderungen, body=None, erwarteter_fingerprint=None,
 
 
 def _status_cli(argv):
-    """`board.py <repo> status T-xxxx <neu> [--reviewer r] [--notiz text]` (T-0062)."""
+    """`board.py <repo> status T-xxxx <neu> [--reviewer r] [--notiz t] [--meldung m]`.
+
+    T-0062, erweitert um SWR-139: mit `--meldung` ist der Wechsel **ein** Vorgang —
+    geschrieben und gebucht. Ohne sie bleibt es beim alten Verhalten, denn der Aufrufer,
+    der mitten in seiner eigenen Transaktion steckt, darf nicht dazwischen committen.
+    """
     repo, rest = argv[0], argv[2:]
-    reviewer = notiz = None
+    reviewer = notiz = meldung = None
+    head_pruefen = True
     pos = []
     i = 0
     while i < len(rest):
@@ -990,18 +1099,25 @@ def _status_cli(argv):
             reviewer, i = rest[i + 1], i + 2
         elif rest[i] == "--notiz":
             notiz, i = rest[i + 1], i + 2
+        elif rest[i] == "--meldung":
+            meldung, i = rest[i + 1], i + 2
+        elif rest[i] == "--ohne-head-pruefung":
+            head_pruefen, i = False, i + 1
         else:
             pos.append(rest[i])
             i += 1
     if len(pos) != 2:
-        print("Nutzung: board.py <repo> status T-xxxx <neu> [--reviewer r] [--notiz text]")
+        print("Nutzung: board.py <repo> status T-xxxx <neu> [--reviewer r] "
+              "[--notiz text] [--meldung commit-text] [--ohne-head-pruefung]")
         return 2
     try:
-        setze_status(repo, pos[0], pos[1], reviewer, notiz)
+        setze_status(repo, pos[0], pos[1], reviewer, notiz, meldung=meldung,
+                     head_pruefen=head_pruefen)
     except ValueError as e:
         print(f"STATUS ABGELEHNT: {e}")
         return 1
-    print(f"OK: {pos[0]} -> {pos[1]}, BOARD.md aktualisiert.")
+    gebucht = " und GEBUCHT" if meldung else ""
+    print(f"OK: {pos[0]} -> {pos[1]}, BOARD.md aktualisiert{gebucht}.")
     return 0
 
 
