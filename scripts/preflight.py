@@ -139,12 +139,87 @@ def entferne_artefakte(pfade):
 
 
 def repo_status(repo):
-    """(dirty_zeilen, tracking_zeile) aus `git status --porcelain -b`."""
-    out = subprocess.run(["git", "-C", repo, "status", "--porcelain", "-b"],
+    """(dirty_zeilen, tracking_zeile) aus `git status --porcelain -b`.
+
+    `-uall` (SWR-110): ohne diese Option fasst git einen nicht getrackten Ordner zu
+    EINER Zeile `?? tickets/` zusammen. Ein neu angelegtes Ticket in einem neuen
+    Ordner wäre damit unsichtbar — genau der Fall, in dem eine Datei nur in der
+    Arbeitskopie existiert. Ein Test hat das gefunden (platform/T-0010)."""
+    out = subprocess.run(["git", "-C", repo, "status", "--porcelain", "-uall", "-b"],
                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     zeilen = out.stdout.splitlines()
     tracking = zeilen[0] if zeilen else ""
     return [z for z in zeilen[1:] if z.strip()], tracking
+
+
+# --- SWR-110: Gemessenes gegen Geliefertes -------------------------------------
+# trace_matrix und board lesen die ARBEITSKOPIE, `abschluss.cmd [4/5]` pusht HEAD.
+# Wo beide in einer Datei auseinandergehen, die eine Verifikation liest, beschreibt
+# das grüne Ergebnis einen Zustand, den kein Repository trägt (platform/T-0010:
+# Sprint 6 meldete "109 SWRs / 0 Lücken", während SWR-109 nur auf der Platte stand).
+
+def _pfad_aus_statuszeile(zeile):
+    """Dateipfad aus einer `git status --porcelain`-Zeile (XY<space>pfad).
+
+    Rename/Copy melden `alt -> neu`; gemeint ist das Ziel. Anführungszeichen setzt
+    git bei Sonderzeichen im Namen."""
+    pfad = zeile[3:].strip() if len(zeile) > 3 else ""
+    if " -> " in pfad:
+        pfad = pfad.split(" -> ", 1)[1]
+    return pfad.strip('"')
+
+
+def ist_verifikationsquelle(pfad):
+    """Liest eine Verifikation diese Datei?
+
+    Drei Sorten, jede mit einem benennbaren Leser:
+      * Anforderungsdokument -> trace_matrix.py (SWR-Bestand und Status)
+      * Ticketdatei          -> board.py --check (Validierung, BOARD.md)
+      * BOARD.md             -> der CI-Schritt "BOARD.md aktuell?" jedes Projekt-Repos
+    BOARD.md steht bewusst mit in der Liste: sie ist der Grund, aus dem es die
+    Stand-Zeilen-Ausnahme überhaupt gibt (platform/T-0010)."""
+    p = pfad.replace("\\", "/")
+    teile = p.split("/")
+    if teile[-1] == "BOARD.md":
+        return True
+    if teile[-1] == "software-requirements.md":
+        return "requirements" in teile[:-1] or len(teile) == 1
+    return len(teile) >= 2 and teile[-2] == "tickets" and p.endswith(".md")
+
+
+def nur_stand_zeile(repo, pfad):
+    """True, wenn die Änderung an dieser Datei AUSSCHLIESSLICH die `Stand:`-Zeile ist.
+
+    Am tatsächlichen Diff entschieden und nicht am Dateinamen (DoD 3/4 von
+    platform/T-0010): `board.py` erzeugt die Stand-Zeile bei jedem Lauf neu, also
+    sind fünf Repos jeden Tag unsauber. Eine Ausnahme nach Dateiname würde eine
+    BOARD.md mit echter Inhaltsänderung mit durchlassen."""
+    out = subprocess.run(["git", "-C", repo, "diff", "--unified=0", "--", pfad],
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if out.returncode != 0 or not out.stdout.strip():
+        return False  # nicht getrackt oder nicht lesbar -> keine Ausnahme
+    geaendert = [z for z in out.stdout.splitlines()
+                 if (z.startswith("+") or z.startswith("-"))
+                 and not z.startswith(("+++", "---"))]
+    if not geaendert:
+        return False
+    return all(z[1:].lstrip().startswith("Stand:") for z in geaendert)
+
+
+def arbeitskopie_befunde(repo, dirty):
+    """(befund_pfade, gemeldete_pfade) für einen Repo-Status. SWR-110."""
+    befunde, alle = [], []
+    for zeile in dirty:
+        pfad = _pfad_aus_statuszeile(zeile)
+        if not pfad:
+            continue
+        alle.append(pfad)
+        if not ist_verifikationsquelle(pfad):
+            continue
+        if os.path.basename(pfad) == "BOARD.md" and nur_stand_zeile(repo, pfad):
+            continue
+        befunde.append(pfad)
+    return befunde, alle
 
 
 def board_check(projekt_repo):
@@ -231,7 +306,20 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
             continue
         dirty, tracking = repo_status(repo)
         if dirty:
+            # SWR-110: Dateien NENNEN statt zählen. Sechs Zeilen "1 Datei(en)" sahen in
+            # Sprint 6 gleich aus — fünfmal eine regenerierte Stand-Zeile, einmal eine
+            # ganze Anforderung, die deshalb ungesehen ungepusht blieb (platform/T-0010).
+            unverbucht, alle = arbeitskopie_befunde(repo, dirty)
             print(f"[{name}] Arbeitskopie nicht sauber ({len(dirty)} Datei(en)) — {tracking}")
+            for pfad in alle:
+                marke = "  UNVERBUCHT" if pfad in unverbucht else "  "
+                print(f"  {marke} {pfad}")
+            if unverbucht:
+                print(f"[{name}] BEFUND: {len(unverbucht)} Datei(en), die eine Verifikation "
+                      f"liest, sind nicht committet — gemessen wird die Arbeitskopie, "
+                      f"gepusht wird HEAD. Committen, sonst gilt das Ergebnis für "
+                      f"keinen Repo-Stand.")
+                befunde += 1
         else:
             print(f"[{name}] sauber — {tracking}")
     # SWR-029: board-check über ALLE Projekte (Discovery-Konvention, ADR-004);
