@@ -432,7 +432,13 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
     for t in tickets:
         if t.get("typ") != "decision-request" or t.get("status") in ("done", "rejected"):
             continue
-        if "**Entscheidung (" in t.get("_body", ""):
+        # SWR-131: war bis Sprint 13 eine **dritte** Kopie des Markers (die Zeile stand
+        # hier wörtlich). Sie war sachlich richtig — der Cockpit-DR-Block hat
+        # `p12/T-0007` nach der Entscheidung korrekt nicht mehr geführt, während
+        # Preflight und drei Berichte das Gegenteil behaupteten. ⚠ Genau das ist der
+        # Preis von B033: nicht dass alle Kopien falsch sind, sondern dass sie
+        # **verschieden** sind und der Leser nicht weiß, welcher Anzeige er glauben soll.
+        if board.dr_entschieden(t):
             continue
         # SWR-091: die Ampel-Regel liegt seit pm/T-0030 in board.frist_ampel —
         # sie galt hier inline und wird jetzt von DRs und Backlog-Tickets geteilt.

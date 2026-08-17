@@ -179,6 +179,54 @@ class DrNichtVerbuchtTest(unittest.TestCase):
         self.assertEqual(len(aggregation.dr_entschieden_nicht_verbucht(self.root)), 1)
 
 
+class AlleLeserTest(unittest.TestCase):
+    """⚠ SWR-131 sagt „**jeder** Leser" — und der erste Anlauf hat zwei uebersehen.
+
+    Beim Bau dieser Anforderung wurden zunaechst nur `board`/`aggregation`/`preflight`
+    umgestellt. Die Nachpruefung fand **zwei weitere** Leser mit eigener Kopie des
+    Markers: `aggregation.cockpit` (Zeile 435) und `dr_benachrichtigung`. Der zweite ist
+    der schwerere Fall — er verschickt E-Mails, und sein Filter kannte „entschieden"
+    nicht.
+
+    Diese Klasse ist deshalb keine Wiederholung, sondern der Test gegen die
+    **Vollstaendigkeit** der Umstellung: sie zaehlt die Kopien im Quelltext.
+    """
+
+    def test_keine_zweite_kopie_des_markers_im_quelltext(self):
+        """Der Zaehler gegen die Rueckkehr: ausser `board` fuehrt keine Datei ihn selbst.
+
+        ⚠ Ohne diesen Test waere „eine Stelle" eine Aussage ueber den Tag der Einfuehrung
+        und nicht ueber den Bestand — genau die Lehre aus SWR-125 (eine Regel ohne
+        Pruefung kehrt zurueck: SWR-106 schaffte Kalenderdaten ab, fuenf Sprints spaeter
+        waren 14 wieder da).
+        """
+        wurzel = os.path.dirname(_HIER)
+        literal = '"**Entscheidung ('
+        treffer = []
+        for verz in ("backend", "scripts"):
+            for name in sorted(os.listdir(os.path.join(wurzel, verz))):
+                if not name.endswith(".py"):
+                    continue
+                pfad = os.path.join(wurzel, verz, name)
+                with open(pfad, encoding="utf-8") as f:
+                    for nr, zeile in enumerate(f, 1):
+                        if literal in zeile:
+                            treffer.append(f"{verz}/{name}:{nr}")
+        self.assertEqual(treffer, ["scripts/board.py:673"] if treffer else [],
+                         f"Marker-Kopien ausserhalb von board.py: {treffer}")
+        self.assertEqual(len(treffer), 1, f"erwartet genau eine Definition, gefunden: {treffer}")
+
+    def test_benachrichtigungsweg_delegiert_ebenfalls(self):
+        """⚠ Der Fall mit Aussenwirkung — hier nur die Delegation, das Verhalten prueft
+        `test_dr_benachrichtigung.py` an seinem eigenen Fixture (dort liegt der
+        Versandpfad, und zwei Fixtures fuer eine Sache waeren B033).
+        """
+        sys.path.insert(0, os.path.join(os.path.dirname(_HIER), "scripts"))
+        import dr_benachrichtigung
+        self.assertIs(dr_benachrichtigung.ENTSCHIEDEN, board.ENTSCHEIDUNGSMARKER)
+        self.assertIs(dr_benachrichtigung.FINAL, board.STATUS_FINAL)
+
+
 class BestandTest(unittest.TestCase):
     """Der ECHTE Bestand, nicht ein Modell in tmp.
 

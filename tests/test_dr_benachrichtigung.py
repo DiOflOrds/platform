@@ -99,11 +99,41 @@ class FristWarnungTest(unittest.TestCase):
         erg = dr_benachrichtigung.lauf(root, sende=lambda b, t: (True, "ok"))
         self.assertEqual(erg, [])
 
-    def test_entschiedene_drs_ohne_warnung(self):
-        """Bereits entschiedene (noch offene) DRs werden nicht angemahnt. Verifiziert: SWR-034."""
+    def test_entschiedene_drs_bekommen_gar_keine_mail(self):
+        """Ein entschiedener DR bekommt **keine** Mail — weder Warnung noch Neu-Mail.
+
+        ⚠⚠ **Dieser Test hat bis Sprint 13 das Gegenteil zugesichert.** Er hiess
+        `test_entschiedene_drs_ohne_warnung`, prüfte korrekt, dass SWR-034 keine
+        Frist-Warnung schickt, und verlangte in derselben Zeile `["gesendet"]` — also die
+        **Neu-Benachrichtigung** an einen DR, der bereits entschieden war. Damit war das
+        Fehlverhalten nicht ungeprüft, sondern **geprüft und bestätigt**.
+
+        > **Eine Prüfung, die den Fehler zusichert, ist schlimmer als keine.** Sie kostet
+        > nicht nur die Meldung, sie verteidigt den Zustand gegen jede Änderung.
+
+        Am 2026-08-17 ist genau das ausgetreten: `projects/p12/T-0007` trägt die
+        Entscheidungszeile von 11:48:25 und darunter `**Benachrichtigt:** … per E-Mail`.
+        Dieser Vermerk entsteht nur bei `ok=True` — es ging eine Mail an den
+        Auftraggeber, die ihm einen „Neuen Decision Request" mit Frist 24.08. ankündigte,
+        den er zwölf Minuten zuvor beantwortet hatte.
+
+        Verifiziert: SWR-034, SWR-131.
+        """
         root = _root_mit_dr(body="\n**Entscheidung (D000, via Inbox, 2026-08-14):** A\n")
         erg = dr_benachrichtigung.lauf(root, sende=lambda b, t: (True, "ok"))
-        self.assertEqual([e[2] for e in erg], ["gesendet"])  # keine Warnung
+        self.assertEqual(erg, [], f"an einen entschiedenen DR ging Post: {erg}")
+
+    def test_unentschiedener_dr_bekommt_weiterhin_die_neu_mail(self):
+        """GEGENPROBE zum Test darüber: der Versand ist nicht abgeschaltet worden.
+
+        Ohne diese Zusicherung wäre die Reparatur von SWR-131 nicht von einem
+        stillgelegten Benachrichtigungsweg zu unterscheiden — und ein DR, von dem der
+        Mensch nie erfährt, ist schlimmer als einer, von dem er zweimal erfährt.
+        """
+        root = _root_mit_dr(frist="2026-08-10")
+        erg = dr_benachrichtigung.lauf(root, sende=lambda b, t: (True, "ok"),
+                                       heute=date(2026, 8, 7))
+        self.assertEqual([e[2] for e in erg], ["gesendet"])
 
     def test_warntext_mit_und_ohne_default(self):
         """Warnung nennt Projekt/Ticket/Frist; Default-Option nur falls definiert. Verifiziert: SWR-035."""

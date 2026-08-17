@@ -24,8 +24,8 @@ from backend import aggregation, mailer  # noqa: E402
 
 MARKER = "**Benachrichtigt:**"
 WARN_MARKER = "**Frist-Warnung:**"
-ENTSCHIEDEN = "**Entscheidung ("
-FINAL = ("done", "rejected")
+ENTSCHIEDEN = board.ENTSCHEIDUNGSMARKER  # SWR-131: Delegation statt vierter Kopie
+FINAL = board.STATUS_FINAL
 WARN_SCHWELLE_TAGE = 2  # SWR-034
 
 
@@ -43,9 +43,28 @@ def _offene_drs(root):
 
 
 def unbenachrichtigte(root):
-    """[(projekt, ticket, pfad)] — offene DRs ohne Versand-Marker (SWR-033)."""
+    """[(projekt, ticket, pfad)] — **unentschiedene** DRs ohne Versand-Marker (SWR-033).
+
+    ⚠ **Der schwerste Einzelfall von SWR-131, und der einzige mit Außenwirkung.** Bis
+    Sprint 13 filterte diese Funktion nur auf `status in FINAL` und den Versand-Marker —
+    **nicht** auf „entschieden". `warnfaellige()` eine Etage tiefer tat es (dort steht
+    `ENTSCHIEDEN in body` seit SWR-034), diese hier nicht. Die Folge ist am 2026-08-17 am
+    Bestand messbar: `projects/p12/T-0007` trägt die Entscheidungszeile von **11:48:25**
+    und darunter `**Benachrichtigt:** 2026-08-17 per E-Mail (SWR-033)`. Dieser Vermerk
+    wird ausschließlich geschrieben, **wenn `sende()` `ok=True` gemeldet hat**
+    (`mailer.sende` gibt ohne `SMTP_HOST` `False` zurück) — es ist also eine
+    **tatsächlich versandte** Mail, die dem Auftraggeber einen „Neuen Decision Request"
+    mit „Frist: 2026-08-24" ankündigt, den er zuvor beantwortet hatte.
+
+    Eine Benachrichtigung über eine Frage, die der Empfänger schon beantwortet hat, ist
+    nicht nur überflüssig: sie lässt ihn zweifeln, ob seine Antwort angekommen ist.
+
+    Die Reparatur ist eine Zeile. Dass sie so lange fehlte, lag nicht am Aufwand, sondern
+    daran, dass „entschieden" an vier Stellen vier Formulierungen hatte (B033) — und die
+    einzige, die den Menschen erreicht, war die schwächste.
+    """
     return [(p, t, pf) for p, t, pf in _offene_drs(root)
-            if MARKER not in t.get("_body", "")]
+            if MARKER not in t.get("_body", "") and not board.dr_entschieden(t)]
 
 
 def warnfaellige(root, heute=None):
