@@ -129,8 +129,13 @@ class OrgKopfblockTest(unittest.TestCase):
         self.ticket("T-0003", typ="decision-request")
         self.ticket("T-0004", status="done")
         self.ticket("T-0005", status="rejected")
-        self.assertEqual(aggregation.organisation(self.root),
-                         {"unterminiert_gesamt": 0, "unterminiert_refs": []})
+        block = aggregation.organisation(self.root)
+        # Geprüft wird die ZAHL dieses Tickets, nicht der ganze Block: seit SWR-120
+        # steht eine zweite Kennzahl daneben, und ein Gleichheitsvergleich über den
+        # ganzen Block wäre ein Test, der bei jeder Erweiterung bricht, ohne dass an
+        # der geprüften Sache etwas falsch wäre.
+        self.assertEqual(block["unterminiert_gesamt"], 0)
+        self.assertEqual(block["unterminiert_refs"], [])
 
     def test_zwei_projekte_werden_summiert(self):
         """Der Kern von B049: „Kachel X erledigt" ist keine gueltige Abschlussmeldung,
