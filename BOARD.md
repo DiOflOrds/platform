@@ -1,14 +1,15 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-17 · Tickets: 14 · davon wiederkehrend: 1
+Stand: 2026-08-17 · Tickets: 15 · davon wiederkehrend: 1
 
 
-## open (2)
+## open (3)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0013](tickets/T-0013.md) | Sprintregister kennt kein Ende — zwei Routine-Läufe können gleichzeitig in dieselben Repos schreiben | problem | einmalig | cm | Team | hoch | 0 | — |
+| [T-0015](tickets/T-0015.md) | SWR-123 räumt Git-Locks per unlink — auf dem Cowork-Mount ist das verboten, rename gelingt | problem | einmalig | cm | Team | mittel | 0 | — |
 
 ## done (12)
 
