@@ -6,7 +6,11 @@
 "use strict";
 // P7 (SWR-054): Tab "Team" — Digest-Verlauf, Steckbrief, Konfigurator.
 // SWR-086 (pm/N-0020): "Projekt-Pool" als eigener Backlog-Reiter neben dem Cockpit.
-var TABS = [["uebersicht", "Cockpit"], ["pool", "Projekt-Pool"], ["board", "Board"], ["inbox", "Inbox"],
+// SWR-132 (pm/T-0064, Briefe pm/N-0038 + pm/N-0042): "Aufgaben" — ALLE offenen Aufgaben
+// aller Teams und Projekte auf einer Seite, gruppierbar nach Rolle. Steht direkt hinter
+// dem Cockpit, weil der Auftraggeber von dort kommt, wenn ihm die Kachel mit ihren drei
+// Einträgen nicht reicht — und das ist der Anlass des Wunsches.
+var TABS = [["uebersicht", "Cockpit"], ["aufgaben", "Aufgaben"], ["pool", "Projekt-Pool"], ["board", "Board"], ["inbox", "Inbox"],
             ["chat", "Team-Chat"], ["team", "Team"], ["requirements", "Requirements"],
             ["trace", "Traceability"], ["architektur", "Architektur"], ["baselines", "Baselines"],
             ["reports", "Reports"], ["kpi", "Kosten/KPI"]];
@@ -1528,11 +1532,91 @@ function ladeBaselines() {  // SWR-032
   });
 }
 
+// --------------------------------------------------------------------------
+// SWR-132 (pm/T-0064): alle offenen Aufgaben aller Projekte — die Liste, aus der der
+// Auftraggeber priorisieren kann (`pm/N-0038`), mit der Rollen-Gruppierung aus
+// `pm/N-0042` als **Sicht auf dieselbe Liste** und nicht als zweite Ansicht (B033).
+//
+// Die Entscheidungen liegen in `regeln.js` (ADR-008) und sind ohne Browser geprüft:
+// diese Funktion macht aus der Antwort Elemente, nichts weiter.
+// --------------------------------------------------------------------------
+var aufgabenGruppiert = true;   // Rollen-Sicht ist die Voreinstellung (pm/N-0042)
+
+function aufgabenZeile(a) {
+  var tr = el("tr", {});
+  tr.appendChild(el("td", {}, el("a", { href: "#/ticket/" + a.projekt + "/" + a.id }, a.ref)));
+  tr.appendChild(el("td", {}, a.titel || ""));
+  tr.appendChild(el("td", {}, a.rolle || Regeln.OHNE_ROLLE));
+  // ⚠ Zwei Spalten, nicht eine: `rolle` ist die Fachrolle, `verantwortlich` die Frage
+  // „handelt der Mensch oder das Team?". Ihre Verschmelzung war der Befund hinter
+  // SWR-116 — `rolle: mensch` trug dort eine zweite, verhaltensändernde Bedeutung.
+  tr.appendChild(el("td", {}, a.verantwortlich === "mensch"
+    ? pille("MENSCH", "in_review") : el("span", {}, "Team")));
+  tr.appendChild(el("td", {}, a.status || ""));
+  tr.appendChild(el("td", {}, a.takt ? "je " + a.takt
+    : (a.geplant_sprint ? "Sprint " + a.geplant_sprint : "—")));
+  return tr;
+}
+
+function aufgabenTabelle(liste) {
+  var tab = el("table", { "class": "tab" });
+  tab.appendChild(el("tr", {}, el("th", {}, "Aufgabe"), el("th", {}, "Titel"),
+    el("th", {}, "Rolle"), el("th", {}, "Wer handelt"), el("th", {}, "Status"),
+    el("th", {}, "Termin")));
+  liste.forEach(function (a) { tab.appendChild(aufgabenZeile(a)); });
+  return tab;
+}
+
+function ladeAufgaben() {
+  return api("/api/sprint").then(function (s) {
+    var alle = (s && s.offene) || [];
+    var karte = el("div", { "class": "karte" });
+    var kopf = el("div", { "class": "zeile" },
+      el("h3", { style: "margin:0" }, "Offene Aufgaben aller Teams und Projekte"));
+    // ⚠ Die Zahl stammt aus `offen_gesamt` und die Liste aus `offene` — beide aus
+    // DEMSELBEN Objekt im Backend (SWR-132). Stünden sie hier verschieden da, wäre das
+    // ein Fehler und keine Rundung; deshalb wird beides gezeigt.
+    kopf.appendChild(pille(alle.length + " offen", "open"));
+    if (s && s.sprint_nr) kopf.appendChild(pille("Sprint " + s.sprint_nr, "done"));
+    kopf.appendChild(el("button", {
+      "class": "knopf", style: "margin-left:auto;padding:.3rem .8rem",
+      onclick: function () { aufgabenGruppiert = !aufgabenGruppiert; lade(); }
+    }, aufgabenGruppiert ? "Nach Rolle gruppiert — flach zeigen" : "Flache Liste — nach Rolle gruppieren"));
+    karte.appendChild(kopf);
+    if (!alle.length) {
+      // ⚠ Der leere Fall wird BENANNT. „Nichts da" und „nicht geladen" sehen sonst gleich
+      // aus — genau die Verwechslung, die SWR-114/SWR-122/SWR-128 dreimal gekostet haben.
+      karte.appendChild(el("p", { "class": "leer" },
+        "Keine offene Aufgabe in der ganzen Organisation. (Das ist eine echte Null, "
+        + "keine ausgefallene Abfrage — die Liste kam an und war leer.)"));
+      zeige([karte]);
+      return;
+    }
+    if (!aufgabenGruppiert) {
+      karte.appendChild(aufgabenTabelle(Regeln.sortiereAufgaben(alle)));
+      zeige([karte]);
+      return;
+    }
+    var gruppen = Regeln.aufgabenNachRolle(alle);
+    gruppen.forEach(function (g) {
+      // Der Zähler steht IMMER am Titel (pm/T-0066 Punkt 2): kein Eintrag verschwindet
+      // ohne Zahl, auch nicht hinter einem zugeklappten `<details>`.
+      var block = el("details", { open: "open" });
+      block.appendChild(el("summary", { style: "cursor:pointer;font-weight:600;padding:.35rem 0" },
+        Regeln.gruppenTitel(g)));
+      block.appendChild(aufgabenTabelle(g.aufgaben));
+      karte.appendChild(block);
+    });
+    zeige([karte]);
+  });
+}
+
 function lade() {
   zeigeTabs();
   zeichneProjektwahl();  // SWR-082: aktueller Eintrag bleibt hervorgehoben
   zeige([el("p", { "class": "leer" }, "Lade …")]);
-  var ansichten = { uebersicht: ladeUebersicht, board: ladeBoard, inbox: ladeInbox,
+  var ansichten = { uebersicht: ladeUebersicht, aufgaben: ladeAufgaben,
+                    board: ladeBoard, inbox: ladeInbox,
                     chat: ladeChat, team: ladeTeam, ticket: ladeTicket,
                     pool: ladePool,  // SWR-086 (pm/N-0020)
                     requirements: ladeRequirements, trace: ladeTrace,

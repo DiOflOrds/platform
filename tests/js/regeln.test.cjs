@@ -136,3 +136,95 @@ test("GEGENPROBE: ohne Kennung wird keine erfunden — dann ist es ein echter Fe
 test("GEGENPROBE: eine Ticket-Kennung ist keine Brief-Kennung", () => {
   assert.strictEqual(R.briefIdAusFehler("T-0058 ist kein offener Decision Request"), "");
 });
+
+// ---------- SWR-132 (pm/T-0064, Briefe pm/N-0038 + pm/N-0042): Aufgabenliste ----------
+
+const AUFGABEN = [
+  { projekt: "pm", id: "T-0064", ref: "pm/T-0064", rolle: "pl", verantwortlich: "team" },
+  { projekt: "platform", id: "T-0013", ref: "platform/T-0013", rolle: "cm", verantwortlich: "team" },
+  { projekt: "pm", id: "T-0001", ref: "pm/T-0001", rolle: "pl", verantwortlich: "team" },
+  { projekt: "promt-team", id: "T-0002", ref: "promt-team/T-0002", rolle: "test", verantwortlich: "team" },
+];
+
+test("sortiereAufgaben ordnet nach Projekt, dann Kennung — ohne die Eingabe zu aendern", () => {
+  const vorher = AUFGABEN.map(a => a.ref);
+  const sortiert = R.sortiereAufgaben(AUFGABEN);
+  assert.deepStrictEqual(sortiert.map(a => a.ref),
+    ["platform/T-0013", "pm/T-0001", "pm/T-0064", "promt-team/T-0002"]);
+  // Gegenprobe gegen ein blankes `sort()`: die API-Liste wird von mehreren Ansichten
+  // gelesen, `sort` arbeitet in-place. Dieselbe Falle wie bei `sortiereBriefe`.
+  assert.deepStrictEqual(AUFGABEN.map(a => a.ref), vorher);
+});
+
+test("GEGENPROBE: NICHT nach Prioritaet oder Frist sortiert — der Mensch priorisiert selbst", () => {
+  // pm/N-0038 verlangt die Liste, DAMIT er priorisieren kann. Eine Vorsortierung nach
+  // Dringlichkeit waere eine stille erste Priorisierung neben seiner — genau der Grund,
+  // aus dem die Liste auch nicht gekuerzt wird.
+  const mitPrio = [
+    { projekt: "pm", id: "T-0002", ref: "pm/T-0002", prio: "niedrig", frist: "2026-08-18" },
+    { projekt: "pm", id: "T-0001", ref: "pm/T-0001", prio: "hoch", frist: "2026-12-31" },
+  ];
+  assert.deepStrictEqual(R.sortiereAufgaben(mitPrio).map(a => a.ref),
+    ["pm/T-0001", "pm/T-0002"]);
+});
+
+test("aufgabenNachRolle gruppiert, Rollen alphabetisch", () => {
+  const gruppen = R.aufgabenNachRolle(AUFGABEN);
+  assert.deepStrictEqual(gruppen.map(g => g.rolle), ["cm", "pl", "test"]);
+  assert.deepStrictEqual(gruppen[1].aufgaben.map(a => a.ref), ["pm/T-0001", "pm/T-0064"]);
+});
+
+test("⚠ jede Aufgabe erscheint in GENAU EINER Gruppe", () => {
+  // Die Zusicherung, an der eine Gruppierung scheitert: doppelt heisst doppelt gezaehlt,
+  // fehlend heisst verschwunden. Beides pruefen, nicht nur eines.
+  const gruppen = R.aufgabenNachRolle(AUFGABEN);
+  const flach = gruppen.reduce((s, g) => s.concat(g.aufgaben.map(a => a.ref)), []);
+  assert.strictEqual(flach.length, AUFGABEN.length);
+  assert.strictEqual(new Set(flach).size, AUFGABEN.length);
+  AUFGABEN.forEach(a => assert.ok(flach.includes(a.ref), `${a.ref} fehlt in jeder Gruppe`));
+});
+
+test("⚠ eine Aufgabe ohne Rolle bekommt eine BENANNTE Gruppe statt zu fehlen (SWR-096)", () => {
+  const gruppen = R.aufgabenNachRolle([
+    { projekt: "pm", id: "T-0001", ref: "pm/T-0001", rolle: "pl" },
+    { projekt: "pm", id: "T-0002", ref: "pm/T-0002" },
+    { projekt: "pm", id: "T-0003", ref: "pm/T-0003", rolle: "   " },
+  ]);
+  assert.deepStrictEqual(gruppen.map(g => g.rolle), ["pl", R.OHNE_ROLLE]);
+  // Leerstring und Leerzeichen landen in derselben Gruppe — ohne den `trim()` waere
+  // "   " eine eigene, unsichtbar benannte Rolle.
+  assert.deepStrictEqual(gruppen[1].aufgaben.map(a => a.ref), ["pm/T-0002", "pm/T-0003"]);
+});
+
+test("⚠ 'ohne Rolle' steht ZULETZT und nicht alphabetisch zwischen den Rollen", () => {
+  // Zwischen `cm` und `pl` einsortiert saehe das Fehlen einer Rolle wie eine Rolle aus.
+  const gruppen = R.aufgabenNachRolle([
+    { projekt: "pm", id: "T-0001", ref: "pm/T-0001" },
+    { projekt: "pm", id: "T-0002", ref: "pm/T-0002", rolle: "test" },
+    { projekt: "pm", id: "T-0003", ref: "pm/T-0003", rolle: "cm" },
+  ]);
+  assert.deepStrictEqual(gruppen.map(g => g.rolle), ["cm", "test", R.OHNE_ROLLE]);
+});
+
+test("gruppenTitel nennt IMMER die Zahl — kein Eintrag verschwindet ohne Zaehler", () => {
+  assert.strictEqual(R.gruppenTitel({ rolle: "pl", aufgaben: [1, 2, 3, 4] }), "pl (4)");
+  assert.strictEqual(R.gruppenTitel({ rolle: "cm", aufgaben: [] }), "cm (0)");
+  assert.strictEqual(R.gruppenTitel(null), R.OHNE_ROLLE + " (0)");
+});
+
+test("GEGENPROBE: verantwortlich gruppiert NICHT — es bleibt Feld an der Zeile", () => {
+  // `rolle` und `verantwortlich` sind zwei Fragen; ihre Verschmelzung war der Befund
+  // hinter SWR-116, wo `rolle: mensch` eine zweite Bedeutung trug.
+  const gruppen = R.aufgabenNachRolle([
+    { projekt: "pm", id: "T-0001", ref: "pm/T-0001", rolle: "pl", verantwortlich: "mensch" },
+    { projekt: "pm", id: "T-0002", ref: "pm/T-0002", rolle: "pl", verantwortlich: "team" },
+  ]);
+  assert.strictEqual(gruppen.length, 1);
+  assert.strictEqual(gruppen[0].rolle, "pl");
+});
+
+test("leere und fehlende Liste liefern eine leere Gruppierung, keinen Fehler", () => {
+  assert.deepStrictEqual(R.aufgabenNachRolle([]), []);
+  assert.deepStrictEqual(R.aufgabenNachRolle(null), []);
+  assert.deepStrictEqual(R.sortiereAufgaben(undefined), []);
+});

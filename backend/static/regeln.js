@@ -141,9 +141,88 @@ var Regeln = (function () {
     return m ? m[0] : "";
   }
 
+  // --------------------------------------------------------------------------
+  // SWR-132 (pm/T-0064, Briefe pm/N-0038 + pm/N-0042): die projektuebergreifende
+  // Aufgabenliste und ihre Gruppierung nach Rolle.
+  // --------------------------------------------------------------------------
+
+  var OHNE_ROLLE = "ohne Rolle";  // SWR-096: benannt, nicht stillschweigend fehlend
+
+  /** Reihenfolge der Aufgaben in der Liste — **stabil und ohne die Eingabe zu aendern.**
+   *
+   * Sortiert nach `projekt`, dann `id`. Das ist bewusst *nicht* nach Prioritaet oder
+   * Frist: die Liste existiert, damit der Auftraggeber **selbst** priorisiert
+   * (`pm/N-0038`), und eine Vorsortierung nach Dringlichkeit waere eine stille erste
+   * Priorisierung neben seiner — dieselbe Ueberlegung, aus der die Liste nicht gekuerzt
+   * wird.
+   *
+   * `slice()` vor `sort()` wie bei `sortiereBriefe`: `sort` arbeitet in-place, und die
+   * Antwort der API wird von mehreren Ansichten gelesen.
+   */
+  function sortiereAufgaben(aufgaben) {
+    return (aufgaben || []).slice().sort(function (a, b) {
+      var pa = String((a && a.projekt) || ""), pb = String((b && b.projekt) || "");
+      if (pa !== pb) return pa < pb ? -1 : 1;
+      var ia = String((a && a.id) || ""), ib = String((b && b.id) || "");
+      return ia < ib ? -1 : (ia > ib ? 1 : 0);
+    });
+  }
+
+  /** Aufgaben nach **Rolle** gruppiert: `[{rolle, aufgaben}]`, Rollen alphabetisch.
+   *
+   * Der Wunsch aus `pm/N-0042` woertlich: *"aufgaben nach rollen sehen. also
+   * Team-Rolle-Aufgaben alle ausser geschlossen."*
+   *
+   * ⚠ **Dieselbe Liste, anders gruppiert — keine zweite Ansicht.** Zwei
+   * projektuebergreifende Aufgabenlisten nebeneinander waeren zwei Antworten auf eine
+   * Frage (B033), und B054 belegt den Preis: dort blieb bei zehn von dreissig Briefen die
+   * Antwort unsichtbar, weil zwei Leser dieselbe Sache verschieden lasen.
+   *
+   * ⚠ **Jede Aufgabe erscheint in genau EINER Gruppe.** Das ist die Zusicherung, an der
+   * eine Gruppierung scheitert: erscheint eine Aufgabe zweimal, zaehlt der Leser sie
+   * zweimal; erscheint sie nirgends, ist sie verschwunden. Eine Aufgabe ohne `rolle`
+   * bekommt deshalb die **benannte** Gruppe `"ohne Rolle"` (SWR-096) statt still zu
+   * fehlen.
+   *
+   * ⚠ **`verantwortlich` gruppiert NICHT.** Es bleibt Feld an der Zeile. Die Fachrolle
+   * und die Frage "Mensch oder Team?" sind zwei Fragen; sie zu einer Gruppierung zu
+   * verschmelzen war der Fehler, der zu SWR-116 fuehrte.
+   */
+  function aufgabenNachRolle(aufgaben) {
+    var sortiert = sortiereAufgaben(aufgaben);
+    var namen = [], nach = {};
+    for (var i = 0; i < sortiert.length; i++) {
+      var a = sortiert[i] || {};
+      var r = String(a.rolle || "").trim() || OHNE_ROLLE;
+      if (!nach[r]) { nach[r] = []; namen.push(r); }
+      nach[r].push(a);
+    }
+    namen.sort(function (x, y) {
+      // `OHNE_ROLLE` zuletzt: es ist keine Rolle, sondern deren Fehlen — zwischen `pl`
+      // und `test` einsortiert saehe es wie eine aus.
+      if (x === OHNE_ROLLE) return 1;
+      if (y === OHNE_ROLLE) return -1;
+      return x < y ? -1 : (x > y ? 1 : 0);
+    });
+    return namen.map(function (r) { return { rolle: r, aufgaben: nach[r] }; });
+  }
+
+  /** Beschriftung einer Gruppe: `"pl (4)"` — die Zahl steht **immer** daneben.
+   *
+   * Kein Eintrag verschwindet ohne Zaehler: eine zugeklappte Gruppe ohne Zahl ist die
+   * Anzeigeform, wegen der `pm/N-0025` und `pm/N-0038` geschrieben wurden.
+   */
+  function gruppenTitel(gruppe) {
+    gruppe = gruppe || {};
+    return String(gruppe.rolle || OHNE_ROLLE) + " (" +
+           ((gruppe.aufgaben && gruppe.aufgaben.length) || 0) + ")";
+  }
+
   return { urheber: urheber, beitragKopf: beitragKopf, istWiederOffen: istWiederOffen,
            verlauf: verlauf, sortiereBriefe: sortiereBriefe,
-           briefIdAusFehler: briefIdAusFehler };
+           briefIdAusFehler: briefIdAusFehler,
+           sortiereAufgaben: sortiereAufgaben, aufgabenNachRolle: aufgabenNachRolle,
+           gruppenTitel: gruppenTitel, OHNE_ROLLE: OHNE_ROLLE };
 })();
 
 // Ein Modul fuer die Teststrecke, eine globale Variable fuer den Browser (ADR-002: kein

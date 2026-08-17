@@ -270,6 +270,20 @@ def offene_tickets(root):
                             "frist": t.get("frist", ""),
                             "takt": t.get("takt", ""),
                             "geplant_sprint": t.get("geplant_sprint", ""),  # SWR-106
+                            # SWR-132 (pm/T-0064, Brief pm/N-0042): die Rollen-Sicht des
+                            # Auftraggebers. ⚠ `rolle` und `verantwortlich` bleiben
+                            # **getrennte Felder** und werden nicht zu einem verschmolzen:
+                            # die Fachrolle (`pl`, `dev`, `cm`, …) und die Frage „handelt
+                            # der Mensch oder das Team?" sind zwei Fragen. Ihre
+                            # Verschmelzung war der Befund, der zu SWR-116 führte — dort
+                            # trug `rolle: mensch` eine zweite, verhaltensändernde
+                            # Bedeutung. `verantwortlich` kommt aus
+                            # `board.verantwortlich_wert` (dem Auflösungspunkt aus
+                            # SWR-116) und nicht aus dem Rohfeld, damit die Liste und die
+                            # Board-Spalte nicht verschieden lesen, was leer bedeutet.
+                            "rolle": t.get("rolle", ""),
+                            "verantwortlich": board.verantwortlich_wert(t),
+                            "prio": t.get("prio", ""),
                             "_ticket": t})
     return treffer
 
@@ -602,6 +616,23 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
             "zeilen": plan_zeilen,
             "zaehler": zaehler(plan_zeilen),
             "offen_gesamt": len(offene),
+            # SWR-132 (pm/T-0064, Brief pm/N-0038): die **Liste** zu der Zahl.
+            #
+            # ⚠ **Kein neuer Erhebungsweg — dieselbe Python-Liste, die `offen_gesamt`
+            # zählt.** Der Ticket-Entwurf nannte `aggregation` als Quelle; gemessen ist
+            # `offene_tickets` die bessere, weil `offen_gesamt` schon von hier kommt. Eine
+            # zweite Erhebung neben dieser hätte genau den Zustand erzeugt, den SWR-131
+            # heute gekostet hat: zwei Antworten auf eine Frage, und der Leser weiß nicht,
+            # welcher er glauben soll. Zahl und Liste können hier nicht auseinanderlaufen,
+            # weil es **ein** Objekt ist — das ist die Zusicherung, nicht eine Absicht.
+            #
+            # ⚠ **Nicht gekürzt.** `aggregation.cockpit` zeigt `offene[:3]` (SWR-074/094)
+            # — dort ist die Kürzung richtig, es ist eine Kachel. Hier wäre sie falsch: der
+            # Zweck der Liste ist, dass der Auftraggeber priorisieren kann (pm/N-0038),
+            # und eine still gekürzte Liste ist eine zweite Priorisierung neben der, die
+            # er selbst treffen will. Das Kompaktmachen gehört in die Ansicht (pm/T-0066:
+            # falten statt weglassen), nicht in die Quelle.
+            "offene": offene,
             "nicht_geplant": fehlend,
             "widersprueche": widerspruch,   # SWR-106
             "plan_drift": drift,            # SWR-109
