@@ -214,3 +214,91 @@ class SwrQuellenDiscoveryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DiscoveryIstDerNormalfallTest(unittest.TestCase):
+    """SWR-145 (platform/T-0019): der unvollständige Modus darf nicht an den Ort des
+    vollständigen schreiben.
+
+    ⚠ Gemessen wird die **Anzahl der gefundenen Anforderungen** und nicht der Exit-Code:
+    das alte Verhalten gab ebenfalls **0** zurück und meldete „Matrix geschrieben". Ein
+    Test am Exit-Code wäre auf dem kaputten Stand grün gewesen.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.wurzel = self.tmp.name
+        # Zwei Projekte mit je EIGENER Anforderung. Ohne das zweite Projekt könnte der
+        # Test nicht zeigen, dass die Discovery mehr findet als der alte p0-Rückfall.
+        self.anlegen("p0", "SWR-201")
+        self.anlegen("p9", "SWR-202")
+        os.makedirs(os.path.join(self.wurzel, "platform", "tests"))
+        open(os.path.join(self.wurzel, "platform", "tests", "test_x.py"), "w",
+             encoding="utf-8").write('"""Verifiziert SWR-201 und SWR-202."""\n')
+
+    def anlegen(self, projekt, swr):
+        verz = os.path.join(self.wurzel, projekt, "requirements", "software")
+        os.makedirs(verz)
+        with open(os.path.join(verz, "software-requirements.md"), "w",
+                  encoding="utf-8") as f:
+            f.write("| ID | Requirement | Trace | Verification | Prio | Status |\n"
+                    "|---|---|---|---|---|---|\n"
+                    f"| {swr} | X | STK-001 | Unit tests | high | reviewed |\n")
+        # `board.projekt_pfade` findet Projekte über `tickets/` — ohne das Verzeichnis
+        # ist ein Ordner für die Discovery kein Projekt.
+        os.makedirs(os.path.join(self.wurzel, projekt, "tickets"))
+
+    def _lauf(self, *argv):
+        ziel = os.path.join(self.wurzel, "matrix.md")
+        alt = sys.argv
+        sys.argv = ["trace_matrix.py", "--repos", self.wurzel, "--ziel", ziel] + list(argv)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                trace_matrix.main()
+        finally:
+            sys.argv = alt
+        with open(ziel, encoding="utf-8") as f:
+            return ctx.exception.code, f.read()
+
+    def test_ohne_flag_werden_ALLE_projekte_gefunden(self):
+        """Der Fall, der in Sprint 17 fehlgeschlagen ist: Aufruf ohne `--alle-projekte`."""
+        _code, text = self._lauf()
+        self.assertIn("SWR-201", text)
+        self.assertIn("SWR-202", text,
+                      "ohne Flag muss die Discovery greifen — sonst schreibt der "
+                      "unvollständige Modus an den Ort des vollständigen (SWR-145)")
+
+    def test_mit_flag_unveraendert(self):
+        """⚠ `--alle-projekte` bleibt wirksam: `abschluss.cmd` und die CI übergeben es.
+        Eine Reparatur, die den korrekten Aufrufer zerbricht, ist keine."""
+        _code, text = self._lauf("--alle-projekte")
+        self.assertIn("SWR-201", text)
+        self.assertIn("SWR-202", text)
+
+    def test_ausdrueckliches_swr_gewinnt_und_findet_GENAU_eines(self):
+        """⚠ Die Gegenrichtung, und ohne sie belegt der Rest nichts: wäre DoD 1 durch
+        „immer alles lesen" erfüllt, wäre `--produkt` (eigene SWR-Datei, eigenes Ziel)
+        still kaputt."""
+        eine = os.path.join(self.wurzel, "p9", "requirements", "software",
+                            "software-requirements.md")
+        _code, text = self._lauf("--swr", eine)
+        self.assertIn("SWR-202", text)
+        self.assertNotIn("SWR-201", text)
+
+    def test_ohne_jede_quelle_wird_NICHTS_geschrieben(self):
+        """SWR-145: findet die Discovery nichts, ist das ein Befund und keine Gelegenheit
+        für eine Ersatzquelle. ⚠ Gemessen an der **Existenz** der Zieldatei — eine leere
+        Matrix an den Ort der echten zu schreiben war der Fehler dieses Werkzeugs."""
+        leer = tempfile.TemporaryDirectory()
+        self.addCleanup(leer.cleanup)
+        ziel = os.path.join(leer.name, "matrix.md")
+        alt = sys.argv
+        sys.argv = ["trace_matrix.py", "--repos", leer.name, "--ziel", ziel]
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                trace_matrix.main()
+        finally:
+            sys.argv = alt
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertFalse(os.path.exists(ziel))

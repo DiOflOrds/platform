@@ -152,20 +152,49 @@ def main():
     p.add_argument("--produkt", help="Produktname aus config/produkte.yaml (T-0064) — "
                                      "ersetzt --tests/--swr/--ziel/--id-muster")
     p.add_argument("--alle-projekte", action="store_true",
-                   help="T-0010(p1): SWR-Quellen per Discovery statt Aufzählung")
+                   help="T-0010(p1): SWR-Quellen per Discovery — seit SWR-145 der "
+                        "Standardfall; das Flag bleibt für bestehende Aufrufer wirksam")
     a = p.parse_args()
     wurzel = os.path.abspath(a.repos)
-    if a.alle_projekte:
+    # SWR-145 (platform/T-0019): **Discovery ist der Normalfall, nicht die Zuschaltung.**
+    #
+    # Bis Sprint 17 war `--alle-projekte` aus und das Ziel trotzdem die kanonische Matrix.
+    # Beide Voreinstellungen sind für sich vertretbar; zusammen schreiben sie den
+    # unvollständigen Modus an den Ort des vollständigen. Ein Aufruf ohne Flag hat in
+    # Sprint 17 die Matrix mit 24 von 143 Anforderungen überschrieben, „Matrix geschrieben"
+    # gemeldet und Exit 0 gegeben.
+    #
+    # ⚠ Ein ausdrückliches `--swr` gewinnt weiter: es ist die einzige Stelle, an der der
+    # Aufrufer nachweislich etwas anderes gemeint hat (und `--produkt` setzt es eine Zeile
+    # tiefer selbst). Ohne diese Bedingung wäre der Produktmodus still kaputt — seine
+    # Matrix ist absichtlich klein.
+    #
+    # ⚠ `--alle-projekte` bleibt wirksam und wird nicht entfernt: `abschluss.cmd` und die
+    # CI übergeben es. Eine Reparatur, die den korrekten Aufrufer zerbricht, ist keine.
+    if not a.swr:
         a.swr = swr_quellen_alle_projekte(wurzel)
     if a.produkt:
         cfg = lade_produkt_cfg(a.produkt, wurzel)
         a.tests, a.swr, a.ziel, a.id_muster = (cfg["tests"], [cfg["swr"]],
                                                cfg["ziel"], cfg["id_muster"])
     muster = re.compile(a.id_muster)
+    # SWR-145: Der alte Rückfall auf **p0 allein** ist weg. Er war der Ort, an dem der
+    # unvollständige Modus entstand — und er sah wie ein harmloser Default aus, weil `p0`
+    # tatsächlich die meisten Anforderungen führt. Findet die Discovery nichts, ist das
+    # ein Befund und keine Gelegenheit für eine Ersatzquelle.
+    #
+    # ⚠ Die Prüfung steht **vor** `tests_scannen` und nicht dahinter: sie soll den Grund
+    # nennen, aus dem nichts geschrieben wird. Stand sie dahinter, gewann bei einer
+    # fehlenden Testverzeichnis-Angabe deren `FileNotFoundError` — eine Meldung über das
+    # zweite Problem, während das erste die Ursache war.
+    swr_dateien = a.swr or []
+    if not swr_dateien:
+        print("KEINE SWR-QUELLE gefunden — weder per --swr noch per Discovery unter "
+              f"{wurzel}. Es wird NICHTS geschrieben (SWR-145: eine leere Matrix an den "
+              f"Ort der echten zu schreiben wäre der Fehler, den dieses Werkzeug hatte).")
+        sys.exit(1)
     abdeckung, ohne = tests_scannen(
         a.tests or os.path.join(wurzel, "platform", "tests"), muster)
-    swr_dateien = a.swr or [os.path.join(wurzel, "p0", "requirements", "software",
-                                         "software-requirements.md")]
     swrs = {}
     for pfad in swr_dateien:  # SWR-029: mehrere Anforderungsquellen, eine Matrix
         swrs.update(swr_lesen(pfad, muster))
