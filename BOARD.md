@@ -9,13 +9,7 @@ Stand: 2026-08-17 · Tickets: 11 · davon wiederkehrend: 1
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 
-## in_review (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0011](tickets/T-0011.md) | Befund: Preflight meldet STARTKLAR, während plan_drift und sprint_vergangen sechs Befunde tragen — zwei berechnete Kennzahlen werden nirgends gemeldet | problem | einmalig | cm | Team | hoch | 0 | — |
-
-## done (9)
+## done (10)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -27,4 +21,5 @@ Stand: 2026-08-17 · Tickets: 11 · davon wiederkehrend: 1
 | [T-0007](tickets/T-0007.md) | Problem: board.py liest Git-Ausgabe ohne feste Kodierung — der Auto-Wächter brach am Host seit dem 17.08. bei JEDEM Lauf ab | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0009](tickets/T-0009.md) | Problem: Der Wächter bricht weiter ab — die T-0007-Reparatur hat die Leseseite gerichtet und die Schreibseite mitgerissen | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0010](tickets/T-0010.md) | Befund: Die Verifikation misst die Arbeitskopie, der Push liefert HEAD — SWR-109 war nie committet | problem | einmalig | cm | Team | hoch | 0 | — |
+| [T-0011](tickets/T-0011.md) | Befund: Preflight meldet STARTKLAR, während plan_drift und sprint_vergangen sechs Befunde tragen — zwei berechnete Kennzahlen werden nirgends gemeldet | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | Team | mittel | 0 | — |
