@@ -120,10 +120,38 @@ class SchluesselmengeFolgtDemVertragTest(unittest.TestCase):
             eintrag = next(f for f in self.vertrag["felder"] if f["name"] == eltern)
             self.assertIn(kind, eintrag.get("felder_innen") or [], pfad)
 
-    def test_vertragsversion_ist_25(self):
+    def test_vertragsversion_ist_mindestens_25(self):
         """Der Bump gehört zur Anforderung: `pflege.versionierung` verlangt ihn, sobald
-        sich die Feldliste ändert."""
-        self.assertEqual(str(self.vertrag["version"]), "2.5")
+        sich die Feldliste ändert.
+
+        ⚠⚠ **Diese Zusicherung stand als `assertEqual(…, "2.5")` da und war binnen einer
+        halben Stunde falsch** — ein paralleler Lauf hat den Vertrag für seine eigene
+        Feldliste auf **v2.6** gehoben, völlig zu Recht. Der Sachverhalt, den SWR-146
+        verlangt, stand unverändert da.
+
+        > **Eine Versionsnummer festzuschreiben heißt, jeden künftigen Bump zum Fehler zu
+        > erklären — und der Bump ist genau das, was der Vertrag verlangt.**
+
+        Und es ist derselbe Fehler, den dieser Lauf **eine Stunde vorher** als
+        `L-2026-08-17an` aufgeschrieben hat (*„ein Test, der behauptet, ein Wert werde
+        gelesen und nicht eingetragen, darf ihn nicht selbst eintragen"*) — hier an einer
+        anderen Datei wiederholt, vom selben Lauf, der die Lesson formuliert hat.
+
+        Geprüft wird deshalb die **Untergrenze** (v2.5 ist die Fassung, ab der `zustaende`
+        im Vertrag steht) — und vor allem der **Sachverhalt** selbst, eine Zusicherung
+        tiefer: dass das Feld in der Feldliste geführt wird. Die Nummer ist der Beleg, das
+        Feld ist die Sache.
+        """
+        teile = str(self.vertrag["version"]).split(".")
+        self.assertGreaterEqual((int(teile[0]), int(teile[1])), (2, 5),
+                                "Der Vertrag ist hinter v2.5 zurückgefallen — dort wurde "
+                                "`zustaende` eingeführt (SWR-146).")
+
+    def test_zustaende_steht_in_der_feldliste(self):
+        """Der **Sachverhalt** hinter der Versionsnummer, und die belastbarere der beiden
+        Zusicherungen: ein Bump ohne Feld wäre eine Nummer ohne Inhalt."""
+        namen = {f["name"] for f in self.vertrag["felder"]}
+        self.assertIn("zustaende", namen)
 
 
 class EineHerleitungTest(unittest.TestCase):

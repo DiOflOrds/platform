@@ -199,6 +199,19 @@ class AlleLeserTest(unittest.TestCase):
         und nicht ueber den Bestand — genau die Lehre aus SWR-125 (eine Regel ohne
         Pruefung kehrt zurueck: SWR-106 schaffte Kalenderdaten ab, fuenf Sprints spaeter
         waren 14 wieder da).
+
+        ⚠⚠ **Diese Zusicherung hat auf eine ZEILENNUMMER geprueft** (`scripts/board.py:673`)
+        und wurde in Sprint 17 rot, weil SWR-144 zwanzig Zeilen weiter oben eine
+        Ausnahmeklasse eingefuegt hat. Der Marker stand unveraendert genau einmal da; falsch
+        war die Zusicherung.
+
+        > **Eine Zeilennummer ist keine Eigenschaft des Bestands, sondern eine Eigenschaft
+        > des Tages, an dem gemessen wurde.**
+
+        Ein Fehlalarm ist hier besonders teuer: dieser Test existiert gegen das Wegsehen
+        (SWR-125), und ein Test, der bei jeder fremden Einfuegung rot wird, erzieht genau
+        dazu. Geprueft wird deshalb die **Datei** und die **Anzahl** — die beiden Aussagen,
+        die der Docstring macht.
         """
         wurzel = os.path.dirname(_HIER)
         literal = '"**Entscheidung ('
@@ -212,7 +225,8 @@ class AlleLeserTest(unittest.TestCase):
                     for nr, zeile in enumerate(f, 1):
                         if literal in zeile:
                             treffer.append(f"{verz}/{name}:{nr}")
-        self.assertEqual(treffer, ["scripts/board.py:673"] if treffer else [],
+        dateien = sorted({t.rsplit(":", 1)[0] for t in treffer})
+        self.assertEqual(dateien, ["scripts/board.py"],
                          f"Marker-Kopien ausserhalb von board.py: {treffer}")
         self.assertEqual(len(treffer), 1, f"erwartet genau eine Definition, gefunden: {treffer}")
 
