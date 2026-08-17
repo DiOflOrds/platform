@@ -14,8 +14,13 @@ import board  # noqa: E402
 
 from . import aggregation  # noqa: E402
 
-FINAL = ("done", "rejected")
-ENTSCHIEDEN = "**Entscheidung ("  # SWR-039: bereits beantwortete DRs
+FINAL = board.STATUS_FINAL
+# SWR-039 hat den Marker eingeführt, SWR-131 hat ihn zur einzigen Quelle gemacht: bis
+# dahin wusste die Inbox am Marker, dass ein DR entschieden ist, während Preflight und
+# Cockpit am `status` lasen — zwei Wahrheiten über ein Wort, und `entscheide()` setzt
+# `status` nie. Am 2026-08-17 kostete das drei Berichte, die dem Auftraggeber eine
+# beantwortete Frage erneut vorlegten. Delegation statt zweiter Kopie (B033).
+ENTSCHIEDEN = board.ENTSCHEIDUNGSMARKER
 NUTZER_FALLBACK = [{"name": "E. John", "rolle": "entscheider"}]  # SWR-037 (Auftraggeber)
 COMMIT_IDENTITAET = ["-c", "user.name=Mensch via Inbox",
                      "-c", "user.email=geraldine.john90@gmail.com"]

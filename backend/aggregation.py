@@ -732,6 +732,55 @@ def wartet_auf_mensch(root):
     return treffer
 
 
+def dr_entschieden_nicht_verbucht(root):
+    """SWR-131 (platform/T-0014): DRs, deren Entscheidung vorliegt und **nicht verbucht** ist.
+
+    ⚠ **Die notwendige zweite Hälfte von SWR-131.** Die erste Hälfte lässt einen
+    entschiedenen DR aus `wartet_auf_mensch` verschwinden — richtig, denn er wartet auf
+    niemanden. Für sich allein wäre sie aber schlimmer als der Fehler, den sie behebt:
+    das Ticket stünde weiter auf `open`, mit unerledigter Folgearbeit (Verbuchung,
+    Entsperrung der `blocked_by`-Nachbarn), und **niemand** bekäme es mehr zu sehen. Das
+    ist wortwörtlich SWR-122 — eine Prüfung, deren Ergebnis niemand liest —, nur eine
+    Etage tiefer.
+
+    Diese Funktion ist der Leser. Sie beantwortet: *welche Entscheidung liegt vor und
+    ist noch nicht in den Arbeitsstand übernommen?* Der Preflight meldet sie als
+    **Befund** und **mit Ticketnennung**, nicht als Zahl (B038, wie SWR-114/SWR-120).
+
+    **Warum das kein Fall für `inbox.entscheide` ist.** Man könnte die Inbox den Status
+    gleich mitsetzen lassen. Das wäre eine Grenzverletzung nach ADR-003: die Verbuchung
+    ist Teamarbeit mit Folgeschritten (entsperren, planen, berichten) und gehört in den
+    Sprint, nicht in den Schreibpfad des Menschen. Der Befund ist die Brücke — er
+    **erinnert** die Routine, statt die Grenze zu verwischen.
+
+    **Warum die 42 Altfälle nicht rot werden.** Sie stehen auf `done`; `dr_entschieden`
+    ist dort über den Status wahr, und der Filter unten nimmt finale Tickets heraus. Die
+    Gegenprobe dazu steht in den Tests — ohne sie wäre der neue Befund am Tag seiner
+    Einführung 42-fach rot und damit sofort wertlos.
+    """
+    treffer = []
+    for name, basis in board.projekt_pfade(root):
+        verz = os.path.join(basis, "tickets")
+        if not os.path.isdir(verz):
+            continue
+        for datei in sorted(os.listdir(verz)):
+            if not datei.endswith(".md"):
+                continue
+            try:
+                with open(os.path.join(verz, datei), encoding="utf-8") as f:
+                    fm, _ = board.parse_frontmatter(f.read())
+            except OSError:
+                continue
+            fm = fm or {}
+            if fm.get("typ") != "decision-request":
+                continue
+            if fm.get("status") in board.STATUS_FINAL:
+                continue
+            if board.dr_entschieden(fm):
+                treffer.append(ref(name, fm.get("id") or datei[:-3]))
+    return treffer
+
+
 def organisation(root):
     """SWR-117 (pm/T-0047): der Kopfblock — Aussagen über die ORGANISATION, nicht über
     ein Projekt.

@@ -298,6 +298,22 @@ def wartet_auf_mensch(root):
         return None
 
 
+def dr_entschieden_nicht_verbucht(root):
+    """SWR-131 (platform/T-0014): Weiterleitung auf `aggregation.dr_entschieden_nicht_verbucht`.
+
+    Dieselbe Bauart wie `wartet_auf_mensch` und `unterminierte_tickets`: die
+    Weiterleitung ist keine zweite Quelle, sondern der Beleg, dass es nur eine gibt.
+
+    `None` heißt „konnte nicht prüfen" und nicht „nichts gefunden".
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from backend import aggregation as _aggregation
+        return _aggregation.dr_entschieden_nicht_verbucht(root)
+    except Exception:
+        return None
+
+
 def uebergangshistorie(root):
     """SWR-118 (pm/T-0048): `(neue, altbestand, register)` oder `None`.
 
@@ -534,6 +550,25 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
               f"{', '.join(wartend)}")
     else:
         print("[org] 0 Tickets warten auf den Menschen.")
+    # SWR-131 (platform/T-0014): die zweite Hälfte der Zeile darüber — und ohne sie wäre
+    # die erste eine Verschlechterung. Ein entschiedener DR verschwindet ab SWR-131 aus
+    # „wartet auf den Menschen" (er wartet auf niemanden); stünde er dann weiter auf
+    # `open`, hätte ihn niemand mehr im Blick. Genau der Zustand war am 2026-08-17 um
+    # 11:48 der Fall und blieb 16 Minuten lang unbemerkt — lang genug für drei Berichte,
+    # die dem Auftraggeber eine Frage vorlegten, die er beantwortet hatte.
+    #
+    # Zählt als BEFUND, nicht als Zeile: die Verbuchung ist Folgearbeit (entsperren,
+    # planen, berichten), und ein Lauf, der sie überspringt, darf nicht startklar melden.
+    unverbucht = dr_entschieden_nicht_verbucht(root)
+    if unverbucht is None:
+        print("[org] Entschiedene, unverbuchte DRs: nicht prüfbar (Aggregation nicht ladbar).")
+    elif unverbucht:
+        print(f"[org] BEFUND: {len(unverbucht)} entschiedene(r) DR(s) sind nicht verbucht — "
+              f"die Antwort liegt vor, der Arbeitsstand kennt sie nicht: "
+              f"{', '.join(unverbucht)}")
+        befunde += 1
+    else:
+        print("[org] Entschiedene, unverbuchte DRs: 0.")
     # SWR-115 (pm/T-0049): die STATUSSPALTE des Sprintplans gegen den Ticketstatus.
     # Hier und nicht später, weil Sprint 7 `platform/T-0010` vierfach als erledigt gemeldet
     # hat — an den Auftraggeber inbegriffen — und `sprint_vergangen` (SWR-112) den Fall

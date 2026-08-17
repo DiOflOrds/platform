@@ -1,6 +1,6 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-17 · Tickets: 13 · davon wiederkehrend: 1
+Stand: 2026-08-17 · Tickets: 14 · davon wiederkehrend: 1
 
 
 ## open (2)
@@ -9,6 +9,12 @@ Stand: 2026-08-17 · Tickets: 13 · davon wiederkehrend: 1
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0013](tickets/T-0013.md) | Sprintregister kennt kein Ende — zwei Routine-Läufe können gleichzeitig in dieselben Repos schreiben | problem | einmalig | cm | Team | hoch | 0 | — |
+
+## in_progress (1)
+
+| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|---|
+| [T-0014](tickets/T-0014.md) | Eine entschiedene Frage blieb 16 Minuten lang „liegt beim Menschen" — Inbox und Preflight meinen Verschiedenes mit „entschieden | problem | einmalig | cm | Team | hoch | 0 | — |
 
 ## done (11)
 

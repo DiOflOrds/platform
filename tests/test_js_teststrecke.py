@@ -59,8 +59,14 @@ class Teststrecke(unittest.TestCase):
         self.assertIn("UEBERSPRUNGEN", erg["meldung"])
         self.assertIn("node", erg["meldung"])
         self.assertIn("p12/T-0007", erg["meldung"],
-                      "die Meldung nennt die offene Entscheidung nicht — dann weiss der "
-                      "Leser nicht, was er dagegen tun kann")
+                      "die Meldung nennt die Entscheidung nicht — dann weiss der "
+                      "Leser nicht, woran der Zustand haengt")
+        # SWR-131: die Meldung nennt die GETROFFENE Entscheidung, nicht mehr eine Frist.
+        # ⚠ Gegenprobe gegen den Zustand vom 2026-08-17: ein Verweis auf einen offenen
+        # DR mit Frist 24.08. schickt den Leser nach der Entscheidung ins Leere und
+        # laesst ihn eine Handlung erwarten, die es nicht gibt.
+        self.assertIn("B-node-optional", erg["meldung"])
+        self.assertNotIn("2026-08-24", erg["meldung"])
 
     def test_leere_strecke_meldet_das_und_gibt_sich_nicht_gruen(self):
         with tempfile.TemporaryDirectory() as leer:

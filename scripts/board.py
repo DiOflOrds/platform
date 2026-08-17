@@ -670,6 +670,54 @@ def verantwortlich_wert(t):
     return wert if wert in VERANTWORTLICH else VERANTWORTLICH_DEFAULT
 
 
+ENTSCHEIDUNGSMARKER = "**Entscheidung ("  # SWR-039/SWR-131: die Rumpfzeile der Inbox
+STATUS_FINAL = ("done", "rejected")
+
+
+def dr_entschieden(t):
+    """SWR-131 (platform/T-0014): Ist dieser DR entschieden? — die **eine** Antwort.
+
+    ⚠ **Der Anlass ist ein gemessener Fehler gegenüber dem Auftraggeber.** Am
+    2026-08-17 um 11:48:25 hat er `projects/p12/T-0007` über die Inbox mit
+    `B-node-optional` entschieden. Die Inbox nahm die Entscheidung an, schrieb sie in
+    den Ticketrumpf und committete sie. Danach schrieb derselbe Sprint drei Berichte —
+    Sprintplan, Agenda, Projektstatus —, die alle sagten, die Frage liege noch bei ihm.
+
+    **Die Ursache waren zwei Wahrheiten über ein Wort.** `inbox._dr_tickets` und
+    `inbox.historie` lesen „entschieden" am **Rumpfmarker** (SWR-039);
+    `wartet_auf_mensch`, `aggregation` und der Preflight lasen ihn am **Status**. Und
+    `inbox.entscheide` fasst `status` nie an — es schreibt Decision-Log, Rumpfzeile,
+    Commit, sonst nichts, und das ist nach ADR-003 auch richtig so: der Schreibpfad des
+    Menschen darf den Arbeitsstand des Teams nicht fortschreiben.
+
+    > **Eine Entscheidung im Fließtext ist für jede Prüfung unsichtbar.**
+
+    Diese Funktion ist deshalb der eine Auflösungspunkt — dieselbe Bauart wie
+    `verantwortlich_wert` (SWR-116) und `wartet_auf_mensch` (SWR-120), und aus
+    demselben Grund: zwei Formulierungen einer Bedingung sind zwei Antworten in
+    Wartestellung (B033). `inbox.ENTSCHIEDEN` delegiert ab SWR-131 hierher, statt eine
+    zweite Kopie zu führen; die Importrichtung erlaubt das (`inbox` kennt `board`).
+
+    **Zwei Quellen, ein Sachverhalt — und das ist hier kein B033.** Entschieden ist ein
+    DR, wenn die Inbox ihn entschieden hat (Marker) **oder** wenn das Team ihn bereits
+    verbucht hat (finaler Status). Das ist nicht zweimal dieselbe Aussage, sondern
+    Anfang und Ende **eines** Vorgangs: 42 der 43 entschiedenen DRs im Bestand tragen
+    beides, `p12/T-0007` trug nur das erste. Wer nur den Status läse, übersähe genau
+    den Fall, der diese Anforderung ausgelöst hat; wer nur den Marker läse, übersähe
+    die Altfälle, deren Entscheidung vor SWR-039 anders vermerkt wurde.
+
+    ⚠ **Der Marker wird am Zeilenanfang gesucht, nicht irgendwo im Text.** Ein Rumpf,
+    der die Entscheidung nur *erwähnt* („die Entscheidung (D002) steht noch aus"), ist
+    keine Entscheidung — die Gegenprobe dazu steht in den Tests. `_body` liefert
+    `parse_frontmatter` bereits mit; fehlt es (Aufrufer mit reinem Frontmatter-Dict),
+    entscheidet der Status allein, statt eine Ausnahme zu werfen.
+    """
+    if t.get("status") in STATUS_FINAL:
+        return True
+    body = t.get("_body") or ""
+    return any(z.lstrip().startswith(ENTSCHEIDUNGSMARKER) for z in body.splitlines())
+
+
 def wartet_auf_mensch(t):
     """SWR-120: Muss der MENSCH handeln? — die eine Antwort für alle Anzeigen.
 
@@ -693,7 +741,22 @@ def wartet_auf_mensch(t):
     Feld bliebe sonst leer und läse sich trotzdem als gesetzt, und SWR-116 verlangt bei
     `mensch` einen Abschnitt `## Handlung beim Menschen`, den ein DR nicht führt (seine
     Handlung steht in `optionen` + `default`).
+
+    ⚠ **SWR-131: ein entschiedener DR wartet auf niemanden.** Dieser Satz stand seit
+    SWR-120 wörtlich im Docstring von `aggregation.wartet_auf_mensch` — und war
+    **richtig und unwirksam**, weil „entschieden" dort über `status` bestimmt wurde und
+    die Inbox `status` nie setzt. Er wird hier erstmals wirksam, an der Stelle, die alle
+    Anzeigen lesen.
+
+    ⚠ Die Ergänzung allein wäre die **falsche** Reparatur: das entschiedene, aber nicht
+    verbuchte Ticket verschwände aus jeder Anzeige und stünde weiter auf `open`, mit
+    unerledigter Folgearbeit und ohne Leser — wieder SWR-122, eine Etage tiefer. Die
+    zweite Hälfte ist deshalb Pflicht und steht im Preflight
+    (`dr_entschieden_nicht_verbucht`): **nicht behaupten, jemand warte — und nicht
+    schweigen, dass etwas offen ist.**
     """
+    if t.get("typ") == "decision-request" and dr_entschieden(t):
+        return False
     return verantwortlich_wert(t) == "mensch" or t.get("typ") == "decision-request"
 
 
