@@ -515,11 +515,16 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
                      "seit": board.takt_termin(t, jetzt)[0].strftime("%Y-%m-%d %H:%M"),
                      "ampel": board.takt_ampel(t, jetzt)}
                     for t in offene if board.ist_takt_faellig(t, jetzt)]
-    # Ohne Frist ist ein offenes Backlog-Ticket nicht „in Ordnung", sondern unterminiert —
+    # Ohne Termin ist ein offenes Backlog-Ticket nicht „in Ordnung", sondern unterminiert —
     # Takt-Tickets ausgenommen, die tragen ihr Zeitkonzept im Feld `takt` (SWR-074).
-    unterminiert = sum(1 for t in offene
-                       if not t.get("frist") and not t.get("takt")
-                       and t.get("typ") != "decision-request")
+    #
+    # ⚠ SWR-125 (platform/T-0012): „Termin" heißt ab Sprint 11 **Sprintnummer**, für den
+    # `decision-request` weiterhin `frist` (dort wartet ein Mensch, dessen Antwortzeit in
+    # Tagen läuft). Diese Kachelzahl MUSS mit `unterminierte_tickets` mitwandern: zwei
+    # Stellen, die dieselbe Frage verschieden beantworten, sind B033 — und genau das
+    # prüft `test_preflight_unterminiert.BestandTest` seit SWR-114. Die Abgrenzung steht
+    # deshalb nur einmal, in `_ist_unterminiert`.
+    unterminiert = sum(1 for t in offene if _ist_unterminiert(t))
     # SWR-108: „nicht geliefert" ist `None`, „echte Null" bleibt der leere Wert des Typs.
     #
     # `letzte_baseline`: ein Eintrag mit einem Profil ohne G4 (Playbook Kap. 15) bekommt
@@ -566,26 +571,38 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
                     if kpi.get("registry_vorhanden") else None)}  # SWR-108
 
 
-def unterminierte_tickets(root):
-    """SWR-117 (pm/T-0047): offene Tickets ohne Frist — org-weit, MIT Referenzen.
+def _ist_unterminiert(fm):
+    """Trägt dieses **offene** Ticket keinen Termin? — die eine Abgrenzung (SWR-125).
 
-    **Die eine Quelle.** Diese Funktion stand bis Sprint 9 in `scripts/preflight.py`
-    (SWR-114, pm/T-0036 Teil b). `pm/T-0047` will dieselbe Tatsache ein zweites Mal
-    anzeigen — im Cockpit-Kopfblock — und genau dort entsteht B033: zwei Stellen,
-    die dieselbe Frage aus zwei Quellen beantworten und auseinanderlaufen können.
+    Sie steht genau einmal, weil sie an **zwei** Stellen gebraucht wird: in der
+    Cockpit-Kachel (SWR-091) und in der org-weiten Summe (SWR-114/117). Dass beide
+    dieselbe Antwort geben, ist seit SWR-114 ein eigener Test — zwei Stellen, die eine
+    Frage verschieden beantworten, sind B033.
 
-    **Warum sie hierher wandert und nicht umgekehrt.** `backend` importiert bereits
-    `scripts.board` (siehe Kopf dieser Datei). Der umgekehrte Weg — `aggregation`
-    importiert aus `preflight` — schlösse einen Zyklus. Die Richtung ist damit keine
-    Geschmacksfrage. `preflight.unterminierte_tickets` bleibt als **Weiterleitung**
-    stehen: sie ist keine zweite Quelle, sondern der Beleg, dass es nur eine gibt,
-    und sie hält die vorhandenen SWR-114-Tests auf dem ausgelieferten Pfad.
-
-    **Die Abgrenzung ist die von SWR-091**, damit Kachelzahl und Org-Summe nicht
-    verschieden zählen: Takt-Tickets tragen ihr Zeitkonzept im Feld `takt`, ein
-    `decision-request` wird über `frist` + `default` gesteuert.
+    * **Takt-Dauerläufer** tragen ihr Zeitkonzept im Feld `takt` (SWR-074).
+    * **`decision-request`**: Termin ist die `frist`. Dort wartet ein Mensch, und dessen
+      Antwortzeit läuft in Tagen, nicht in 60-Minuten-Läufen; eine Sprintnummer wäre eine
+      Zusage über einen fremden Kalender. Ohne `frist` ist auch ein DR unterminiert —
+      im Bestand tragen **3 von 46** DRs keine (`p0/T-0022`, `p0/T-0035`, `p0/T-0041`),
+      und die alte Regel nahm sie pauschal aus, statt sie zu melden.
+    * **alles andere** — die Arbeit des Teams — wird auf **Sprints** terminiert
+      (SWR-106, bestätigt durch Brief `pm/N-0041`). Ein Kalenderdatum zählt hier nicht
+      mehr als Termin; dass es überhaupt noch dasteht, meldet `kalenderfristen`.
     """
-    treffer = []
+    if fm.get("takt"):
+        return False
+    if fm.get("typ") == "decision-request":
+        return not str(fm.get("frist") or "").strip()
+    return not str(fm.get("geplant_sprint") or "").strip()
+
+
+def _offene_tickets_roh(root):
+    """(name, frontmatter) je offenem Ticket — die gemeinsame Schleife (SWR-125).
+
+    `unterminierte_tickets` und `kalenderfristen` stellen **zwei Fragen an denselben
+    Bestand**. Zwei Schleifen daneben wären zwei Gelegenheiten, verschieden abzugrenzen
+    (B033) — und genau eine solche Abweichung ist der Anlass dieser Änderung.
+    """
     for name, basis in board.projekt_pfade(root):
         verz = os.path.join(basis, "tickets")
         if not os.path.isdir(verz):
@@ -601,10 +618,77 @@ def unterminierte_tickets(root):
             fm = fm or {}
             if fm.get("status") in ("done", "rejected"):
                 continue
-            if fm.get("frist") or fm.get("takt") or fm.get("typ") == "decision-request":
-                continue
-            treffer.append(ref(name, fm.get("id") or datei[:-3]))
-    return treffer
+            # Rückfall auf den Dateinamen wie im Vorstand: ein Ticket ohne `id` soll
+            # nicht unter leerem Namen gemeldet werden (B038 — ein Befund ohne Ref).
+            fm.setdefault("id", datei[:-3])
+            if not str(fm.get("id") or "").strip():
+                fm["id"] = datei[:-3]
+            yield name, fm
+
+
+def unterminierte_tickets(root):
+    """Offene Tickets **ohne Sprintnummer** — org-weit, MIT Referenzen.
+
+    **Die eine Quelle.** Diese Funktion stand bis Sprint 9 in `scripts/preflight.py`
+    (SWR-114, pm/T-0036 Teil b). `pm/T-0047` will dieselbe Tatsache ein zweites Mal
+    anzeigen — im Cockpit-Kopfblock — und genau dort entsteht B033: zwei Stellen,
+    die dieselbe Frage aus zwei Quellen beantworten und auseinanderlaufen können.
+
+    **Warum sie hierher wandert und nicht umgekehrt.** `backend` importiert bereits
+    `scripts.board` (siehe Kopf dieser Datei). Der umgekehrte Weg — `aggregation`
+    importiert aus `preflight` — schlösse einen Zyklus. Die Richtung ist damit keine
+    Geschmacksfrage. `preflight.unterminierte_tickets` bleibt als **Weiterleitung**
+    stehen: sie ist keine zweite Quelle, sondern der Beleg, dass es nur eine gibt,
+    und sie hält die vorhandenen SWR-114-Tests auf dem ausgelieferten Pfad.
+
+    **⚠ SWR-125 (platform/T-0012, Brief pm/N-0041): die Frage wird umgedreht.**
+    Bis Sprint 10 galt ein Ticket als terminiert, sobald es ein **Kalenderdatum**
+    (`frist`) trug. Das war nicht bloß überholt, es war der **Zwang zum Gegenteil**
+    des seit SWR-106 Beschlossenen (*„Terminierung auf Sprints statt auf
+    Kalenderdaten"*, Anforderungen v1.12): wer ein Ticket ohne Datum anlegte, machte
+    den Startcheck rot — also schrieb jeder Lauf pflichtbewusst eines hinein.
+
+    **Eine Entscheidung, die keine Prüfung mitgeändert hat, ist eine
+    Absichtserklärung.** Spiegelbild zu SWR-122: dort wurde eine Prüfung berechnet und
+    von niemandem gelesen, hier eine Regel beschlossen und von keiner Prüfung
+    vertreten. Fünf Sprints lang hat die Prüfung gewonnen, schweigend.
+
+    Gemessen am Bestand (2026-08-17): alle 14 offenen Nicht-DR-Tickets trugen eine
+    Frist **+168 bis +408 Sprints** hinter ihrem geplanten Sprint (Median +240 bei
+    24 Sprints/Tag) — und **alle 14 standen auf grün**, während `pm/T-0039` viermal
+    unbemerkt verschoben wurde. Eine Frist, die nicht reißen kann, terminiert nicht.
+
+    **Die Abgrenzung ist die von SWR-091**, damit Kachelzahl und Org-Summe nicht
+    verschieden zählen: Takt-Tickets tragen ihr Zeitkonzept im Feld `takt`. Der
+    `decision-request` bleibt über `frist` + `default` gesteuert und damit terminiert —
+    **nicht aus Nachsicht**, sondern weil er beim Menschen liegt: dessen Antwortzeit
+    misst sich in Tagen, nicht in 60-Minuten-Läufen, und eine Sprintnummer daneben wäre
+    eine Zusage über einen fremden Kalender. Dieselbe Grenze zieht `sprint_vergangen`
+    (SWR-112) bereits in der Gegenrichtung; sie wird hier nur an **beiden** Enden
+    gleich gezogen. Ein DR **ohne** `frist` ist deshalb weiterhin unterminiert.
+    """
+    return [ref(name, fm["id"]) for name, fm in _offene_tickets_roh(root)
+            if _ist_unterminiert(fm)]
+
+
+def kalenderfristen(root):
+    """SWR-125: offene **Teamaufgaben**, die noch ein Kalenderdatum tragen — mit Refs.
+
+    Die zweite Hälfte von `platform/T-0012`, und die wichtigere. `unterminierte_tickets`
+    **fordert** das Datum ab heute nicht mehr — aber „nicht mehr gefordert" ist genau
+    der Zustand, aus dem dieser Befund entstanden ist: SWR-106 hat Kalenderdaten schon
+    vor fünf Sprints abgeschafft, und weil niemand ihre Rückkehr **meldete**, waren
+    kurz darauf wieder 14 Stück da.
+
+    Deshalb meldet diese Prüfung sie, und deshalb zählt ihr Ergebnis als Befund.
+    Eine Regel, die keine Prüfung vertritt, hält keine drei Sprints.
+
+    Ausgenommen ist nur, wo ein Mensch wartet (`decision-request`): dort **ist** das
+    Datum die Steuerung. Takt-Dauerläufer tragen ohnehin keines.
+    """
+    return [ref(name, fm["id"]) for name, fm in _offene_tickets_roh(root)
+            if fm.get("typ") != "decision-request"
+            and str(fm.get("frist") or "").strip()]
 
 
 def wartet_auf_mensch(root):

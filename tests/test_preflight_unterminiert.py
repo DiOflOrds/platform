@@ -1,4 +1,8 @@
-"""Org-weite Summe der Tickets ohne Frist (SWR-114, pm/T-0036 Teil b).
+"""Org-weite Summe der unterminierten Tickets (SWR-114, pm/T-0036 Teil b).
+
+⚠ Ab SWR-125 (platform/T-0012) heisst "unterminiert" OHNE SPRINTNUMMER statt ohne
+Kalenderdatum. Der Dateiname und die Zusagen dieser Tests bleiben; zwei Provokationen
+haben gewechselt, keine Erwartung.
 
 Befund B049: der Zaehler aus SWR-091 wird PRO KACHEL gelesen und nie als Summe.
 Drei Sessions in Folge erklaerten ihn fuer abgearbeitet, waehrend drei Tickets in
@@ -30,13 +34,22 @@ class UnterminiertTest(unittest.TestCase):
         with open(os.path.join(self.verz, "%s.md" % tid), "w", encoding="utf-8") as f:
             f.write("\n".join(zeilen))
 
-    def test_offenes_ticket_ohne_frist_wird_namentlich_gemeldet(self):
+    def test_offenes_ticket_ohne_termin_wird_namentlich_gemeldet(self):
         """Das Abnahmekriterium des Tickets: NAMENTLICH, nicht als Zahl."""
         self.ticket("T-0001")
         self.assertEqual(preflight.unterminierte_tickets(self.root), ["p0/T-0001"])
 
-    def test_ticket_mit_frist_ist_kein_treffer(self):
-        self.ticket("T-0002", frist="2026-08-30")
+    def test_ticket_mit_termin_ist_kein_treffer(self):
+        """⚠ SWR-125: die ERWARTUNG dieses Tests ist geblieben, die PROVOKATION hat
+        gewechselt — `frist: 2026-08-30` -> `geplant_sprint: 12`.
+
+        Der Test hiess bis Sprint 10 `test_ticket_mit_frist_ist_kein_treffer` und
+        pruefte damit nicht seine Zusage ("ein terminiertes Ticket wird nicht
+        gemeldet"), sondern eine EINHEIT, die SWR-106 schon fuenf Sprints vorher
+        abgeschafft hatte. Der neue Fall steht in `test_unterminiert_sprint.py`
+        (`test_nur_ein_kalenderdatum_terminiert_nicht_mehr`).
+        """
+        self.ticket("T-0002", geplant_sprint="12")
         self.assertEqual(preflight.unterminierte_tickets(self.root), [])
 
     def test_takt_ticket_ist_kein_treffer(self):
@@ -45,8 +58,20 @@ class UnterminiertTest(unittest.TestCase):
         self.assertEqual(preflight.unterminierte_tickets(self.root), [])
 
     def test_decision_request_ist_kein_treffer(self):
-        """Ein DR wird ueber frist+default gesteuert (dieselbe Abgrenzung wie SWR-091)."""
-        self.ticket("T-0004", typ="decision-request")
+        """Ein DR wird ueber frist+default gesteuert (dieselbe Abgrenzung wie SWR-091).
+
+        ⚠ Und genau das stand hier NICHT. Der Test behauptete in Name und Docstring, die
+        Steuerung sei `frist` + `default`, und legte dann einen DR **ohne jede frist** an.
+        Er war gruen, weil die alte Regel jeden DR pauschal ausnahm — er belegte also
+        eine Nachsicht und nannte sie eine Steuerung. Dritter Fall dieser Sorte in zwei
+        Sprints (Sprint 10: drei SWR-121-Tests und zwei Pool-Tests).
+
+        Ein Test, dessen Provokation seine eigene Begruendung nicht enthaelt, prueft
+        nicht, was in seinem Namen steht. Geaendert wurde die PROVOKATION (die frist ist
+        jetzt da), nie die Erwartung; der fehlende Gegenfall steht als
+        `test_entscheidungsvorlage_ohne_frist_ist_unterminiert`.
+        """
+        self.ticket("T-0004", typ="decision-request", frist="2026-08-20")
         self.assertEqual(preflight.unterminierte_tickets(self.root), [])
 
     def test_geschlossenes_ticket_ist_kein_treffer(self):

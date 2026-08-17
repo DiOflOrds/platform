@@ -313,8 +313,27 @@ def uebergangshistorie(root):
         return None
 
 
+def kalenderfristen(root):
+    """SWR-125 (platform/T-0012): Teamaufgaben mit Kalenderdatum — Weiterleitung.
+
+    Dieselbe Bauart wie `unterminierte_tickets` eine Funktion tiefer und aus demselben
+    Grund (SWR-117): der Rumpf steht in `backend/aggregation.py`, weil der Cockpit-
+    Kopfblock ihn ebenfalls liest und zwei Quellen für eine Frage B033 wären.
+
+    `None` heißt „konnte nicht prüfen" und ausdrücklich nicht „nichts gefunden" —
+    dieselbe Unterscheidung wie bei `statusdrift`. Eine stille Erfolgsmeldung an der
+    Stelle eines Ausfalls ist genau der Fehler, der `pm/T-0049` ausgelöst hat.
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from backend import aggregation as _aggregation
+        return _aggregation.kalenderfristen(root)
+    except Exception:
+        return None
+
+
 def unterminierte_tickets(root):
-    """SWR-114 (pm/T-0036 Teil b): offene Tickets ohne Frist — org-weit, MIT Referenzen.
+    """SWR-114 (pm/T-0036 Teil b): offene Tickets ohne **Sprintnummer** — org-weit, mit Refs.
 
     Der Befund B049: der „ohne Frist"-Zähler aus SWR-091 wird **pro Kachel** gelesen und
     nie als Summe. Drei Sessions in Folge erklärten ihn für abgearbeitet, während drei
@@ -335,6 +354,11 @@ def unterminierte_tickets(root):
     Pfad, der tatsächlich ausgeliefert wird. Die Richtung des Umzugs ist erzwungen —
     `backend` importiert bereits `scripts.board`, der umgekehrte Weg schlösse einen
     Zyklus.
+
+    **⚠ SWR-125 (platform/T-0012, Brief pm/N-0041): die Frage lautet ab Sprint 11
+    „hat einen Sprint?" statt „hat ein Datum?".** Der Name der Funktion bleibt, weil
+    „unterminiert" die Frage ist und `frist` nur eine ihrer Antworten war. Begründung
+    im Rumpf (`aggregation.unterminierte_tickets`).
     """
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
     from backend import aggregation as _aggregation
@@ -468,11 +492,32 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
     # SWR-114 (pm/T-0036 Teil b): org-weite Summe der Tickets ohne Frist, MIT Namen.
     # Die Stelle, an der eine Session ohnehin hinsieht, bevor sie etwas anderes tut —
     # und die einzige, die die Frage für die ganze Organisation stellt statt je Kachel.
-    ohne_frist = unterminierte_tickets(root)
-    if ohne_frist:
-        print(f"[org] {len(ohne_frist)} Ticket(s) ohne Frist: {', '.join(ohne_frist)}")
+    #
+    # SWR-125 (platform/T-0012, Brief pm/N-0041): die Frage lautet ab Sprint 11
+    # „hat einen SPRINT?" statt „hat ein DATUM?". Bis dahin hat genau diese Zeile
+    # erzwungen, was der Auftraggeber zweimal gerügt hat — wer ein Ticket ohne
+    # Kalenderdatum anlegte, machte den Startcheck rot.
+    ohne_sprint = unterminierte_tickets(root)
+    if ohne_sprint:
+        print(f"[org] {len(ohne_sprint)} Ticket(s) ohne Sprint: {', '.join(ohne_sprint)}")
+        befunde += 1
     else:
-        print("[org] 0 Tickets ohne Frist.")
+        print("[org] 0 Tickets ohne Sprint.")
+    # SWR-125, zweite Hälfte: die Gegenrichtung. „Nicht mehr gefordert" genügt nicht —
+    # SWR-106 hatte Kalenderdaten schon fünf Sprints früher abgeschafft, und weil ihre
+    # Rückkehr niemand meldete, waren kurz darauf wieder 14 Stück da. Zählt deshalb
+    # als Befund: eine Zeile, die nichts blockiert, hat den Bericht von Sprint 9 auch
+    # nicht verhindert.
+    kal = kalenderfristen(root)
+    if kal is None:
+        print("[org] Kalenderfristen an Teamaufgaben: nicht prüfbar "
+              "(Aggregation nicht ladbar).")
+    elif kal:
+        print(f"[org] BEFUND: {len(kal)} Teamaufgabe(n) tragen ein Kalenderdatum statt "
+              f"einer Sprintnummer: {', '.join(kal)}")
+        befunde += 1
+    else:
+        print("[org] Kalenderfristen an Teamaufgaben: 0.")
     # SWR-120 (pm/T-0051): dieselbe Frage für den Menschen — wie viele offene Tickets
     # liegen bei ihm, und WELCHE. Aus derselben Quelle wie der Cockpit-Kopfblock
     # (`aggregation.wartet_auf_mensch`), damit Preflight und HMI nicht verschieden
