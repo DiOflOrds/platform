@@ -467,3 +467,65 @@ test("eine Aufgabe ohne geplant_sprint bekommt einen wirksamen Knopf (SWR-144)",
   const b = R.terminierKnopf({}, 18);
   assert.strictEqual(b.wirkungslos, false);
 });
+
+// --------------------------------------------------------------------------
+// SWR-146 (platform/T-0016 DoD 2/3): die EINE Stelle fuer den Text eines Cockpit-Feldes.
+//
+// ⚠ DoD 3 verlangt die Migration **ohne Verhaltensaenderung**. Die neun Wortlaute unten
+// sind deshalb Zeichen fuer Zeichen die von Sprint 3 bis 16 — abgelesen am Stand VOR der
+// Migration, nicht neu formuliert. Eine Vereinheitlichung waere eine Verhaltensaenderung
+// mit gutem Gewissen.
+// --------------------------------------------------------------------------
+
+test("letzte_baseline: die drei Zustaende, Wortlaute unveraendert (SWR-146)", () => {
+  assert.strictEqual(R.cockpitFeldText("letzte_baseline", "nicht_geliefert"), "keine Daten");
+  assert.strictEqual(R.cockpitFeldText("letzte_baseline", "echte_null"), "noch keine");
+  assert.strictEqual(R.cockpitFeldText("letzte_baseline", "wert", "p0-v1.0"), "p0-v1.0");
+});
+
+test("team.letzter_digest: die drei Zustaende, Wortlaute unveraendert (SWR-146)", () => {
+  assert.strictEqual(R.cockpitFeldText("team.letzter_digest", "nicht_geliefert"),
+                     "Digest: keine Daten");
+  assert.strictEqual(R.cockpitFeldText("team.letzter_digest", "echte_null"),
+                     "noch kein Digest");
+  assert.strictEqual(R.cockpitFeldText("team.letzter_digest", "wert", "Digest 2026-08-17"),
+                     "Digest 2026-08-17");
+});
+
+test("kpi: der Fehlfall, Wortlaut unveraendert (SWR-146)", () => {
+  assert.strictEqual(R.cockpitFeldText("kpi", "nicht_geliefert"), "KPI: keine Daten");
+});
+
+test("⚠ ein FEHLENDER Zustand gilt als nicht_geliefert, nicht als Wert (SWR-146)", () => {
+  // Dieselbe Entscheidung wie in `feldText`, und aus demselben Grund: bei einem
+  // unvollstaendigen Payload (alte Serverversion ohne `zustaende`) stuende sonst
+  // "undefined" auf dem Schirm — eine Anzeige, die wie ein Inhalt aussieht und keiner ist.
+  [undefined, null, "", "quatsch"].forEach(function (z) {
+    assert.strictEqual(R.cockpitFeldText("letzte_baseline", z), "keine Daten",
+                       "bei " + JSON.stringify(z));
+  });
+});
+
+test("⚠ ein unbekanntes Feld wird nicht geraten (SWR-146)", () => {
+  assert.strictEqual(R.cockpitFeldText("gibt_es_nicht", "wert", "X"), "keine Daten");
+});
+
+test("⚠ 'keine Daten' steht EINMAL da und wird zusammengesetzt (SWR-146, B033)", () => {
+  // Der Kern der Anforderung als Zaehltest: die Marke selbst darf nicht dreimal als
+  // Literal in der Tabelle stehen, sonst ist die Migration eine Umzugsaktion und keine
+  // Zusammenfuehrung. Gemessen daran, dass beide Praefix-Faelle die Marke ENTHALTEN und
+  // mit ihr enden.
+  assert.match(R.COCKPIT_TEXTE["team.letzter_digest"].nicht_geliefert,
+               new RegExp(R.KEINE_DATEN + "$"));
+  assert.match(R.COCKPIT_TEXTE["kpi"].nicht_geliefert,
+               new RegExp(R.KEINE_DATEN + "$"));
+  assert.strictEqual(R.COCKPIT_TEXTE["letzte_baseline"].nicht_geliefert, R.KEINE_DATEN);
+});
+
+test("alle drei migrierten Felder stehen in der Tabelle (SWR-146, DoD 4)", () => {
+  // Die Gegenprobe zum Zaehltest in `test_dashboard_endpunkt.py`: der Altbestand ist dort
+  // auf 0 gezogen, weil die Regel HIER steht. Verschwindet sie hier, ist die 0 dort eine
+  // Luecke und kein Erfolg.
+  assert.deepStrictEqual(Object.keys(R.COCKPIT_TEXTE).sort(),
+                         ["kpi", "letzte_baseline", "team.letzter_digest"]);
+});

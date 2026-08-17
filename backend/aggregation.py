@@ -561,20 +561,28 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
         letzte_baseline = letzte_baseline_text = None
     else:
         letzte_baseline = letzte_baseline_text = ""
-    return {"projekt": projekt, "status_zahlen": status_zahlen,
-            "tickets_gesamt": len(tickets), "offene_drs": drs,
-            "letzte_baseline": letzte_baseline,
-            "letzte_baseline_text": letzte_baseline_text,  # SWR-111
-            "briefe_offen": briefe_offen, "team": team,
-            "beschreibung": stufe["beschreibung"], "status": status, "gruppe": gruppe,
-            "aufgaben_offen": len(offene), "aufgaben": aufgaben,
-            "aufgaben_wiederkehrend": wiederkehrend,  # SWR-074 (pm/N-0012)
-            "ueberfaellig": ueberfaellig,  # SWR-091 (pm/T-0030, Brief pm/N-0025)
-            "takt_faellig": takt_faellig,  # SWR-104 (pm/T-0032, Brief pm/N-0025)
-            "unterminiert": unterminiert,  # SWR-091
-            "kpi": ({"laeufe": kpi.get("laeufe", 0),
-                     "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}
-                    if kpi.get("registry_vorhanden") else None)}  # SWR-108
+    eintrag = {"projekt": projekt, "status_zahlen": status_zahlen,
+               "tickets_gesamt": len(tickets), "offene_drs": drs,
+               "letzte_baseline": letzte_baseline,
+               "letzte_baseline_text": letzte_baseline_text,  # SWR-111
+               "briefe_offen": briefe_offen, "team": team,
+               "beschreibung": stufe["beschreibung"], "status": status, "gruppe": gruppe,
+               "aufgaben_offen": len(offene), "aufgaben": aufgaben,
+               "aufgaben_wiederkehrend": wiederkehrend,  # SWR-074 (pm/N-0012)
+               "ueberfaellig": ueberfaellig,  # SWR-091 (pm/T-0030, Brief pm/N-0025)
+               "takt_faellig": takt_faellig,  # SWR-104 (pm/T-0032, Brief pm/N-0025)
+               "unterminiert": unterminiert,  # SWR-091
+               "kpi": ({"laeufe": kpi.get("laeufe", 0),
+                        "kosten_eur": kpi.get("kosten_eur_gesamt", 0.0)}
+                       if kpi.get("registry_vorhanden") else None)}  # SWR-108
+    # SWR-146 (platform/T-0016 DoD 2, Vertrag v2.5): der ZUSTAND je Feld — als
+    # **Schwesterschlüssel** und nicht als Umhüllung der Werte. Dieselbe Bauform, unter
+    # der SWR-117 den Org-Kopfblock einführen durfte: jeder heutige Leser liest
+    # `eintrag["letzte_baseline"]` unverändert weiter. Eine Umhüllung nach dem Muster von
+    # `dashboard` (`{wert, zustand}`) hätte **jeden** Leser des Cockpits geändert, um eine
+    # Angabe zu liefern, die nur drei Felder betrifft.
+    eintrag["zustaende"] = zustaende_von(eintrag)
+    return eintrag
 
 
 def _ist_unterminiert(fm):
@@ -930,6 +938,50 @@ def _zustand(wert):
     if wert == 0 or wert == "" or wert == [] or wert == {}:
         return ZUSTAND_ECHTE_NULL
     return ZUSTAND_WERT
+
+
+#: SWR-146 (platform/T-0016 DoD 2): die Felder des Cockpit-Eintrags, für die ein Zustand
+#: geliefert wird — **die optionalen**, also genau die, bei denen `null` vorkommen kann.
+#:
+#: ⚠ Die Menge folgt dem **Vertrag** (`pflicht: false`) und nicht dem, was die heutige
+#: Ansicht braucht. Hätte sie sich nach der Ansicht gerichtet, wären es drei Einträge
+#: gewesen, und der vierte (`letzte_baseline_text`) hätte beim ersten Leser gefehlt, der
+#: ihn anzeigt — eine Lücke, die niemandem auffällt, weil sie nur bei `null` sichtbar ist.
+#: Ein Test hält die Menge gegen die `pflicht: false`-Felder der Vertragsdatei.
+ZUSTAND_FELDER_COCKPIT = ("letzte_baseline", "letzte_baseline_text", "team", "kpi")
+
+#: Verschachtelte Pfade, die eine Anzeige eigenständig beurteilen muss. `team` kann
+#: `null` sein („kein Team"), und **innerhalb** eines vorhandenen Teams kann
+#: `letzter_digest` `null` sein („führt keine Digests") — das sind zwei verschiedene
+#: Tatsachen, und der Vertrag führt `letzter_digest` als `felder_innen` von `team`.
+#: ⚠ Ohne diesen Pfad hätte die Cockpit-Karte ihren dritten Inline-Fall behalten müssen,
+#: und DoD 4 (Zähltest auf 0) wäre nicht erreichbar gewesen.
+ZUSTAND_PFADE_COCKPIT = ("team.letzter_digest",)
+
+
+def zustaende_von(eintrag):
+    """SWR-146: `{feldname: zustand}` für einen Cockpit-Eintrag — **eine** Herleitung.
+
+    Benutzt `_zustand`, dieselbe Funktion, aus der `dashboard` seine Zustände nimmt. Das
+    ist der ganze Zweck: bis Sprint 16 hat die Cockpit-Ansicht an **drei** Stellen selbst
+    auf `=== null` geprüft, und `platform/T-0016` hat festgestellt, dass eine vierte
+    Herleitung in JavaScript ein neuer B033-Fall wäre statt einer Reparatur.
+
+    > **Ein Ticket gegen B033 zu lösen, indem man einen neuen B033-Fall anlegt, ist keine
+    > Lösung, sondern eine Verschiebung mit besserer Presse.**
+
+    ⚠ Ein verschachtelter Pfad, dessen **Elternteil** `nicht_geliefert` ist, ist selbst
+    `nicht_geliefert` und **nicht** abwesend: gibt es kein Team, gibt es auch keinen
+    Digest, und eine fehlende Angabe wäre für die Anzeige von einem Wert nicht zu
+    unterscheiden.
+    """
+    zustaende = {name: _zustand(eintrag.get(name)) for name in ZUSTAND_FELDER_COCKPIT}
+    for pfad in ZUSTAND_PFADE_COCKPIT:
+        eltern, kind = pfad.split(".", 1)
+        wert = eintrag.get(eltern)
+        zustaende[pfad] = (_zustand(wert.get(kind)) if isinstance(wert, dict)
+                           else ZUSTAND_NICHT_GELIEFERT)
+    return zustaende
 
 
 def dashboard(root, heute=None, jetzt=None):

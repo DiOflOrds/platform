@@ -222,6 +222,16 @@ function TAKT_TEXT(t) {
   return (TAKT_NAMEN[teile[0]] || teile[0]) + " " + teile[1].replace("-", " ");
 }
 
+// SWR-146 (platform/T-0016 DoD 2): der Zustand eines Cockpit-Feldes AUS DEM PAYLOAD.
+//
+// ⚠ Ein fehlender `zustaende`-Block liefert `undefined`, und `Regeln.cockpitFeldText`
+// liest das als `nicht_geliefert`. Das ist Absicht: ein Payload einer alten Serverversion
+// soll „keine Daten" zeigen und nicht abstuerzen — aber er soll auch nicht so tun, als
+// haette er etwas gemeldet.
+function zustand(eintrag, feld) {
+  return ((eintrag || {}).zustaende || {})[feld];
+}
+
 function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
       var fertig = (p.status_zahlen.done || 0) + (p.status_zahlen.rejected || 0);
       var karte = el("div", { "class": "karte" },
@@ -307,13 +317,14 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
           el("a", { "class": "tlink", href: "#/chat/" + p.projekt }, "zum Team-Chat")));
       }
       if (p.team) {  // SWR-055 (P7): Team-Kachel mit letztem Digest
-        // SWR-108: `null` heisst "fuehrt keine Digests" und wird als "keine Daten"
-        // beschriftet; "" heisst "fuehrt Digests, hatte noch keinen" — eine echte Null,
-        // die weiterhin "noch kein Digest" sagt. Vorher waren beide Faelle derselbe Satz.
+        // SWR-146 (platform/T-0016 DoD 2/3): der Zustand kommt aus dem Payload
+        // (`zustaende["team.letzter_digest"]`, aus `aggregation._zustand`), der Text aus
+        // `Regeln.cockpitFeldText`. Vorher stand hier eine EIGENE `=== null`-Pruefung —
+        // eine von drei, alle sachlich richtig und zusammen die Bauart von SWR-131.
         karte.appendChild(el("div", { "class": "zeile" },
-          pille(p.team.letzter_digest === null ? "Digest: keine Daten"
-                : p.team.letzter_digest ? "Digest " + p.team.letzter_digest
-                : "noch kein Digest", "in_review"),
+          pille(Regeln.cockpitFeldText("team.letzter_digest",
+                                       zustand(p, "team.letzter_digest"),
+                                       "Digest " + p.team.letzter_digest), "in_review"),
           el("a", { "class": "tlink", href: "#/team/" + p.projekt }, "zum Team")));
       }
       // SWR-108: `null` = fuer diesen Eintrag ist keine Baseline vorgesehen (Profil ohne
@@ -324,15 +335,21 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
       // steht in `letzte_baseline_text` (bei p1 284 Zeichen — mehr als eine Reihe fasst)
       // und gehoert auf die Detailseite, wie die volle Aufgabenliste bei SWR-094.
       // Nicht im Widget kuerzen: die Regel gehoert in die Quelle, nicht ins JavaScript.
-      karte.appendChild(el("div", { "class": "zeile" }, "Letzte Baseline: " + (
-        p.letzte_baseline === null ? "keine Daten"
-          : p.letzte_baseline || "noch keine")));
+      // SWR-146: dieselbe eine Stelle wie oben. Der Wortlaut ist Zeichen fuer Zeichen der
+      // von vorher — DoD 3 verlangt die Migration OHNE Verhaltensaenderung.
+      karte.appendChild(el("div", { "class": "zeile" }, "Letzte Baseline: " +
+        Regeln.cockpitFeldText("letzte_baseline", zustand(p, "letzte_baseline"),
+                               p.letzte_baseline)));
       // SWR-108: ohne Run-Registry gibt es keine Messung — die 0 zu zeigen hiesse, eine
       // Messung zu behaupten (B038). `p.kpi` ist dann `null`, und `.toFixed` darauf waere
       // ein Absturz der ganzen Kachel: der Leser wird mitgezogen, nicht nur die Quelle.
       var kpiZeile = el("div", { "class": "zeile" });
-      if (p.kpi === null) {
-        kpiZeile.appendChild(pille("KPI: keine Daten"));
+      // SWR-146: die dritte und letzte der drei Inline-Stellen. ⚠ Hier bleibt eine
+      // Verzweigung stehen, und das ist kein Rest: `kpi` traegt im Wert-Fall ZWEI Pillen
+      // (Laeufe und Kosten) und im Fehlfall EINE. Das ist eine Frage der Struktur, nicht
+      // des Textes — und `cockpitFeldText` beantwortet nur die des Textes.
+      if (zustand(p, "kpi") === "nicht_geliefert") {
+        kpiZeile.appendChild(pille(Regeln.cockpitFeldText("kpi", "nicht_geliefert")));
       } else {
         kpiZeile.appendChild(pille(p.kpi.laeufe + " Läufe"));
         kpiZeile.appendChild(pille(p.kpi.kosten_eur.toFixed(2) + " € API"));

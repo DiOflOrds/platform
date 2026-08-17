@@ -413,8 +413,59 @@ var Regeln = (function () {
              wirkungslos: false };
   }
 
+  /** SWR-146 (platform/T-0016 DoD 2/3): der Text eines Cockpit-Feldes je Zustand.
+   *
+   * ⚠ **Die EINE Stelle in JavaScript.** Bis Sprint 16 stand die Regel *"null heisst keine
+   * Daten, 0 heisst 0"* an DREI Stellen in `cockpitKarte` inline — jede sachlich richtig,
+   * und genau das war der Befund: vier Formulierungen eines Begriffs, deren
+   * Auseinanderdriften niemandem auffaellt (B033, der Preis von SWR-131).
+   *
+   * ⚠ **Der Zustand wird hier NICHT hergeleitet, sondern gelesen.** Er kommt aus
+   * `payload.zustaende[feld]` und damit aus `aggregation._zustand` — derselben Funktion,
+   * aus der das Dashboard seine Zustaende nimmt. Eine zweite Herleitung in JavaScript
+   * waere ein NEUER B033-Fall statt einer Reparatur; das steht so in `platform/T-0016`
+   * und ist der Grund, warum DoD 1 (die Vertragsfrage) vor DoD 2 kam.
+   *
+   * ⚠ **Die Wortlaute sind die von Sprint 3 bis 16, Zeichen fuer Zeichen.** DoD 3 verlangt
+   * die Migration OHNE Verhaltensaenderung: die drei Stellen zeigen heute das Richtige,
+   * und eine Migration, die dabei eine Anzeige veraendert, hat einen Fehler gemacht. Die
+   * Texte stehen deshalb als Tabelle da und sind nicht "vereinheitlicht" worden — eine
+   * Vereinheitlichung waere eine Verhaltensaenderung mit gutem Gewissen.
+   */
+  var COCKPIT_TEXTE = {
+    "letzte_baseline": {
+      nicht_geliefert: KEINE_DATEN, echte_null: "noch keine" },
+    "team.letzter_digest": {
+      nicht_geliefert: "Digest: " + KEINE_DATEN, echte_null: "noch kein Digest" },
+    "kpi": {
+      nicht_geliefert: "KPI: " + KEINE_DATEN, echte_null: null }
+  };
+
+  function cockpitFeldText(feld, zustand, wert) {
+    var texte = COCKPIT_TEXTE[feld];
+    if (!texte) return KEINE_DATEN;   // unbekanntes Feld: nicht raten (wie `feldText`)
+    if (zustand === "echte_null") return texte.echte_null;
+    // ⚠⚠ **Nur `wert` liefert einen Wert — alles andere ist `nicht_geliefert`.**
+    //
+    // Der erste Entwurf dieser Funktion fragte `if (zustand === "nicht_geliefert" ||
+    // !zustand)` und fiel bei jedem UNBEKANNTEN Zustand bis `String(wert)` durch. Bei
+    // einem unvollstaendigen Payload stand damit "undefined" auf dem Schirm — genau der
+    // Fehler, den der Kommentar in `feldText` seit SWR-135 beschreibt, drei Funktionen
+    // weiter oben in derselben Datei.
+    //
+    // > **Eine Warnung, die im Nachbarcode steht, verhindert den Fehler nicht — die
+    // > Zusicherung, die sie messbar macht, tut es.**
+    //
+    // Gefunden hat es `test_..._ein_FEHLENDER_Zustand_gilt_als_nicht_geliefert`, und zwar
+    // beim ERSTEN Lauf. Die Pruefung ist deshalb wie in `feldText` formuliert: die
+    // geschlossene Menge entscheidet, nicht ihre Verneinung.
+    if (zustand !== "wert") return texte.nicht_geliefert;
+    return String(wert);
+  }
+
   return { feldText: feldText, kachelFelder: kachelFelder,
            terminierKnopf: terminierKnopf,
+           cockpitFeldText: cockpitFeldText, COCKPIT_TEXTE: COCKPIT_TEXTE,
            fuerDichAbschnitte: fuerDichAbschnitte,
            FUER_DICH_LEER_ENTSCHEIDUNGEN: FUER_DICH_LEER_ENTSCHEIDUNGEN,
            FUER_DICH_LEER_HANDLUNGEN: FUER_DICH_LEER_HANDLUNGEN,

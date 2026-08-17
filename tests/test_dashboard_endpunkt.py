@@ -123,6 +123,16 @@ class VertragTest(unittest.TestCase):
                 z = zeile.strip()
                 if z.startswith("- name:"):
                     self.namen.add(z.split(":", 1)[1].strip().strip('"\''))
+        # SWR-146: die Version wird gegen die DATEI verglichen und nicht gegen ein
+        # Literal — mit einem anderen Verfahren als `vertrag_version` (YAML statt
+        # Zeilenscanner), damit zwei unabhaengige Lesungen sich bestaetigen.
+        try:
+            import yaml
+        except ImportError:
+            self.vertrag = None
+            return
+        with open(VERTRAG, encoding="utf-8") as f:
+            self.vertrag = yaml.safe_load(f)
 
     def test_jedes_kachelfeld_steht_im_vertrag(self):
         """Sonst waere der Endpunkt ein Vertragsbruch — genau das, was B066 prueft.
@@ -135,8 +145,27 @@ class VertragTest(unittest.TestCase):
         self.assertEqual(fremd, [], f"Felder ohne Vertragseintrag: {fremd}")
 
     def test_die_vertragsversion_wird_gelesen_nicht_eingetragen(self):
-        """Eine Konstante im Code wuerde beim naechsten Bump still falsch (B033)."""
-        self.assertEqual(aggregation.vertrag_version(WURZEL), "2.4")
+        """Eine Konstante im Code wuerde beim naechsten Bump still falsch (B033).
+
+        ⚠ Der Bump auf v2.5 (SWR-146) hat diesen Test rot gemacht, weil hier die Zahl
+        `"2.4"` als Literal stand — und damit stand die Version an einer **zweiten** Stelle,
+        genau das, was der Test seinem eigenen Titel nach ausschliessen soll.
+
+        > **Ein Test, der behauptet, ein Wert werde gelesen und nicht eingetragen, darf ihn
+        > nicht selbst eintragen.**
+
+        Verglichen wird deshalb gegen die **Datei** — und mit einem anderen Verfahren als
+        die Funktion: `yaml.safe_load` gegen den Zeilenscanner in `vertrag_version`. Zwei
+        unabhaengige Lesungen, die uebereinstimmen, sind die Zusicherung; ein Literal war
+        nur eine dritte Behauptung.
+        """
+        if self.vertrag is None:
+            self.skipTest("PyYAML nicht verfuegbar")
+        self.assertEqual(aggregation.vertrag_version(WURZEL),
+                         str(self.vertrag["version"]))
+        # ⚠ Und die Gegenprobe gegen „beide lesen nichts": eine leere Antwort auf beiden
+        # Seiten waere gleich und trotzdem falsch.
+        self.assertRegex(aggregation.vertrag_version(WURZEL), r"^\d+\.\d+$")
 
     def test_fehlender_vertrag_liefert_leer_statt_einer_ausnahme(self):
         self.assertEqual(aggregation.vertrag_version("/gibt/es/nicht"), "")
@@ -228,38 +257,60 @@ class AnsichtTest(unittest.TestCase):
         self.assertEqual(verdaechtig, [],
                          f"der Dashboard-Code formuliert die Regel selbst: {verdaechtig}")
 
-    def test_altbestand_der_inline_regel_waechst_nicht(self):
-        """⚠⚠ BENANNTER ALTBESTAND: die Cockpit-Kachel formuliert die Regel dreifach selbst.
+    def test_altbestand_der_inline_regel_ist_auf_NULL(self):
+        """✅ SWR-146 (platform/T-0016 DoD 4): der Altbestand ist **geschlossen** — 3 -> 0.
 
-        Gefunden beim Bau von SWR-135, durch genau diese Pruefung. `cockpitKarte` prueft an
-        **drei** Stellen selbst auf `=== null` und schreibt „keine Daten" hin:
-        `team.letzter_digest`, `letzte_baseline` und die KPI-Pille.
+        Bis Sprint 16 stand hier `assertEqual(len(kopien), 3)` und der Docstring erklärte,
+        warum der Befund **benannt und eingefroren** und nicht geglättet wurde. Der Grund
+        für das Einfrieren war eine offene **Vertragsfrage**: `/api/cockpit` führte kein
+        `zustand`-Feld, und eine zweite Herleitung in JavaScript wäre ein neuer B033-Fall
+        gewesen statt einer Reparatur.
 
-        Die drei Kopien sind **sachlich richtig** — und genau das ist der Punkt. Es ist
-        dieselbe Bauart, die SWR-131 einen Tag vorher gekostet hat: nicht falsche Anzeigen,
-        sondern **mehrere Formulierungen einer Regel**, von denen jede fuer sich stimmt und
-        die zusammen auseinanderdriften koennen.
+        Die Frage ist in Sprint 16 entschieden (Weg A, Eigentümer `team-dashboard/T-0001`),
+        der Payload trägt den Zustand seit Sprint 17 (`zustaende`, Vertrag v2.5), und die
+        drei Inline-Prüfungen sind durch **eine** Stelle ersetzt
+        (`Regeln.cockpitFeldText`).
 
-        ⚠ **Nicht in diesem Lauf mitmigriert, und das ist eine Entscheidung mit Grund:**
-        `/api/cockpit` fuehrt kein `zustand`-Feld, die Ansicht muesste den Zustand also
-        selbst herleiten — und eine zweite Herleitung in JavaScript neben
-        `aggregation._zustand` waere ein neuer B033-Fall statt einer Reparatur. Den Zustand
-        in den Cockpit-Payload aufzunehmen beruehrt den **Widget-Vertrag** (B066, Feldliste,
-        Versions-Bump) und gehoert damit nicht in ein Ticket, das nur lesen soll.
+        ⚠ Die Prüfung bleibt bestehen und wird **nicht** gelöscht: sie ist ab jetzt der
+        Wächter gegen die **Rückkehr**. Genau dieser Fall ist der Organisation schon
+        passiert — SWR-106 hatte Kalenderdaten fünf Sprints früher abgeschafft, und weil
+        ihre Rückkehr niemand meldete, standen kurz darauf wieder 14 Stück im Bestand
+        (SWR-125). Eine Regel, die keine Prüfung vertritt, hält keine drei Sprints.
 
-        Aufgenommen als `platform/T-0016`. Bis dahin haelt dieser Test die Zahl fest: der
-        Altbestand darf **nicht wachsen**. Genau diese Bauart benutzt das Team beim
-        Altbestand der 52 Statusuebergaenge — benennen und einfrieren, nicht glaetten.
+        ⚠ Gemessen wird weiter der **Textabschnitt** `cockpitKarte`, und die Grenze der
+        Messung steht hier ausdrücklich: eine Textsuche kann eine Warnung nicht von ihrem
+        Gegenstand unterscheiden (`L-2026-08-17ak`). Kommentarzeilen sind deshalb
+        ausgenommen — und die Marke selbst steht seit der Migration in `regeln.js`, wo ein
+        eigener JS-Zähltest sie hält (`alle drei migrierten Felder stehen in der Tabelle`).
+        Ohne diesen Nachbarn wäre die 0 hier von einer verlorenen Regel nicht zu
+        unterscheiden.
         """
         anfang = self.app.index("function cockpitKarte")
         ende = self.app.index("function kompaktKachel")
         kopien = [z.strip() for z in self.app[anfang:ende].splitlines()
                   if "keine Daten" in z and not z.strip().startswith("//")]
-        self.assertEqual(len(kopien), 3,
-                         "Der benannte Altbestand hat sich veraendert (erwartet 3, "
-                         f"gefunden {len(kopien)}): {kopien}. Waechst er, ist das ein "
-                         "Befund; schrumpft er, ist platform/T-0016 teilweise erledigt "
-                         "und diese Zahl gehoert nachgezogen.")
+        self.assertEqual(len(kopien), 0,
+                         "Die Zustandsregel steht wieder inline in cockpitKarte "
+                         f"(erwartet 0, gefunden {len(kopien)}): {kopien}. Sie gehoert in "
+                         "Regeln.cockpitFeldText — SWR-146.")
+
+    def test_die_ansicht_liest_den_zustand_und_leitet_ihn_nicht_ab(self):
+        """⚠ Die Gegenrichtung zur 0 darüber, und ohne sie wäre die 0 wertlos.
+
+        Der Altbestand ließe sich auch dadurch auf 0 bringen, dass `cockpitKarte` den
+        Zustand **selbst** herleitet und die Marke anders schreibt. Gemessen wird deshalb,
+        dass die Karte den Zustand aus dem **Payload** nimmt (`zustaende`) und den Text von
+        `Regeln` bezieht — und dass sie keine eigene `=== null`-Prüfung an den drei
+        migrierten Feldern mehr trägt.
+        """
+        anfang = self.app.index("function cockpitKarte")
+        ende = self.app.index("function kompaktKachel")
+        karte = self.app[anfang:ende]
+        self.assertIn("Regeln.cockpitFeldText", karte)
+        eigene = [z.strip() for z in karte.splitlines()
+                  if "=== null" in z and not z.strip().startswith("//")]
+        self.assertEqual(eigene, [],
+                         f"cockpitKarte leitet den Zustand wieder selbst ab: {eigene}")
 
     def test_das_dashboard_ist_ein_eigener_reiter(self):
         self.assertIn('["dashboard", "Dashboard"]', self.app)
