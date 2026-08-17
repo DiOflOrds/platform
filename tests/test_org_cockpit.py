@@ -414,5 +414,62 @@ class NavigationTest(RepoWelt):
         self.assertEqual([e["projekt"] for e in n["weitere"]], ["alt1", "alt2"])
 
 
+class BaselineImSammelRepoTest(RepoWelt):
+    """B064 (platform/T-0005, Sprint 3): `git tag` antwortet über das REPOSITORY.
+
+    Projekte ab P10 liegen als Ordner im Sammel-Repo `projects` (pm/D003). Das Cockpit
+    gab die letzte Tag-Zeile dieses Repos als „letzte Baseline" **des Projekts** aus —
+    `p11` und `p12` trugen damit die Baseline von `p10`. Keine fehlende Angabe, sondern
+    eine falsche: der Fehlermodus, den SWR-096 „keine Daten" gerade unterscheiden will.
+    """
+
+    def test_nachbar_baseline_wird_nicht_geerbt(self):
+        """Der Kernfall: getaggter Nachbar im selben Sammel-Repo, ungetaggtes Projekt."""
+        self._repo("p10", nested=True, tag="p10-v1.0")
+        self._repo("p11", nested=True)
+        self.assertEqual(aggregation.cockpit(self.root, "p10")["letzte_baseline"][:8],
+                         "p10-v1.0")
+        self.assertEqual(aggregation.cockpit(self.root, "p11")["letzte_baseline"], "")
+
+    def test_eigene_baseline_bleibt_sichtbar(self):
+        """Die Korrektur darf nicht alles wegfiltern: ein eigener Tag bleibt stehen —
+        auch wenn ein Nachbar später getaggt wird und `git tag` ihn zuletzt nennt."""
+        self._repo("p10", nested=True, tag="p10-v1.0")
+        self._repo("p11", nested=True, tag="p11-v1.0")
+        self.assertEqual(aggregation.cockpit(self.root, "p10")["letzte_baseline"][:8],
+                         "p10-v1.0")
+        self.assertEqual(aggregation.cockpit(self.root, "p11")["letzte_baseline"][:8],
+                         "p11-v1.0")
+
+    def test_eigenstaendiges_repo_unveraendert(self):
+        """Gegenprobe am Bestand: `p0` trägt `genesis-v1.0` — ein Tag, der der
+        Namenskonvention NICHT folgt. Ein Repo mit eigenem `.git` wird deshalb nicht
+        gefiltert; täte es das, verlöre p0 Baseline **und** Status `abgeschlossen`."""
+        self._repo("p0", tag="genesis-v1.0")
+        c = aggregation.cockpit(self.root, "p0")
+        self.assertTrue(c["letzte_baseline"].startswith("genesis-v1.0"),
+                        c["letzte_baseline"])
+        self.assertEqual(c["status"], "abgeschlossen")
+
+    def test_status_folgt_derselben_quelle(self):
+        """L-2026-08-16m: die Nachbarn einer geteilten Quelle werden mitgezogen.
+        `einstufung` liest dieselben Tags — ein Projekt im Sammel-Repo darf durch den
+        Tag eines Nachbarn weder eine Baseline noch den Status `abgeschlossen` erben."""
+        self._repo("p10", nested=True, tag="p10-v1.0")
+        self._repo("p11", nested=True)
+        self.assertEqual(aggregation.cockpit(self.root, "p10")["status"], "abgeschlossen")
+        self.assertEqual(aggregation.cockpit(self.root, "p11")["status"], "aktiv")
+        n = aggregation.navigation(self.root)
+        self.assertEqual([e["projekt"] for e in n["weitere"]], ["p10"])
+
+    def test_praefix_greift_nicht_in_die_mitte(self):
+        """Ein Tag, der den Projektnamen nur ENTHÄLT, gehört dem Projekt nicht.
+        Die alte Prüfung war ein Substring-Test (`f"{projekt}-v1.0" in tag_text`)."""
+        self._repo("p11", nested=True, tag="xp11-v1.0")
+        c = aggregation.cockpit(self.root, "p11")
+        self.assertEqual(c["letzte_baseline"], "")
+        self.assertEqual(c["status"], "aktiv")
+
+
 if __name__ == "__main__":
     unittest.main()

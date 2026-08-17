@@ -93,6 +93,32 @@ def _tags(pfad):
                           capture_output=True, text=True).stdout
 
 
+def projekt_tags(pfad, projekt):
+    """B064 (platform/T-0005): die Tag-Zeilen, die DIESEM Projekt gehören.
+
+    `git tag` beantwortet die Frage nach dem **Repository**, nicht nach dem Ordner. Seit
+    dem Monorepo-Beschluss `pm/D003` liegen Projekte ab P10 als Ordner im Sammel-Repo
+    `projects` — `git -C projects/p11 tag` liefert deshalb die Tags von `projects`, also
+    auch `p10-v1.0`. Das Cockpit hat davon die **letzte** Zeile als „letzte Baseline"
+    dieses Projekts ausgegeben: `p11` und `p12` haben nie eine Baseline gehabt und trugen
+    trotzdem die von `p10`. Keine fehlende Angabe, sondern eine falsche.
+
+    Ein Projekt **ohne eigenes `.git`** bekommt deshalb nur die Tags, deren Name mit
+    `<projekt>-` beginnt. Eigenständige Repos bleiben unberührt: ihre Tags folgen keiner
+    Namenskonvention (`p0` trägt `genesis-v1.0`), und für sie stellt sich die Frage nicht.
+
+    Dieselbe Quelle wird von `einstufung` gelesen; beide gehen ab hier durch **diese**
+    Funktion. Eine geteilte Quelle mit zwei Auflösungen war der Kern von B059 — genau das
+    lag hier vor: `einstufung` filterte (über `f"{projekt}-v1.0"`), die Baseline nicht.
+    """
+    text = _tags(pfad)
+    if os.path.exists(os.path.join(pfad, ".git")):
+        return text
+    behalten = [z for z in text.splitlines()
+                if z.split(None, 1) and z.split(None, 1)[0].startswith(projekt + "-")]
+    return "".join(z + "\n" for z in behalten)
+
+
 def einstufung(root, projekt, pfad=None, tag_text=None):
     """SWR-066/067 + SWR-082: EINE Ableitung von Beschreibung, Status und Gruppe.
 
@@ -103,7 +129,7 @@ def einstufung(root, projekt, pfad=None, tag_text=None):
     pfad = pfad or projekt_pfad(root, projekt)
     sb = steckbrief(pfad)
     if tag_text is None:
-        tag_text = _tags(pfad)
+        tag_text = projekt_tags(pfad, projekt)  # B064: nicht die Tags des Sammel-Repos
     status = sb["status"] or ("abgeschlossen" if (f"{projekt}-v1.0" in tag_text or
                               (projekt == "p0" and "genesis-v1.0" in tag_text)) else "aktiv")
     if sb["typ"] in ("aspice", "pm"):
@@ -344,7 +370,7 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
         drs.append({"id": t["id"], "ref": ref(projekt, t["id"]),  # SWR-087
                     "titel": t.get("titel"), "frist": frist,
                     "default": t.get("default", ""), "ampel": ampel})
-    tag_text = _tags(pfad)
+    tag_text = projekt_tags(pfad, projekt)  # B064: Tags dieses Projekts, nicht des Repos
     tags = [z for z in tag_text.splitlines() if z.strip()]
     kpi = lade_kpi(root, projekt)
     # SWR-051 (P4): unbeantwortete Briefkasten-Nachrichten (inline, kein Zirkelimport)
