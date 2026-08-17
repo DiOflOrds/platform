@@ -454,13 +454,67 @@ class BaselineImSammelRepoTest(RepoWelt):
     def test_status_folgt_derselben_quelle(self):
         """L-2026-08-16m: die Nachbarn einer geteilten Quelle werden mitgezogen.
         `einstufung` liest dieselben Tags — ein Projekt im Sammel-Repo darf durch den
-        Tag eines Nachbarn weder eine Baseline noch den Status `abgeschlossen` erben."""
+        Tag eines Nachbarn weder eine Baseline noch den Status `abgeschlossen` erben.
+
+        Die Baseline-Zusicherung steht hier ausdrücklich mit drin: ohne sie war dieser
+        Test auch **ohne** die Korrektur grün und bewies nichts (Gegenprüfung Sprint 3)."""
         self._repo("p10", nested=True, tag="p10-v1.0")
         self._repo("p11", nested=True)
         self.assertEqual(aggregation.cockpit(self.root, "p10")["status"], "abgeschlossen")
-        self.assertEqual(aggregation.cockpit(self.root, "p11")["status"], "aktiv")
+        p11 = aggregation.cockpit(self.root, "p11")
+        self.assertEqual(p11["status"], "aktiv")
+        self.assertEqual(p11["letzte_baseline"], "")
         n = aggregation.navigation(self.root)
         self.assertEqual([e["projekt"] for e in n["weitere"]], ["p10"])
+
+    def test_annotation_ist_kein_tagname(self):
+        """Gegenprüfung Sprint 3: der Statustest suchte im **ganzen** Text, also auch in
+        der Tag-NACHRICHT. Ein Zwischenstand, der die Abschluss-Baseline nur erwähnt,
+        hätte das Projekt als abgeschlossen ausgewiesen — ohne dass es eine hat."""
+        basis = self._repo("p11", nested=True)
+        _git(os.path.join(self.root, "projects"), "tag", "-a", "p11-v0.9",
+             "-m", "Zwischenstand, Vorbereitung auf p11-v1.0")
+        c = aggregation.cockpit(self.root, "p11")
+        self.assertEqual(c["status"], "aktiv", c["letzte_baseline"])
+        self.assertTrue(c["letzte_baseline"].startswith("p11-v0.9"))
+        self.assertTrue(os.path.isdir(basis))
+
+    def test_annotation_auch_im_eigenen_repo_kein_tagname(self):
+        """Derselbe Fehler traf eigenständige Repos sogar ungefiltert: dort greift
+        `projekt_tags` nicht, der Statustest war die einzige Prüfung."""
+        self._repo("alpha")
+        _git(os.path.join(self.root, "alpha"), "tag", "-a", "beta-v0.1",
+             "-m", "loest alpha-v1.0 spaeter ab")
+        self.assertEqual(aggregation.cockpit(self.root, "alpha")["status"], "aktiv")
+
+    def test_letzte_baseline_ist_die_juengste_nicht_die_alphabetisch_letzte(self):
+        """B065 (Gegenprüfung Sprint 3): `git tag` sortiert nach Refname. `p10-v1.10`
+        steht damit **vor** `p10-v1.2`, und im echten Bestand zeigte `platform`
+        `p9-v1.0`, während `p10-v1.0` dreieinhalb Stunden jünger war."""
+        basis = self._repo("alt")
+        # Zwei annotierte Tags mit AUSDRÜCKLICH verschiedenen Zeitpunkten — sonst
+        # entscheidet bei gleicher Sekunde wieder der Refname und der Test bewiese nichts.
+        for name, datum in (("alt-v1.10", "2026-08-01T10:00:00"),
+                            ("alt-v1.2", "2026-08-02T10:00:00")):
+            umg = dict(os.environ, GIT_COMMITTER_DATE=datum, GIT_AUTHOR_DATE=datum)
+            subprocess.run(["git", "-C", basis, "-c", "user.name=t", "-c", "user.email=t@t",
+                            "tag", "-a", name, "-m", "x"], env=umg,
+                           capture_output=True, text=True)
+        # Nach Refname:      alt-v1.10, alt-v1.2  -> letzte Zeile wäre alt-v1.2 (Zufall).
+        # Nach creatordate:  alt-v1.10, alt-v1.2  -> letzte Zeile ist die jüngere.
+        # Der Unterschied wird über den umgekehrten Fall geprüft:
+        baseline = aggregation.cockpit(self.root, "alt")["letzte_baseline"]
+        self.assertTrue(baseline.startswith("alt-v1.2"), baseline)
+        # ... und hier zeigt er sich: der ältere Tag ist der lexikografisch SPÄTERE.
+        for name, datum in (("alt-v2.0", "2026-08-03T10:00:00"),
+                            ("alt-v10.0", "2026-08-04T10:00:00")):
+            umg = dict(os.environ, GIT_COMMITTER_DATE=datum, GIT_AUTHOR_DATE=datum)
+            subprocess.run(["git", "-C", basis, "-c", "user.name=t", "-c", "user.email=t@t",
+                            "tag", "-a", name, "-m", "x"], env=umg,
+                           capture_output=True, text=True)
+        # Refname-Sortierung endet auf `alt-v2.0`, creatordate auf `alt-v10.0`.
+        baseline = aggregation.cockpit(self.root, "alt")["letzte_baseline"]
+        self.assertTrue(baseline.startswith("alt-v10.0"), baseline)
 
     def test_praefix_greift_nicht_in_die_mitte(self):
         """Ein Tag, der den Projektnamen nur ENTHÄLT, gehört dem Projekt nicht.

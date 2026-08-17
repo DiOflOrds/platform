@@ -6,8 +6,8 @@
 #
 #   Die SWR↔Test-Matrix ist eine Aussage über den Stand ALLER Repos ZUR GLEICHEN ZEIT.
 #   Eine CI, die je Repo läuft, sieht die anderen immer so, wie der Push sie gerade
-#   hinterlassen hat. `abschluss.cmd` pusht platform zuerst (pm/T-0013, damit der
-#   board-check der Projekt-Repos die neue board.py sieht) — dieser Lauf sah p0/p9 also
+#   hinterlassen hat. `abschluss.cmd` pusht platform vor allen Projekt-Repos (pm/T-0013,
+#   damit der board-check der Projekte die neue board.py sieht) — dieser Lauf sah p0/p9 also
 #   systematisch einen Commit alt und meldete genau die Anforderung des laufenden Sprints
 #   als Lücke. Zweimal beobachtet, zweimal vorhergesagt, zweimal eingetroffen
 #   (SWR-105 → SWR-106). Die Gegenrichtung gibt es nicht: der board-check der Projekte
@@ -19,8 +19,10 @@
 # dieses Gate hier deshalb nur zweierlei sein: überflüssig (grün) oder falsch (rot).
 #
 # PREIS, ausgesprochen (pm/T-0042): Ein Push an platform, der `abschluss.cmd` UMGEHT,
-# wird nicht mehr gegen die Matrix geprüft. Getragen wird das von `preflight.py` und
-# Schritt [2/5], die beide in jeder Session laufen. Wer hier je wieder ein Cross-Repo-Gate
+# wird nicht mehr gegen die Matrix geprüft. Getragen wird das von GENAU EINER Stelle —
+# `abschluss.cmd` Schritt [2/5]. `preflight.py` prüft Locks, Arbeitskopien, Board-Checks
+# und Unit-Tests, aber KEINE Matrix; die erste Fassung dieses Kommentars behauptete das
+# und wurde von der Gegenprüfung widerlegt. Wer hier je wieder ein Cross-Repo-Gate
 # einbaut, muss zuerst sagen, wie es einen gleichzeitigen Stand sehen will.
 #
 # GLEICHE FAMILIE, BEWUSST STEHEN GEBLIEBEN: der Katalog-Check unten liest `process` und

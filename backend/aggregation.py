@@ -88,9 +88,27 @@ GRUPPEN_NAMEN = (("festes-team", "Feste Teams"), ("projekt-team", "Projekt-Teams
 
 
 def _tags(pfad):
+    """B065 (Gegenprüfung zu platform/T-0005): **nach Alter** sortiert, nicht nach Namen.
+
+    `git tag` sortiert per Default nach Refname. Wer davon die letzte Zeile als „letzte
+    Baseline" nimmt, bekommt die **lexikografisch** letzte: `platform` zeigte `p9-v1.0`,
+    während `p10-v1.0` dreieinhalb Stunden jünger war — und `p10-v1.10` stünde vor
+    `p10-v1.2`. `--sort=creatordate` ist aufsteigend, die letzte Zeile ist damit die
+    jüngste; alle Aufrufer lesen weiter `[-1]`.
+    """
     import subprocess
-    return subprocess.run(["git", "-C", pfad, "tag", "-n1"],
+    return subprocess.run(["git", "-C", pfad, "tag", "-n1", "--sort=creatordate"],
                           capture_output=True, text=True).stdout
+
+
+def _tagnamen(tag_text):
+    """Die reinen Tag-NAMEN aus der `git tag -n1`-Ausgabe (erstes Feld je Zeile).
+
+    Wer über den ganzen Text sucht, sucht auch in der **Annotation**: ein Tag
+    `p11-v0.9` mit der Nachricht „Vorbereitung auf p11-v1.0" hätte `p11` als
+    abgeschlossen ausgewiesen. Ein Name wird gegen Namen verglichen.
+    """
+    return {z.split(None, 1)[0] for z in tag_text.splitlines() if z.split(None, 1)}
 
 
 def projekt_tags(pfad, projekt):
@@ -107,9 +125,17 @@ def projekt_tags(pfad, projekt):
     `<projekt>-` beginnt. Eigenständige Repos bleiben unberührt: ihre Tags folgen keiner
     Namenskonvention (`p0` trägt `genesis-v1.0`), und für sie stellt sich die Frage nicht.
 
-    Dieselbe Quelle wird von `einstufung` gelesen; beide gehen ab hier durch **diese**
-    Funktion. Eine geteilte Quelle mit zwei Auflösungen war der Kern von B059 — genau das
-    lag hier vor: `einstufung` filterte (über `f"{projekt}-v1.0"`), die Baseline nicht.
+    Dieselbe Quelle wird von den **beiden Cockpit-Lesern** (`cockpit` und `einstufung`)
+    gelesen; beide gehen ab hier durch diese Funktion. Eine geteilte Quelle mit zwei
+    Auflösungen war der Kern von B059 — genau das lag hier vor: `einstufung` filterte
+    (über den Namen), die Baseline nicht. **Nicht** betroffen ist `lade_baselines`
+    (SWR-032, `GET /api/baselines`): die Ansicht ist ausdrücklich repo-bezogen und
+    beschriftet ihre Karten mit dem Repo-Namen.
+
+    `os.path.exists` und nicht `isdir`: bei einem Submodul oder Worktree ist `.git` eine
+    **Datei**, und auch dann hat der Ordner sein eigenes Tag-Verzeichnis. `projekte()`
+    fragt dasselbe mit `isdir` — dort geht es um die Discovery bestehender Repos, hier um
+    „antwortet `git tag` über mich oder über meinen Behälter".
     """
     text = _tags(pfad)
     if os.path.exists(os.path.join(pfad, ".git")):
@@ -130,8 +156,12 @@ def einstufung(root, projekt, pfad=None, tag_text=None):
     sb = steckbrief(pfad)
     if tag_text is None:
         tag_text = projekt_tags(pfad, projekt)  # B064: nicht die Tags des Sammel-Repos
-    status = sb["status"] or ("abgeschlossen" if (f"{projekt}-v1.0" in tag_text or
-                              (projekt == "p0" and "genesis-v1.0" in tag_text)) else "aktiv")
+    # B064/Gegenprüfung: Namen gegen Namen. Der frühere `in tag_text` durchsuchte auch
+    # die Tag-ANNOTATION — ein Tag `p11-v0.9` mit der Nachricht „Vorbereitung auf
+    # p11-v1.0" hätte das Projekt als abgeschlossen ausgewiesen, ohne Baseline.
+    namen = _tagnamen(tag_text)
+    status = sb["status"] or ("abgeschlossen" if (f"{projekt}-v1.0" in namen or
+                              (projekt == "p0" and "genesis-v1.0" in namen)) else "aktiv")
     if sb["typ"] in ("aspice", "pm"):
         gruppe = "festes-team"
     elif sb["typ"] == "projekt":
