@@ -672,3 +672,69 @@ def kandidat_starten(root, kandidat):
 
     return {"ok": True, "kandidat": name, "projekt": neuer_name, "ticket": "T-0001", "ref": ref,
             "meldung": grundmeldung + " Im Pool nach „Realisiert“ verschoben, committet."}
+
+
+# --------------------------------------------------------------- Team-Gründung
+# SWR-127 (pm/T-0062, erster Teil von pm/T-0028 aus Brief pm/N-0022).
+#
+# Die Feldliste selbst ist **nicht** hier entschieden worden — sie steht seit Sprint 10
+# als Tabelle in `pm/T-0028`, mit Begründung je Feld. Dieses Modul ist die Stelle, an der
+# sie **gilt**: genau das, was SWR-125 an SWR-106 gefehlt hat. Eine Feldliste in einem
+# Ticket, die kein Code prüft, ist eine Absichtserklärung.
+STECKBRIEF_PROFILE = ("entwicklung", "dienstleistung", "wiederkehrend")
+STECKBRIEF_KLASSEN = ("offen", "intern", "sensibel", "geheim")
+# Datenklassen, bei denen der Gründungs-DR die Folge im KLARTEXT nennen muss und das
+# Repo ohne Remote bleibt (Guardrail F17 / Playbook Kap. 16).
+KLASSEN_OHNE_REMOTE = ("sensibel", "geheim")
+# Pflichtfelder — und warum genau diese zwei:
+#   `auftrag`  ohne ihn ist der Charter leer.
+#   `grenzen`  ⚠ ein leeres Feld wird hier als „keine Grenzen" gelesen. Das ist der
+#              einzige Fall in der Liste, in dem Schweigen die WEITERE Auslegung hat;
+#              deshalb ist es Pflicht und nicht bloß empfohlen.
+STECKBRIEF_PFLICHT = ("auftrag", "grenzen")
+STECKBRIEF_FELDER = ("auftrag", "profil", "rollen", "datenklasse", "zugaenge", "grenzen")
+
+
+def steckbrief_pruefen(felder):
+    """Steckbrief eines Gründungsantrags prüfen und bereinigen (SWR-127).
+
+    Gibt `(werte, auflagen)` zurück: `werte` sind die bereinigten Felder,
+    `auflagen` die Folgen, die der Gründungs-DR **im Klartext** nennen muss.
+    Wirft `PoolFehler(400, …)`, wenn ein Feld fehlt oder außerhalb seiner Liste liegt.
+
+    **Was diese Funktion ausdrücklich NICHT tut: entscheiden.** Eine Team-Gründung ist
+    Klasse A (Playbook Kap. 16) und bleibt beim Menschen; hier wird ein Antrag geprüft,
+    nicht bewilligt. `pm/T-0063` baut daraus Charter-Entwurf und DR.
+
+    **Warum die Auflage ein Rückgabewert ist und keine Prüfung.** Bei `sensibel` oder
+    `geheim` verlangt Kap. 16 zwei Dinge: der DR benennt es im Klartext, und das Repo
+    bleibt ohne Remote (`.kein-remote`). Beides sind Handlungen **späterer** Schritte.
+    Sie hier nur zu *wissen* und nicht weiterzugeben wäre genau der Fehler von SWR-122
+    (berechnet, von niemandem gelesen) — deshalb verlässt die Auflage die Funktion als
+    Wert, den der Aufrufer nicht übersehen kann, statt als Kommentar.
+
+    **Warum Freitextfelder keine Längengrenze bekommen.** Langer Text läuft seit
+    SWR-124 in eine eigene Datei statt in eine Tabellenzelle. Eine Grenze hier wäre die
+    dritte Antwort auf eine Frage, die dort schon beantwortet ist (B033) — und die
+    Geschichte von `FELD_MAX` (200 → 4.000 → 200.000) ist der Beleg, dass die richtige
+    Antwort nie eine Zahl war, sondern ein Zielort.
+    """
+    if not isinstance(felder, dict):
+        raise PoolFehler(400, "Steckbrief fehlt")
+    werte, auflagen = {}, []
+    for feld in STECKBRIEF_FELDER:
+        werte[feld] = _text_bereinigen(felder.get(feld, ""))
+    for feld in STECKBRIEF_PFLICHT:
+        if not werte[feld]:
+            raise PoolFehler(400, f"Steckbrief-Feld „{feld}“ ist Pflicht und fehlt")
+    for feld, erlaubt in (("profil", STECKBRIEF_PROFILE),
+                          ("datenklasse", STECKBRIEF_KLASSEN)):
+        if werte[feld] not in erlaubt:
+            raise PoolFehler(400, f"Steckbrief-Feld „{feld}“: „{werte[feld]}“ ist keine "
+                                  f"der zulässigen Angaben ({', '.join(erlaubt)})")
+    if werte["datenklasse"] in KLASSEN_OHNE_REMOTE:
+        auflagen.append(
+            f"Datenklasse „{werte['datenklasse']}“ (Playbook Kap. 16 / F17): das Repo "
+            f"bleibt OHNE GitHub-Remote und trägt .kein-remote; sensible Inhalte werden "
+            f"nie committet, sondern per Pfad verwiesen.")
+    return werte, auflagen
