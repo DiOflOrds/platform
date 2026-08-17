@@ -856,65 +856,127 @@ function ladeInbox() {
     });
 }
 
+// SWR-130 (pm/T-0058): Briefe, deren Beitrag gespeichert, aber nicht verbucht ist.
+// ⚠ Das ist KEIN zweiter Inhaltszustand (B033): der Text kommt weiter ausschliesslich aus
+// GET /api/briefkasten — die Datei liegt auf der Platte, bevor git laeuft (SWR-121), also
+// zeigt das Nachladen sie ohnehin. Gemerkt wird hier nur, was die API NICHT sagen kann:
+// dass der Commit dazu fehlschlug. Ein Set von Brief-IDs, nichts weiter.
+var unverbuchteBriefe = {};
+
 function ladeChat() {  // SWR-050/051 (P4): Briefkasten-Konversation mit dem Team
   return Promise.all([api("/api/briefkasten?projekt=" + encodeURIComponent(projekt)),
                       api("/api/nutzer")]).then(function (beide) {
     var briefe = beide[0].briefe;
+    var nutzer = beide[1].nutzer || [];
+    var nutzerNamen = nutzer.map(function (n) { return n.name; });
     var teile = [el("div", { "class": "karte" },
       el("h3", {}, "Team-Chat (" + projekt + ") — Briefkasten"),
       el("p", { "class": "leer" }, "Nachrichten landen versioniert im Repo; die nächste " +
         "Cowork-Session antwortet in denselben Verlauf (asynchron, 0 €)."))];
     if (!briefe.length) teile.push(el("p", { "class": "leer" }, "Noch keine Nachrichten."));
-    // SWR-083 (pm/N-0018): neueste Nachricht zuerst — slice(), damit die API-Liste
-    // unangetastet bleibt (andere Ansichten lesen dieselben Daten).
-    briefe.slice().reverse().forEach(function (b) {
-      var karte = el("div", { "class": "karte brief" + (b.status === "beantwortet" ? " beantwortet" : "") },
-        el("div", { "class": "zeile" }, pille(b.id), pille(b.status, b.status === "offen" ? "in_progress" : "done"),
-          b.von + " · " + b.zeit),
-        preMitLinks(b.nachricht, projekt));
-      if (b.antwort) {
-        var a = el("div", { "class": "antwort" },
-          el("div", { "class": "zeile" }, pille("Team", "done"), b.antwort_datum));
-        a.appendChild(preMitLinks(b.antwort, projekt));
-        karte.appendChild(a);
+
+    // SWR-083 (pm/N-0018): neueste zuerst — die Regel steht in `regeln.js` und laesst
+    // die API-Liste unangetastet (andere Ansichten lesen dieselben Daten).
+    Regeln.sortiereBriefe(briefe).forEach(function (b) {
+      var wiederOffen = Regeln.istWiederOffen(b, nutzerNamen);
+      var karte = el("div", { "class": "karte brief"
+        + (b.status === "beantwortet" ? " beantwortet" : "")
+        + (wiederOffen ? " wiederoffen" : "") });
+      var kopf = el("div", { "class": "zeile" }, pille(b.id),
+        pille(b.status, b.status === "offen" ? "in_progress" : "done"));
+      // SWR-129 (pm/T-0060 Punkt 3): Der Brief, den eine Nachfrage wieder geoeffnet hat,
+      // ist als solcher erkennbar. Ohne dieses Schild sieht er aus wie ein nie
+      // beantworteter — und der Auftraggeber sieht nicht, dass seine Nachfrage ankam.
+      if (wiederOffen) {
+        kopf.appendChild(pille("Nachfrage — wartet auf Antwort", "in_progress"));
       }
+      if (unverbuchteBriefe[b.id]) {
+        kopf.appendChild(pille("gespeichert, noch nicht verbucht", "blocked"));
+      }
+      karte.appendChild(kopf);
+
+      // SWR-129: der Verlauf statt eines Frage/Antwort-Paars.
+      Regeln.verlauf(b, nutzerNamen).forEach(function (beitrag) {
+        var kasten = el("div", { "class": "beitrag " + beitrag.urheber });
+        kasten.appendChild(el("div", { "class": "wer" },
+          (beitrag.absender || "(ohne Absender)")
+          + (beitrag.zeit ? " · " + beitrag.zeit : "")));
+        kasten.appendChild(preMitLinks(beitrag.text, projekt));
+        karte.appendChild(kasten);
+      });
+
+      // SWR-129 (pm/T-0060 Punkt 1): je Brief ein Antwortfeld. Das grosse Feld oben
+      // bleibt fuer einen NEUEN Brief — zwei Wege mit einer Bedeutung waeren B033.
+      karte.appendChild(antwortfeld(b.id, nutzer));
       teile.push(karte);
     });
-    var text = el("textarea", { rows: "3", placeholder: "Nachricht ans Team …" });
-    var wer = el("select", {});
-    beide[1].nutzer.forEach(function (n) {
-      wer.appendChild(el("option", { value: n.name }, "Von: " + n.name));
-    });
-    var meldung = el("div", {});
-    var knopf = el("button", { "class": "knopf" }, "Absenden");
-    knopf.addEventListener("click", function () {
-      knopf.disabled = true;
-      api("/api/briefkasten", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projekt: projekt, text: text.value, von: wer.value })
-      }).then(function (e) {
-        leeren(meldung);
-        meldung.appendChild(el("div", { "class": "meldung ok" },
-          "Gesendet als " + e.brief + " — die nächste Session antwortet hier."));
-        text.value = "";
-        // SWR-102 / pm/T-0040 Punkt 6 (Nebenbefund B055): Der Knopf bleibt gesperrt,
-        // bis der Verlauf neu gezeichnet ist und ihn ersetzt. Vorher gab er sich
-        // sofort wieder frei und lud erst 900 ms spaeter neu — ein zweiter Klick in
-        // dieses Fenster erzeugte einen zweiten Brief (N-0028/N-0029, N-0032/N-0033).
-        // Kein Filter, keine stille Unterdrueckung (B050): der Klick wird verhindert,
-        // nicht der Brief verschluckt. Im Fehlerfall unten wird wieder freigegeben.
-        setTimeout(lade, 900);
-      }).catch(function (fehler) {
-        leeren(meldung);
-        meldung.appendChild(el("div", { "class": "meldung fehler" }, String(fehler.message || fehler)));
-        knopf.disabled = false;
-      });
-    });
-    // SWR-083: Das Schreibfeld wandert mit nach oben — bei neuester-zuerst läge es sonst
-    // hinter dem gesamten Verlauf, man müsste zum Schreiben erst durch alles scrollen.
-    teile.splice(1, 0, el("div", { "class": "karte" }, text, wer, knopf, meldung));
+
+    teile.splice(1, 0, neuerBriefKarte(nutzer));
     zeige(teile);
   });
+}
+
+/** Ein Sendefeld — fuer einen neuen Brief (`briefId` leer) oder als Antwort an einen
+ *  bestehenden. Ein Bauweg, zwei Ziele: der Unterschied ist genau das Feld `brief`
+ *  im Aufruf (SWR-126), und alles andere waere ein zweiter Schreibpfad (B033).
+ */
+function _sendekasten(briefId, nutzer, knopfText, platzhalter) {
+  var text = el("textarea", { rows: briefId ? "2" : "3", placeholder: platzhalter });
+  var wer = el("select", {});
+  nutzer.forEach(function (n) {
+    wer.appendChild(el("option", { value: n.name }, "Von: " + n.name));
+  });
+  var meldung = el("div", {});
+  var knopf = el("button", { "class": "knopf" }, knopfText);
+  knopf.addEventListener("click", function () {
+    knopf.disabled = true;
+    var nutzlast = { projekt: projekt, text: text.value, von: wer.value };
+    if (briefId) nutzlast.brief = briefId;
+    api("/api/briefkasten", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(nutzlast)
+    }).then(function (e) {
+      text.value = "";
+      // SWR-130 (pm/T-0058): sofort neu laden statt nach 900 ms. Gezeigt wird, was
+      // GET /api/briefkasten liefert — kein lokal zusammengebauter Beitrag (B033).
+      // Der Knopf bleibt gesperrt, bis das Neuzeichnen ihn ersetzt (SWR-102/B055:
+      // ein zweiter Klick in dieses Fenster erzeugte frueher einen zweiten Brief).
+      lade();
+    }).catch(function (fehler) {
+      var meldungstext = String(fehler.message || fehler);
+      leeren(meldung);
+      // ⚠ SWR-130 Punkt 2: Ein fehlgeschlagener Commit heisst NICHT, dass die Nachricht
+      // weg ist — sie liegt auf der Platte, bevor git laeuft (SWR-121). Eine Liste, die
+      // sie jetzt nicht zeigt, behauptet das Gegenteil. Also wird auch hier neu geladen,
+      // und der Brief traegt „gespeichert, noch nicht verbucht" statt „gescheitert".
+      var id = Regeln.briefIdAusFehler(meldungstext);
+      if (id) {
+        unverbuchteBriefe[id] = true;
+        text.value = "";
+        lade();
+        return;
+      }
+      meldung.appendChild(el("div", { "class": "meldung fehler" }, meldungstext));
+      knopf.disabled = false;
+    });
+  });
+  return { text: text, wer: wer, knopf: knopf, meldung: meldung };
+}
+
+function antwortfeld(briefId, nutzer) {
+  var k = _sendekasten(briefId, nutzer, "Antworten",
+                       "Antwort oder Nachfrage zu " + briefId + " …");
+  return el("div", { "class": "antwortfeld" }, k.text, k.wer, k.knopf, k.meldung);
+}
+
+function neuerBriefKarte(nutzer) {
+  // SWR-083: Das Schreibfeld fuer einen NEUEN Brief steht oben — bei neueste-zuerst
+  // laege es sonst hinter dem gesamten Verlauf.
+  var k = _sendekasten("", nutzer, "Absenden", "Neue Nachricht ans Team …");
+  return el("div", { "class": "karte" },
+    el("p", { "class": "leer" }, "Neuer Brief — für eine Nachfrage zu einem bestehenden " +
+      "Brief das Feld unter dem Brief benutzen."),
+    k.text, k.wer, k.knopf, k.meldung);
 }
 
 function ladeReports() {

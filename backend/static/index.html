@@ -39,6 +39,17 @@
   .meldung { padding:.5rem .8rem; border-radius:.4rem; margin:.4rem 0; font-size:.9rem; }
   .meldung.ok { background:#dafbe1; } .meldung.fehler { background:#ffebe9; }
   .leer { color:var(--grau); font-style:italic; }
+  /* SWR-129 (pm/T-0060): Ein Brief ist ein Verlauf. Beitraege sind an Seite und Farbe
+     unterscheidbar — wer geschrieben hat, soll man sehen, bevor man liest. */
+  .beitrag { border-left:3px solid var(--rand); padding:.1rem 0 .1rem .7rem; margin:.6rem 0; }
+  .beitrag.mensch { border-left-color:var(--akzent); }
+  .beitrag.team { border-left-color:var(--ok); background:#fbfdfb; }
+  .beitrag .wer { font-size:.8rem; color:var(--grau); margin:.1rem 0 .2rem; }
+  /* Der Brief, den eine Nachfrage des Menschen wieder geoeffnet hat (SWR-126). Ohne
+     eigenes Schild saehe er aus wie ein nie beantworteter. */
+  .karte.wiederoffen { border-color:var(--akzent); box-shadow:0 0 0 1px var(--akzent) inset; }
+  .antwortfeld { margin-top:.5rem; border-top:1px dashed var(--rand); padding-top:.5rem; }
+  .antwortfeld textarea { margin-bottom:.3rem; }
   /* P3 Sprint 1 (SWR-040/041/042/047) */
   .spalten { display:grid; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); gap:.8rem; align-items:start; }
   .spalte h3 { margin:.2rem 0 .5rem; font-size:.95rem; color:var(--grau); }
@@ -102,6 +113,9 @@
   <small id="stand"></small></header>
 <nav id="tabs"></nav>
 <main id="inhalt"><p class="leer">Lade …</p></main>
+<!-- SWR-128 (ADR-008): die Renderregeln VOR app.js — sie sind ohne DOM und ohne
+     Netz und werden von der JS-Teststrecke separat geprueft. -->
+<script src="regeln.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
