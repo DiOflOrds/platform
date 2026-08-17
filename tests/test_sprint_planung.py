@@ -35,7 +35,26 @@ class RegisterTest(unittest.TestCase):
         self.assertEqual(sprint_register.lies(self.root), [])
 
     def test_beginne_zaehlt_hoch(self):
+        """⚠⚠ Diese Zusicherung hat bis Sprint 15 das FEHLVERHALTEN zugesichert.
+
+        Ihre alte Fassung lautete `beginne("lauf-a")` -> 1, `beginne("lauf-b")` -> 2 —
+        **ohne** dass „lauf-a" dazwischen endete. Sie hat damit wörtlich verlangt, was
+        `platform/T-0013` als Schaden beschreibt: einen zweiten Sprint zu eröffnen,
+        während der erste noch schreibt. Der Schaden ist am 2026-08-17 zweimal
+        eingetreten, beim zweiten Mal mit einer doppelt vergebenen Anforderungsnummer.
+
+        > **Eine Prüfung, die den Fehler zusichert, ist schlimmer als keine: sie
+        > verteidigt ihn gegen jede Änderung.** Sechste Gestalt der Familie
+        > (SWR-122/125/128/131/136).
+
+        Die *Absicht* der Zusicherung war der Zähler und nicht die Überlappung — deshalb
+        wird sie nicht gelöscht, sondern um das `beende()` ergänzt, das der reguläre
+        Ablauf ohnehin ausführt. Die Überlappung selbst ist ab jetzt in
+        `test_sprint_register_ende.UeberlappungTest` zugesichert, und zwar als
+        **Abweisung**. Verifiziert: SWR-106, SWR-136.
+        """
         self.assertEqual(sprint_register.beginne(self.root, "lauf-a"), 1)
+        sprint_register.beende(self.root, "lauf-a")
         self.assertEqual(sprint_register.beginne(self.root, "lauf-b"), 2)
         self.assertEqual(sprint_register.aktuell(self.root), 2)
 
@@ -59,7 +78,9 @@ class RegisterTest(unittest.TestCase):
         bei 0 neu beginnen lassen, denn dann bekäme der nächste Lauf eine Nummer, die
         schon vergeben ist. Verifiziert: SWR-106."""
         sprint_register.beginne(self.root, "a")
+        sprint_register.beende(self.root, "a")   # SWR-136: der Vorgänger endet
         sprint_register.beginne(self.root, "b")
+        sprint_register.beende(self.root, "b")
         pfad = sprint_register._pfad(self.root)
         with open(pfad, "a", encoding="utf-8") as f:
             f.write("{kein json\n\n")
@@ -68,6 +89,7 @@ class RegisterTest(unittest.TestCase):
 
     def test_takt_kommt_aus_dem_letzten_eintrag(self):
         sprint_register.beginne(self.root, "a", takt_min=30)
+        sprint_register.beende(self.root, "a")   # SWR-136: der Vorgänger endet
         sprint_register.beginne(self.root, "b", takt_min=60)
         self.assertEqual(sprint_register.takt_minuten(self.root), 60)
 

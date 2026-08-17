@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import board  # noqa: E402  — gemeinsame Projekt-Discovery (SWR-070, p9/T-0007)
 import konsole  # noqa: E402  — Kodierung an beiden Enden eines Laufs (platform/T-0009)
 import js_tests  # noqa: E402  — JS-Teststrecke (SWR-128, ADR-008)
+import sprint_register  # noqa: E402  — Sprintzaehler mit Ende (SWR-136, platform/T-0013)
 
 REPOS = ["process", "platform", "p0"]
 
@@ -514,6 +515,32 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
     # „hat einen SPRINT?" statt „hat ein DATUM?". Bis dahin hat genau diese Zeile
     # erzwungen, was der Auftraggeber zweimal gerügt hat — wer ein Ticket ohne
     # Kalenderdatum anlegte, machte den Startcheck rot.
+    # SWR-136 (platform/T-0013), DoD 4: der Zustand des Sprintregisters wird GEMELDET.
+    # Nach SWR-122 legt eine neue Prüfung im selben Zug fest, wer ihr Ergebnis liest —
+    # sonst entsteht die vierte Gestalt derselben Familie: eine Prüfung ohne Leser.
+    #
+    # Die Zeile erscheint IMMER, auch im guten Fall: der Grund steht eine Etage tiefer
+    # bei `unterminierte_tickets` und gilt hier wörtlich. ⚠ Der **laufende** Sprint zählt
+    # ausdrücklich NICHT als Befund — während eines Laufs trägt seine eigene Zeile
+    # naturgemäß kein `ende`, und eine Dauerwarnung liest nach zwei Sprints niemand mehr.
+    try:
+        nr_jetzt = sprint_register.aktuell(root)
+        laeuft = sprint_register.laufender(root)
+        luecken = sprint_register.nicht_beendete(root)
+    except Exception:
+        nr_jetzt, laeuft, luecken = None, None, None
+    if nr_jetzt is None:
+        print("[org] Sprintregister: nicht prüfbar (Register nicht ladbar).")
+    else:
+        zustand = "läuft" if laeuft else "beendet"
+        print(f"[org] Sprintregister: Sprint {nr_jetzt} ({zustand}), "
+              f"Stichtag Ende-Pflicht ab Sprint "
+              f"{sprint_register.STICHTAG_ENDE_SPRINT}.")
+        if luecken:
+            print(f"[org] BEFUND: {len(luecken)} abgeschlossene(r) Sprint(s) ohne "
+                  f"'ende' im Register: "
+                  + ", ".join(f"{e['nr']} ({e.get('kennung', '?')})" for e in luecken))
+            befunde += 1
     ohne_sprint = unterminierte_tickets(root)
     if ohne_sprint:
         print(f"[org] {len(ohne_sprint)} Ticket(s) ohne Sprint: {', '.join(ohne_sprint)}")
