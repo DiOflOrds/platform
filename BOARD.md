@@ -10,13 +10,7 @@ Stand: 2026-08-17 · Tickets: 16 · davon wiederkehrend: 1
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0016](tickets/T-0016.md) | Die Drei-Zustände-Regel des Widget-Vertrags steht in der Cockpit-Ansicht dreimal inline | problem | einmalig | cm | Team | mittel | 0 | — |
 
-## in_review (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0013](tickets/T-0013.md) | Sprintregister kennt kein Ende — zwei Routine-Läufe können gleichzeitig in dieselben Repos schreiben | problem | einmalig | cm | Team | hoch | 0 | — |
-
-## done (13)
+## done (14)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -30,6 +24,7 @@ Stand: 2026-08-17 · Tickets: 16 · davon wiederkehrend: 1
 | [T-0010](tickets/T-0010.md) | Befund: Die Verifikation misst die Arbeitskopie, der Push liefert HEAD — SWR-109 war nie committet | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0011](tickets/T-0011.md) | Befund: Preflight meldet STARTKLAR, während plan_drift und sprint_vergangen sechs Befunde tragen — zwei berechnete Kennzahlen werden nirgends gemeldet | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0012](tickets/T-0012.md) | Die Unterminiert-Prüfung fragt in Sprints statt in Kalenderdaten (Brief pm/N-0041) | change-request | einmalig | cm | Team | hoch | 0 | — |
+| [T-0013](tickets/T-0013.md) | Sprintregister kennt kein Ende — zwei Routine-Läufe können gleichzeitig in dieselben Repos schreiben | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0014](tickets/T-0014.md) | Eine entschiedene Frage blieb 16 Minuten lang „liegt beim Menschen" — Inbox und Preflight meinen Verschiedenes mit „entschieden | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0015](tickets/T-0015.md) | SWR-123 räumt Git-Locks per unlink — auf dem Cowork-Mount ist das verboten, rename gelingt | problem | einmalig | cm | Team | mittel | 0 | — |
