@@ -206,6 +206,32 @@ def nur_stand_zeile(repo, pfad):
     return all(z[1:].lstrip().startswith("Stand:") for z in geaendert)
 
 
+_SPRINTSICHT_CACHE = {}
+
+
+def sprintsicht(root, frisch=False):
+    """SWR-122 (platform/T-0011): die Sprintsicht **einmal** laden, oder `None`.
+
+    Drei Preflight-Zeilen (`status_drift`, `plan_drift`, `sprint_vergangen`) beantworten
+    drei verschiedene Fragen an **denselben** Bestand. Sie dreimal zu berechnen wäre
+    nicht nur teuer, sondern die Bauart aus B033: drei Aufrufe, die zu verschiedenen
+    Zeitpunkten laufen, können verschiedene Antworten geben, und niemand würde es merken.
+    Deshalb genau ein Aufruf je Preflight-Lauf.
+
+    `None` heißt „konnte nicht prüfen" und ausdrücklich **nicht** „nichts gefunden".
+    """
+    if not frisch and root in _SPRINTSICHT_CACHE:
+        return _SPRINTSICHT_CACHE[root]
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from backend import sprint as _sprint
+        sicht = _sprint.plan(root)
+    except Exception:
+        sicht = None
+    _SPRINTSICHT_CACHE[root] = sicht
+    return sicht
+
+
 def statusdrift(root):
     """SWR-115 (pm/T-0049): Planzeilen, deren Statusspalte dem Ticket widerspricht.
 
@@ -214,12 +240,44 @@ def statusdrift(root):
     zweite an der Stelle der ersten ist genau die Sorte stiller Erfolgsmeldung, die dieses
     Ticket ausgelöst hat.
     """
-    try:
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-        from backend import sprint as _sprint
-        return _sprint.plan(root).get("status_drift", [])
-    except Exception:
-        return None
+    sicht = sprintsicht(root)
+    return None if sicht is None else sicht.get("status_drift", [])
+
+
+def plandrift(root):
+    """SWR-122 (platform/T-0011): Planzeilen, die eine ANDERE Sprintnummer nennen als ihr Ticket.
+
+    Die Kennzahl gibt es seit SWR-109 und sie stand bis heute in keiner Meldung: sie
+    wurde von `sprint.plan()` berechnet, in den Payload gelegt und von niemandem gelesen —
+    einen Schlüssel neben `status_drift`, das der Preflight liest.
+
+    **Warum sie hierher gehört, steht in SWR-115.** Deren eigene Begründung („sichtbar
+    *vor* dem Push und vor dem Bericht an den Auftraggeber, statt einen Sprint später")
+    gilt für diesen Nachbarn wörtlich. Am Bestand belegt: der Abschlussbericht von
+    Sprint 9 meldete an drei Stellen „Plan-Drift 0", während der Lauf selbst drei Drifts
+    hinterließ — die Null war richtig, als sie gemessen wurde, und falsch, als sie
+    berichtet wurde. **Eine Messung vor der Änderung, die sie abdecken soll, misst den
+    Ausgangszustand.**
+
+    `None` heißt „konnte nicht prüfen" und nicht „nichts gefunden".
+    """
+    sicht = sprintsicht(root)
+    return None if sicht is None else sicht.get("plan_drift", [])
+
+
+def sprintvergangen(root):
+    """SWR-122 (platform/T-0011): offene Tickets, deren geplanter Sprint VORBEI ist.
+
+    Dieselbe Lage wie bei `plandrift`: die Prüfung existiert seit SWR-112 und wurde nie
+    gemeldet. `pm/T-0039` belegt den Preis — viermal in Folge wurde `geplant_sprint` um
+    genau eins erhöht (6→7→8→9), ohne dass je ein neuer Grund im Ticket stand. SWR-112
+    ist für genau diesen Fall gebaut worden und hätte ihn in Sprint 7, 8 und 9 gemeldet;
+    gelesen wurde sie in keinem davon.
+
+    `None` heißt „konnte nicht prüfen" und nicht „nichts gefunden".
+    """
+    sicht = sprintsicht(root)
+    return None if sicht is None else sicht.get("sprint_vergangen", [])
 
 
 def wartet_auf_mensch(root):
@@ -446,6 +504,40 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         befunde += 1
     else:
         print("[org] Statusdrift Plan/Ticket: 0.")
+    # SWR-122 (platform/T-0011): die beiden Nachbarn von `status_drift`, die bis Sprint 10
+    # berechnet und von niemandem gelesen wurden.
+    #
+    # `plan_drift` (SWR-109) fragt: sagt die FÄLLIGKEITSSPALTE dieselbe Sprintnummer wie
+    # das Ticketfeld? `sprint_vergangen` (SWR-112) fragt: liegt der geplante Sprint in der
+    # VERGANGENHEIT? Das sind zwei Fragen an denselben Bestand und keine zwei Meinungen
+    # über eine — ein Ticket kann in beiden stehen (heute: `pm/T-0028`, `pm/T-0039`) und
+    # das ist kein Doppelbefund, sondern zwei Fehler an einem Ticket.
+    #
+    # Beide Zeilen erscheinen auch bei 0 (SWR-114-Begründung) und nennen Referenzen statt
+    # nur einer Zahl (B038). Beide zählen als Befund: eine Zeile, die nichts blockiert,
+    # hätte den Bericht von Sprint 9 nicht verhindert.
+    pdrift = plandrift(root)
+    if pdrift is None:
+        print("[org] Plan-Drift Sprintnummer: nicht prüfbar (Sprintsicht nicht ladbar).")
+    elif pdrift:
+        print(f"[org] BEFUND: {len(pdrift)} Planzeile(n) nennen eine andere Sprintnummer "
+              f"als ihr Ticket:")
+        for d in pdrift:
+            print(f"    {d['ref']}: {d['meldung']}")
+        befunde += 1
+    else:
+        print("[org] Plan-Drift Sprintnummer: 0.")
+    vergangen = sprintvergangen(root)
+    if vergangen is None:
+        print("[org] Offen auf vergangenem Sprint: nicht prüfbar (Sprintsicht nicht ladbar).")
+    elif vergangen:
+        print(f"[org] BEFUND: {len(vergangen)} offene(s) Ticket(s) auf einem bereits "
+              f"vergangenen Sprint:")
+        for d in vergangen:
+            print(f"    {d['ref']}: {d['meldung']}")
+        befunde += 1
+    else:
+        print("[org] Offen auf vergangenem Sprint: 0.")
     # SWR-118 (pm/T-0048): unzulässige Statusübergänge in der COMMITTETEN Historie.
     #
     # Die Übergangsprüfung in `board.py` hält die Arbeitskopie gegen HEAD und ist damit

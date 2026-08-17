@@ -1,6 +1,6 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-17 · Tickets: 10 · davon wiederkehrend: 1
+Stand: 2026-08-17 · Tickets: 11 · davon wiederkehrend: 1
 
 
 ## open (1)
@@ -8,6 +8,12 @@ Stand: 2026-08-17 · Tickets: 10 · davon wiederkehrend: 1
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
+
+## in_progress (1)
+
+| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|---|
+| [T-0011](tickets/T-0011.md) | Befund: Preflight meldet STARTKLAR, während plan_drift und sprint_vergangen sechs Befunde tragen — zwei berechnete Kennzahlen werden nirgends gemeldet | problem | einmalig | cm | Team | hoch | 0 | — |
 
 ## done (9)
 
