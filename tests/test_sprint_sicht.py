@@ -329,3 +329,102 @@ class EndpunktTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+PLAN_DRIFT = """# Sprint aktuell
+
+## Sprint-Plan
+
+*Sprint 6 = dieser Lauf.*
+
+| Aufgabe | Rolle | Fällig | Status | Grund / nächster Schritt |
+|---|---|---|---|---|
+| pm/T-0036 | pl | Sprint 7 | offen | Plandatei sagt 7. |
+| pm/T-0038 | pl | Sprint 7 | offen | Plandatei und Ticket stimmen ueberein. |
+| pm/T-0001 | pl | jeder Sprint | erfuellt | Takt-Dauerlaeufer ohne Feld. |
+| projects/p11/T-0003 | pl | Sprint 7 | offen | Nackte ID T-0003 ist mehrdeutig. |
+| projects/p12/T-0003 | pl | Sprint 10 | offen | Dieselbe nackte ID in einem anderen Repo. |
+| pm/T-0002 | pl | dieser Sprint | erfuellt | Ohne Nummer — nichts zu vergleichen. |
+"""
+
+
+class PlanDriftTest(unittest.TestCase):
+    """SWR-109: der Plan und das Ticket muessen dieselbe Sprintnummer nennen.
+
+    Befund 2026-08-17 (Sprint 6): Sprint 5 hatte fuenf Aufgaben in der Plandatei eine
+    Nummer nach hinten geschoben, ohne die Ticketfelder anzufassen. Sieben Zeilen sagten
+    danach etwas anderes als ihr Ticket — und `nicht_geplant` war zu Recht leer, denn
+    vorgekommen sind alle. Anwesenheit ist nicht Uebereinstimmung.
+    """
+
+    def setUp(self):
+        self.zeilen = sprint.zeilen(sprint.plan_tabelle(PLAN_DRIFT), HEUTE, 6)
+
+    def _offen(self, ref, geplant_sprint, ident=None):
+        return {"ref": ref, "id": ident or ref.split("/")[-1],
+                "titel": "Titel " + ref, "status": "open",
+                "geplant_sprint": geplant_sprint}
+
+    def test_abweichende_nummer_wird_gemeldet(self):
+        """Der Kern: Plan sagt 7, Ticket sagt 6."""
+        drift = sprint.plan_drift(self.zeilen, [self._offen("pm/T-0036", "6")])
+        self.assertEqual(len(drift), 1)
+        self.assertEqual(drift[0]["ref"], "pm/T-0036")
+        self.assertEqual(drift[0]["plan"], 7)
+        self.assertEqual(drift[0]["ticket"], "6")
+        self.assertIn("Plan sagt Sprint 7", drift[0]["meldung"])
+
+    def test_uebereinstimmung_meldet_nichts(self):
+        """Gegenprobe — sonst meldete die Pruefung jede Zeile."""
+        self.assertEqual(sprint.plan_drift(self.zeilen, [self._offen("pm/T-0038", "7")]), [])
+
+    def test_takt_dauerlaeufer_ohne_feld_ist_kein_drift(self):
+        """Takt-Tickets tragen absichtlich kein `geplant_sprint` (B033).
+
+        Ohne diese Ausnahme meldete die Pruefung sechs Dauerlaeufer als Befund und
+        waere lauter als der Fehler, den sie sucht.
+        """
+        self.assertEqual(sprint.plan_drift(self.zeilen, [self._offen("pm/T-0001", "")]), [])
+
+    def test_zeile_ohne_nummer_wird_uebergangen(self):
+        """„dieser Sprint" / „wartet-auf-Mensch" nennen keine Nummer — nichts zu vergleichen."""
+        self.assertEqual(sprint.plan_drift(self.zeilen, [self._offen("pm/T-0002", "6")]), [])
+
+    def test_nackte_id_wird_nur_aufgeloest_wenn_sie_eindeutig_ist(self):
+        """Die Falle, die diese Pruefung beim ERSTEN Lauf gegen den echten Bestand fand.
+
+        `T-0003` gibt es in p11 UND p12. Wer die nackte ID blind aufloest, ordnet die
+        p12-Zeile (Sprint 10) dem p11-Ticket zu und meldet einen Drift, den es nicht
+        gibt. Beide Tickets stehen hier korrekt auf ihrer Plannummer — es darf **kein**
+        Befund herauskommen.
+        """
+        offene = [self._offen("p11/T-0003", "7", "T-0003"),
+                  self._offen("p12/T-0003", "10", "T-0003")]
+        self.assertEqual(sprint.plan_drift(self.zeilen, offene), [])
+
+    def test_der_echte_drift_wird_trotz_mehrdeutiger_id_gefunden(self):
+        """Und die Ausnahme darf den Befund nicht verschlucken: volle Refs gewinnen."""
+        offene = [self._offen("p11/T-0003", "9", "T-0003"),
+                  self._offen("p12/T-0003", "10", "T-0003")]
+        drift = sprint.plan_drift(self.zeilen, offene)
+        self.assertEqual([d["ref"] for d in drift], ["p11/T-0003"])
+
+    def test_plan_liefert_die_pruefung_mit_aus(self):
+        """Ein Befund, den niemand ausliefert, ist keiner (L-2026-08-17j).
+
+        Bewusst gegen den echten Rueckgabewert und nicht gegen den Docstring: eine
+        Pruefung, die nur in `plan_drift()` existiert und nicht in `plan()`, ist fuer
+        die Kachel nicht vorhanden — genau der Fehler, den SWR-103 einmal hatte.
+        """
+        root = tempfile.mkdtemp(prefix="sprint-drift-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        pm = _repo(root, "pm", [("T-0036", "open")])
+        os.makedirs(os.path.join(pm, "management"))
+        with open(os.path.join(pm, "management", "sprint-aktuell.md"), "w",
+                  encoding="utf-8", newline="\n") as f:
+            f.write(PLAN_DRIFT)
+        _git(pm, "add", "-A")
+        _git(pm, "commit", "-m", "Plan")
+        d = sprint.plan(root, jetzt=datetime.now(timezone.utc), heute=HEUTE)
+        self.assertIn("plan_drift", d)
+        self.assertIsInstance(d["plan_drift"], list)

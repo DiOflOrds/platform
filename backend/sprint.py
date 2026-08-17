@@ -293,6 +293,55 @@ def nicht_geplant(plan_zeilen, offene):
     return fehlend
 
 
+def plan_drift(plan_zeilen, offene):
+    """SWR-109: Planzeilen, die einen ANDEREN Sprint nennen als das Ticket selbst.
+
+    `nicht_geplant` fragt, ob ein offenes Ticket **vorkommt**. Diese Prüfung fragt, ob
+    der Plan dasselbe **sagt** wie das Ticket. Der Unterschied ist nicht akademisch: ein
+    Ticket, das im Plan steht und dort eine andere Nummer trägt, ist für `nicht_geplant`
+    einwandfrei und für jeden Leser trotzdem falsch terminiert.
+
+    Anlass (Befund 2026-08-17, Sprint 6): Sprint 5 hat fünf Aufgaben in der Plandatei
+    „je eine Nummer nach hinten" geschoben und die Ticketfelder nicht angefasst. Sieben
+    Zeilen sagten danach etwas anderes als ihr Ticket — unbemerkt, weil beide Quellen
+    für sich stimmig aussahen. Genau die Schwäche, die beim Beschluss zu `frist` neben
+    `geplant_sprint` benannt worden war (B033): zwei Angaben zu derselben Frage driften.
+
+    Takt-Dauerläufer sind ausgenommen und das ist keine Nachlässigkeit: sie tragen
+    absichtlich kein `geplant_sprint` (eine Nummer neben `takt: je-session` wäre selbst
+    eine Doppelaussage), und ihre Planzeile sagt „jeder Sprint".
+    """
+    # Die volle Referenz (`p11/T-0003`) ist eindeutig, die nackte ID (`T-0003`) ist es
+    # NICHT: sie kommt in p11 und p12 gleichzeitig vor. Eine nackte ID wird deshalb nur
+    # aufgelöst, wenn sie im Bestand genau einmal vorkommt — sonst ordnete die Prüfung
+    # eine Planzeile dem falschen Ticket zu und meldete einen Drift, den es nicht gibt.
+    # (Gefunden beim ersten Lauf gegen den echten Bestand, nicht beim Schreiben.)
+    nach_ref = {t["ref"]: t for t in offene}
+    haeufigkeit = {}
+    for t in offene:
+        haeufigkeit[t["id"]] = haeufigkeit.get(t["id"], 0) + 1
+    for t in offene:
+        if haeufigkeit[t["id"]] == 1:
+            nach_ref.setdefault(t["id"], t)
+    treffer = []
+    for z in plan_zeilen:
+        nr = z.get("sprint_nr")
+        if nr is None:                      # „dieser Sprint", „wartet-auf-Mensch", Takt
+            continue
+        ticket = next((nach_ref[r] for r in z.get("refs", []) if r in nach_ref), None)
+        if ticket is None:
+            continue
+        gefeldert = str(ticket.get("geplant_sprint", "")).strip()
+        if not gefeldert:                   # Takt-Dauerläufer: kein Feld, kein Widerspruch
+            continue
+        if gefeldert != str(nr):
+            treffer.append({"ref": ticket["ref"], "titel": ticket["titel"],
+                            "plan": nr, "ticket": gefeldert,
+                            "meldung": "Plan sagt Sprint %s, Ticket sagt Sprint %s"
+                                       % (nr, gefeldert)})
+    return treffer
+
+
 def zaehler(plan_zeilen):
     """Wie viele Zeilen je Zustand — plus die Querzahl „wartet auf Mensch".
 
@@ -349,6 +398,7 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
     offene = offene_tickets(root)
     fehlend = nicht_geplant(plan_zeilen, offene)
     widerspruch = widersprueche(offene, jetzt_nr, takt_min, heute)
+    drift = plan_drift(plan_zeilen, offene)   # SWR-109
     for o in offene:
         o.pop("_ticket", None)
 
@@ -363,6 +413,7 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
             "offen_gesamt": len(offene),
             "nicht_geplant": fehlend,
             "widersprueche": widerspruch,   # SWR-106
+            "plan_drift": drift,            # SWR-109
             "sprint_nr": jetzt_nr,          # SWR-106: der laufende Sprint
             "takt_min": takt_min,
             "stand": letzter,
