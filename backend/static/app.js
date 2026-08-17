@@ -1849,6 +1849,44 @@ function widgetKarte(w) {
   return karte;
 }
 
+// SWR-151 (projects/p11/T-0011): die Dashboard-Konfiguration des Menschen.
+//
+// ⚠⚠ **Warum sie einen Neustart ueberlebt und der Faltzustand aus SWR-133 nicht.** Der
+// Einwand dort steht 100 Zeilen weiter oben und ist richtig: *„Ein Zustand, der einen
+// Neustart ueberlebt, muesste beim Wiedersehen erklaert werden — sonst fehlt eine Gruppe
+// und niemand weiss, warum."* Der Unterschied ist nicht die Technik, sondern die HANDLUNG:
+//
+// > **Falten ist ein Griff beim Lesen. Eine Auswahl ist eine Aussage. Die eine wieder
+// > aufzumachen kostet einen Klick; die andere jedes Mal neu zu treffen macht sie
+// > wertlos.**
+//
+// ⚠ Der Einwand verbietet die Persistenz damit nicht, er verlangt die **Erklaerung** —
+// und die steht im Kopf der Ansicht (`Regeln.verstecktSatz`), nicht in einem Menue.
+//
+// ⚠ **Kein Schreibweg zum Server** (DoD 4, ADR-003/ADR-007): das ist die Ansichtsvorliebe
+// EINES Menschen an EINEM Geraet und keine Aussage ueber die Organisation. Im Repo waere
+// sie ein versionierter Teamartefakt — und ein Schreibweg des Menschen in den Arbeitsstand
+// des Teams ist genau das, was ADR-003 ausschliesst.
+var dashboardKonfig = null;  // null = noch nicht gelesen (nicht: leer)
+
+function konfigLaden() {
+  if (dashboardKonfig) return dashboardKonfig;
+  var roh = null;
+  // ⚠ Privatmodus und abgeschalteter Speicher werfen beim ZUGRIFF, nicht beim Lesen.
+  // Ohne dieses `try` waere das Dashboard dort weiss — an einer Vorliebe gestorben.
+  try { roh = localStorage.getItem(Regeln.DASHBOARD_KONFIG_SCHLUESSEL); } catch (e) { roh = null; }
+  dashboardKonfig = Regeln.konfigLesen(roh);
+  return dashboardKonfig;
+}
+
+function konfigSpeichern(k) {
+  dashboardKonfig = k;
+  try {
+    localStorage.setItem(Regeln.DASHBOARD_KONFIG_SCHLUESSEL, Regeln.konfigSchreiben(k));
+  } catch (e) { /* ohne Speicher gilt die Auswahl nur fuer diesen Besuch — kein Fehler */ }
+  lade();
+}
+
 function ladeDashboard() {
   // ⚠ SWR-148: das Dashboard zeigt **Widgets**, nicht mehr die Projektkacheln. Die Kacheln
   // waren eine zweite Anzeige derselben Daten, die das Cockpit schon zeigt (B033) — der
@@ -1861,6 +1899,9 @@ function ladeDashboard() {
     var teile = [];
     var kopf = el("div", { "class": "zeile" },
       el("h3", { style: "margin:0" }, "Dashboard — Ergebnisse der Teams"));
+    // ⚠ SWR-151: die Pille zaehlt, was der Server ANBIETET, und nicht, was zu sehen ist.
+    // Zaehlte sie das Sichtbare, sagte sie nach dem Ausblenden „2 Widgets" — richtig fuer
+    // die Ansicht und falsch ueber die Organisation, und niemand saehe den Unterschied.
     kopf.appendChild(pille(gut.length + (gut.length === 1 ? " Widget" : " Widgets"), "open"));
     if (d && d.vertrag) kopf.appendChild(pille("Widget-Vertrag v" + d.vertrag, "done"));
     teile.push(kopf);
@@ -1878,9 +1919,65 @@ function ladeDashboard() {
       zeigeBreit(teile);
       return;
     }
+    // SWR-151: Auswahl und Reihenfolge des Menschen. ⚠ Die Regeln stehen in `regeln.js`
+    // und sind ohne DOM pruefbar; hier wird nur gezeichnet (ADR-008).
+    var konfig = konfigLaden();
+    var geordnet = Regeln.widgetsOrdnen(gut, konfig);
+    // ⚠⚠ Was NICHT zu sehen ist, steht IM KOPF und nicht in einem Menue — die Auflage,
+    // unter der SWR-133 die Persistenz ueberhaupt zulaesst.
+    var satz = Regeln.verstecktSatz(geordnet.versteckt.length);
+    if (satz) {
+      var hinweis = el("div", { "class": "zeile" }, satz + " ");
+      hinweis.appendChild(el("button", { "class": "knopf zweit",
+        style: "padding:.15rem .5rem", onclick: function () {
+          konfigSpeichern(Regeln.konfigLeer());
+        } }, "Alle zeigen"));
+      teile.push(hinweis);
+    }
     var raster = el("div", { "class": "raster" });
-    gut.forEach(function (w) { raster.appendChild(widgetKarte(w)); });
+    geordnet.sichtbar.forEach(function (w, idx) {
+      var kachel = el("div", {});
+      kachel.appendChild(widgetKarte(w));
+      var schluessel = Regeln.widgetSchluessel(w);
+      // ⚠ Die Knoepfe stehen NEBEN der Kachel und nicht darin: die Kachel ist seit
+      // SWR-148 als GANZES das Klickziel — ein Knopf darin waere ein Klickziel im
+      // Klickziel, und der Mensch traefe beim Ausblenden den Deep-Link.
+      var reihe = el("div", { "class": "zeile" });
+      reihe.appendChild(el("button", { "class": "knopf zweit", style: "padding:.1rem .45rem",
+        title: "nach oben", disabled: idx === 0,
+        onclick: function () {
+          konfigSpeichern(Regeln.konfigVerschieben(konfig, geordnet.sichtbar, schluessel, -1));
+        } }, "\u2191"));
+      reihe.appendChild(el("button", { "class": "knopf zweit", style: "padding:.1rem .45rem",
+        title: "nach unten", disabled: idx === geordnet.sichtbar.length - 1,
+        onclick: function () {
+          konfigSpeichern(Regeln.konfigVerschieben(konfig, geordnet.sichtbar, schluessel, 1));
+        } }, "\u2193"));
+      reihe.appendChild(el("button", { "class": "knopf zweit", style: "padding:.1rem .45rem",
+        title: "ausblenden",
+        onclick: function () {
+          konfigSpeichern(Regeln.konfigUmschalten(konfig, schluessel));
+        } }, "Ausblenden"));
+      kachel.appendChild(reihe);
+      raster.appendChild(kachel);
+    });
     teile.push(raster);
+    // ⚠ Die ausgeblendeten Widgets stehen NAMENTLICH da, nicht nur als Zahl. Eine Zahl
+    // sagt „dir fehlt etwas" und nicht „was" — und ein Mensch, der den Namen nicht sieht,
+    // klickt „Alle zeigen" und faengt von vorne an.
+    if (geordnet.versteckt.length) {
+      var aus = el("div", { "class": "karte" },
+        el("h4", { style: "margin:0 0 .4rem" }, "Ausgeblendet"));
+      geordnet.versteckt.forEach(function (w) {
+        var z = el("div", { "class": "zeile" }, (w.titel || Regeln.widgetSchluessel(w)) + " ");
+        z.appendChild(el("button", { "class": "knopf zweit", style: "padding:.1rem .45rem",
+          onclick: (function (sch) {
+            return function () { konfigSpeichern(Regeln.konfigUmschalten(konfig, sch)); };
+          })(Regeln.widgetSchluessel(w)) }, "Einblenden"));
+        aus.appendChild(z);
+      });
+      teile.push(aus);
+    }
     teile.push(el("p", { "class": "leer" },
       "Zustand und Fortschritt der Projekte stehen im Cockpit — hier stehen Ergebnisse."));
     zeigeBreit(teile);

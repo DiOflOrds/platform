@@ -587,6 +587,137 @@ var Regeln = (function () {
     return pflicht.filter(function (p) { return !p[1]; }).map(function (p) { return p[0]; });
   }
 
+
+  // ---------- Dashboard-Konfiguration (SWR-151, projects/p11/T-0011) ----------
+
+  /** Der Schluessel im Browser-Speicher. Eine Stelle, damit Lesen und Schreiben nicht
+   *  auseinanderlaufen koennen. */
+  var DASHBOARD_KONFIG_SCHLUESSEL = "mc_dashboard_widgets";
+
+  /** Die leere Konfiguration — „nie angefasst". */
+  function konfigLeer() { return { versteckt: [], reihenfolge: [] }; }
+
+  /** Konfiguration aus dem Rohtext des Browser-Speichers — IMMER ein gueltiges Objekt.
+   *
+   * ⚠ **Kaputter Inhalt ergibt den Standard und keinen Fehler.** Der Speicher ist
+   * ausserhalb unserer Reichweite: eine aeltere Fassung, ein halber Schreibvorgang, ein
+   * Mensch mit den Entwicklerwerkzeugen. Ein Wurf hier haette das ganze Dashboard
+   * angehalten — *eine Ansicht, die an ihrer eigenen Voreinstellung stirbt, ist schlimmer
+   * als eine ohne Voreinstellung.*
+   *
+   * ⚠ Es wird **feldweise** geprueft und nicht „ist es ein Objekt". Ein `versteckt`, das
+   * eine Zeichenkette ist, wuerde sonst als Liste durchgereicht und `indexOf` faende
+   * Teilzeichenketten — ein Projekt `p1` waere versteckt, weil `p11` im Text steht.
+   */
+  function konfigLesen(roh) {
+    var k = konfigLeer();
+    if (!roh) return k;
+    var o;
+    try { o = JSON.parse(String(roh)); } catch (e) { return k; }
+    if (!o || typeof o !== "object") return k;
+    if (Array.isArray(o.versteckt)) {
+      k.versteckt = o.versteckt.filter(function (x) { return typeof x === "string" && x; });
+    }
+    if (Array.isArray(o.reihenfolge)) {
+      k.reihenfolge = o.reihenfolge.filter(function (x) { return typeof x === "string" && x; });
+    }
+    return k;
+  }
+
+  /** Konfiguration als Text fuer den Speicher. */
+  function konfigSchreiben(k) {
+    var s = k || konfigLeer();
+    return JSON.stringify({ versteckt: s.versteckt || [], reihenfolge: s.reihenfolge || [] });
+  }
+
+  /** Widgets nach Konfiguration ordnen und trennen.
+   *
+   * Rueckgabe: `{ sichtbar: [...], versteckt: [...] }` — **beide** Listen, nie nur die
+   * eine. Der Aufrufer soll sagen koennen, was er nicht zeigt.
+   *
+   * ⚠⚠ **`versteckt` ist eine Ausschlussliste und keine Auswahlliste, und das ist die
+   * bestimmende Entscheidung dieser Funktion.** Bei einer Auswahlliste waere ein Widget,
+   * das ein Team NEU anbietet, beim naechsten Aufruf unsichtbar — und niemand wuesste,
+   * dass es existiert.
+   *
+   * > **Eine gespeicherte Auswahl altert gegen einen wachsenden Bestand: sie sagt „zeig
+   * > diese", und was danach dazukommt, faellt lautlos aus der Ansicht.**
+   *
+   * ⚠ Nicht genannte Widgets behalten die **Reihenfolge des Servers** und stehen HINTER
+   * den genannten. Sie ans Ende zu stellen ist eine Entscheidung: vorn stuenden sie ueber
+   * einer Anordnung, die der Mensch bewusst gesetzt hat.
+   */
+  function widgetsOrdnen(widgets, konfig) {
+    var liste = Array.isArray(widgets) ? widgets.slice() : [];
+    var k = konfig || konfigLeer();
+    var versteckt = k.versteckt || [], reihenfolge = k.reihenfolge || [];
+    var raus = { sichtbar: [], versteckt: [] };
+    var offen = [];
+    liste.forEach(function (w) {
+      if (versteckt.indexOf(widgetSchluessel(w)) >= 0) raus.versteckt.push(w);
+      else offen.push(w);
+    });
+    var genannt = [];
+    reihenfolge.forEach(function (name) {
+      offen.forEach(function (w) {
+        if (widgetSchluessel(w) === name && genannt.indexOf(w) < 0) genannt.push(w);
+      });
+    });
+    raus.sichtbar = genannt.concat(offen.filter(function (w) { return genannt.indexOf(w) < 0; }));
+    return raus;
+  }
+
+  /** Die Kennung eines Widgets — **eine** Stelle, an der sie entsteht.
+   *
+   * ⚠ Ein Team bietet hoechstens ein Widget an (`widget.yaml` je Team), also ist das
+   * Projekt die Kennung. Stuende sie an drei Stellen, waere sie irgendwann an zweien der
+   * Titel — und der Titel aendert sich, waehrend die Konfiguration bleibt.
+   */
+  function widgetSchluessel(w) { return String((w && w.projekt) || ""); }
+
+  /** Ein Widget aus- oder einblenden. Gibt eine NEUE Konfiguration zurueck. */
+  function konfigUmschalten(konfig, schluessel) {
+    var k = konfigLesen(konfigSchreiben(konfig));
+    var i = k.versteckt.indexOf(String(schluessel));
+    if (i >= 0) k.versteckt.splice(i, 1); else k.versteckt.push(String(schluessel));
+    return k;
+  }
+
+  /** Ein Widget um eine Stelle verschieben (`-1` hoch, `+1` runter).
+   *
+   * ⚠ Die Reihenfolge wird aus der **aktuell sichtbaren** Liste neu geschrieben und nicht
+   * in der gespeicherten fortgeschrieben. Sonst haette eine Konfiguration von gestern
+   * Namen darin, die es nicht mehr gibt, und ein Schritt „hoch" spraenge ueber ein
+   * unsichtbares Loch.
+   */
+  function konfigVerschieben(konfig, sichtbar, schluessel, schritt) {
+    var namen = (sichtbar || []).map(widgetSchluessel);
+    var i = namen.indexOf(String(schluessel));
+    var ziel = i + (schritt < 0 ? -1 : 1);
+    if (i < 0 || ziel < 0 || ziel >= namen.length) return konfigLesen(konfigSchreiben(konfig));
+    namen.splice(ziel, 0, namen.splice(i, 1)[0]);
+    var k = konfigLesen(konfigSchreiben(konfig));
+    k.reihenfolge = namen;
+    return k;
+  }
+
+  /** Der Satz ueber das, was NICHT zu sehen ist — leer, wenn nichts versteckt ist.
+   *
+   * ⚠⚠ **Das ist die Antwort auf den Einwand, mit dem SWR-133 die Persistenz ABGELEHNT
+   * hat:** *„Ein Zustand, der einen Neustart ueberlebt, muesste beim Wiedersehen erklaert
+   * werden — sonst fehlt eine Gruppe und niemand weiss, warum."* Der Einwand ist richtig
+   * und gilt hier genauso; er verbietet die Persistenz aber nicht, er verlangt die
+   * **Erklaerung**. Sie steht deshalb im Kopf der Ansicht und nicht in einem Menue, das
+   * man aufklappen muss.
+   */
+  function verstecktSatz(anzahl) {
+    var n = Number(anzahl) || 0;
+    if (n <= 0) return "";
+    return n === 1
+      ? "1 Widget ist durch deine Auswahl ausgeblendet."
+      : n + " Widgets sind durch deine Auswahl ausgeblendet.";
+  }
+
   return { widgetZeile: widgetZeile, widgetVollstaendig: widgetVollstaendig,
            widgetMaengel: widgetMaengel, TOUCH_MIN_PX: TOUCH_MIN_PX,
            feldText: feldText, kachelFelder: kachelFelder,
@@ -602,6 +733,13 @@ var Regeln = (function () {
            briefIdAusFehler: briefIdAusFehler,
            sortiereAufgaben: sortiereAufgaben, aufgabenNachRolle: aufgabenNachRolle,
            gruppenTitel: gruppenTitel, OHNE_ROLLE: OHNE_ROLLE,
+           DASHBOARD_KONFIG_SCHLUESSEL: DASHBOARD_KONFIG_SCHLUESSEL,
+           konfigLeer: konfigLeer, konfigLesen: konfigLesen,
+           konfigSchreiben: konfigSchreiben, widgetsOrdnen: widgetsOrdnen,
+           widgetSchluessel: widgetSchluessel,
+           konfigUmschalten: konfigUmschalten,
+           konfigVerschieben: konfigVerschieben,
+           verstecktSatz: verstecktSatz,
            ticketRoute: ticketRoute, textRefAnnahme: textRefAnnahme,
            TICKET_ROUTE_PRAEFIX: TICKET_ROUTE_PRAEFIX };
 })();
