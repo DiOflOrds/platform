@@ -1748,56 +1748,76 @@ function ladeAufgaben() {
 // sichtbar sind, während links und rechts je rund ein Fünftel der Breite leer liegt.
 // --------------------------------------------------------------------------
 
-function kompaktKachel(kachel) {
-  var karte = el("div", { "class": "kompakt" });
-  karte.appendChild(el("h4", {},
-    el("a", { href: "#/uebersicht/" + kachel.projekt, "class": "tlink" }, kachel.projekt),
-    " ", pille(kachel.status || "", kachel.status === "aktiv" ? "open" : "done")));
-  karte.appendChild(el("p", { "class": "satz" }, kachel.beschreibung || ""));
+// ⚠ `kompaktKachel` ist in Sprint 17 ENTFERNT worden (SWR-148). Sie zeichnete die
+// Projektkacheln des Dashboards — dieselben Daten, die das Cockpit zeigt. Der Auftraggeber
+// hat die Dopplung benannt, und toter Code, der eine Dopplung zeichnet, laedt dazu ein, sie
+// wieder einzubauen. Der Endpunkt `/api/dashboard` (SWR-135) bleibt vorerst bestehen und ist
+// damit **ungenutzt**; ob er geht, entscheidet `projects/p11/T-0014` — eine geprueft
+// abgenommene Anforderung wird nicht im Vorbeigehen geloescht.
+
+function widgetKarte(w) {
+  // ⚠ Das GANZE Widget ist das Klickziel — ein `<a>`, kein Link im Text. Der Wunsch lautete
+  // „soll klickbar sein (Touchscreen geeignet)": ein 12 px hoher Textlink erfüllt das nicht.
+  // Die Mindesthöhe kommt aus `Regeln.TOUCH_MIN_PX` und steht damit an einer Stelle, die ein
+  // Test halten kann — „touch-geeignet" ohne prüfbare Zahl wäre eine Behauptung (SWR-125).
+  var karte = el("a", { "class": "widget", href: w.ziel,
+                        style: "min-height:" + Regeln.TOUCH_MIN_PX + "px" });
+  karte.appendChild(el("h4", {}, w.titel));
+  // Der Auftrag steht IM Widget und nicht in einer Doku daneben: er ist die Zusage, was hier
+  // zu sehen ist, und nur dort nachprüfbar, wo das Gezeigte steht.
+  karte.appendChild(el("p", { "class": "auftrag" }, w.auftrag));
   var dl = el("dl", {});
-  Regeln.kachelFelder(kachel).forEach(function (f) {
-    dl.appendChild(el("dt", {}, f.titel));
-    // ⚠ „keine Daten" bekommt eine eigene Klasse und sieht damit ANDERS aus als eine 0.
-    // Die Unterscheidung im Payload (SWR-108) wäre wertlos, wenn beide gleich gerendert
-    // würden — der Widget-Vertrag verlangt, dass ein fehlender Beitrag als fehlend
-    // sichtbar ist.
-    dl.appendChild(el("dd", f.zustand === "nicht_geliefert" ? { "class": "leer" } : {},
-                      f.text));
+  (w.eintraege || []).forEach(function (e) {
+    var z = Regeln.widgetZeile(e);
+    dl.appendChild(el("dt", {}, z.titel));
+    var dd = el("dd", z.zustand === "nicht_geliefert" ? { "class": "leer" } : {}, z.text);
+    // Der Grund macht den Unterschied zwischen „kannst du ändern" und „musst du abwarten".
+    if (z.grund) dd.appendChild(el("small", { "class": "grund" }, " — " + z.grund));
+    dl.appendChild(dd);
   });
   karte.appendChild(dl);
+  if (w.digests_ohne_takt) {
+    // Gezählt und genannt statt einem Takt zugeschlagen (SWR-114/B038).
+    karte.appendChild(el("p", { "class": "leer" },
+      w.digests_ohne_takt + " Zusammenfassung(en) ohne Taktangabe im Namen — keinem Takt zugeordnet."));
+  }
   return karte;
 }
 
 function ladeDashboard() {
-  return api("/api/dashboard").then(function (d) {
-    var kacheln = (d && d.kacheln) || [];
+  // ⚠ SWR-148: das Dashboard zeigt **Widgets**, nicht mehr die Projektkacheln. Die Kacheln
+  // waren eine zweite Anzeige derselben Daten, die das Cockpit schon zeigt (B033) — der
+  // Auftraggeber hat es benannt: „ist an sich das gleiche wie das cockpit". Sie sind
+  // **entfernt** und nicht ergänzt worden; etwas Neues obendrauf zu legen und die Kopie
+  // stehen zu lassen, wäre die bequeme Hälfte gewesen.
+  return api("/api/widgets").then(function (d) {
+    var alle = (d && d.widgets) || [];
+    var gut = alle.filter(Regeln.widgetVollstaendig);
     var teile = [];
     var kopf = el("div", { "class": "zeile" },
-      el("h3", { style: "margin:0" }, "Dashboard — alle Teams und Projekte"));
-    kopf.appendChild(pille(kacheln.length + " Kacheln", "open"));
+      el("h3", { style: "margin:0" }, "Dashboard — Ergebnisse der Teams"));
+    kopf.appendChild(pille(gut.length + (gut.length === 1 ? " Widget" : " Widgets"), "open"));
     if (d && d.vertrag) kopf.appendChild(pille("Widget-Vertrag v" + d.vertrag, "done"));
-    var o = (d && d.organisation) || null;
-    if (o && o.wartet_auf_mensch_gesamt) {
-      kopf.appendChild(pille(o.wartet_auf_mensch_gesamt + "× wartet auf dich", "in_review"));
-    }
     teile.push(kopf);
-    if (!kacheln.length) {
-      // Der leere Fall wird benannt — „nichts da" und „nicht geladen" dürfen nicht gleich
-      // aussehen (SWR-114/SWR-122).
+    // Unvollständige Widgets werden NICHT still übergangen: der Mangel wird benannt, mit
+    // Feldnamen. Ein fehlender Auftrag ist ein Fehler des Teams und soll auffallen.
+    alle.filter(function (w) { return !Regeln.widgetVollstaendig(w); }).forEach(function (w) {
+      teile.push(el("div", { "class": "meldung fehler" },
+        "Widget von " + (w.projekt || "?") + " nicht angezeigt — es fehlt: "
+        + Regeln.widgetMaengel(w).join(", ")));
+    });
+    if (!gut.length) {
       teile.push(el("p", { "class": "leer" },
-        "Keine Kachel geliefert. (Die Antwort kam an und war leer — kein Ladefehler.)"));
+        "Kein Team bietet ein Widget an. (Die Antwort kam an und war leer — kein Ladefehler. "
+        + "Ein Team bekommt ein Widget, indem es eine widget.yaml hinlegt.)"));
       zeigeBreit(teile);
       return;
     }
-    Regeln.dashboardGruppen(kacheln).forEach(function (g) {
-      // Zähler am Titel, dieselbe Funktion wie im Cockpit und in der Aufgabenliste
-      // (SWR-132/133): ein Titelformat, nicht drei.
-      teile.push(el("h3", { style: "margin:.8rem 0 .3rem" },
-        Regeln.gruppenTitel({ rolle: g.titel, aufgaben: g.kacheln })));
-      var raster = el("div", { "class": "raster" });
-      g.kacheln.forEach(function (k) { raster.appendChild(kompaktKachel(k)); });
-      teile.push(raster);
-    });
+    var raster = el("div", { "class": "raster" });
+    gut.forEach(function (w) { raster.appendChild(widgetKarte(w)); });
+    teile.push(raster);
+    teile.push(el("p", { "class": "leer" },
+      "Zustand und Fortschritt der Projekte stehen im Cockpit — hier stehen Ergebnisse."));
     zeigeBreit(teile);
   });
 }

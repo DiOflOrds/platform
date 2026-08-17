@@ -239,13 +239,34 @@ class AnsichtTest(unittest.TestCase):
                       "Ansicht selbst kennen")
 
     def test_die_ansicht_liest_die_regeln_und_formuliert_sie_nicht(self):
-        for name in ("Regeln.kachelFelder", "Regeln.dashboardGruppen",
+        """⚠ Die ANZEIGEHAELFTE von SWR-135 ist in Sprint 17 abgeloest (SWR-148).
+
+        Bis dahin stand hier, dass `app.js` `Regeln.kachelFelder` und
+        `Regeln.dashboardGruppen` liest — die Projektkacheln des Dashboards. Der
+        Auftraggeber hat sie als Dopplung zum Cockpit benannt („ist an sich das gleiche wie
+        das cockpit"), und zwei Anzeigen derselben Daten sind B033. Die Kacheln haben das
+        Dashboard **verlassen**, `kompaktKachel` ist entfernt.
+
+        ⚠ **Der Test wird deshalb nicht geloescht, sondern umgedreht.** Er ist ab jetzt der
+        Waechter gegen die Rueckkehr der Dopplung — und die kaeme als Verbesserung daher
+        („das Dashboard zeigt jetzt auch die Projekte"). Dieselbe Bauart wie beim Altbestand
+        eine Methode weiter unten.
+
+        Was bleibt: der Endpunkt `/api/dashboard` und die Regelfunktionen sind unveraendert
+        geprueft. Ob der Endpunkt ohne Leser bestehen bleibt, entscheidet
+        `projects/p11/T-0014` — eine abgenommene Anforderung wird nicht im Vorbeigehen
+        geloescht.
+        """
+        self.assertNotIn("function kompaktKachel", self.app,
+                         "die Projektkachel des Dashboards ist zurueck — das ist die "
+                         "Dopplung, die der Auftraggeber geruegt hat")
+        for name in ("Regeln.widgetZeile", "Regeln.widgetVollstaendig",
                      "Regeln.gruppenTitel"):
             self.assertIn(name, self.app, f"{name} wird in app.js nicht gelesen")
 
     def _dashboard_bereich(self):
         """Nur der Code, den DIESES Ticket verantwortet."""
-        anfang = self.app.index("function kompaktKachel")
+        anfang = self.app.index("function widgetKarte")
         ende = self.app.index("function lade() {")
         return self.app[anfang:ende]
 
@@ -286,7 +307,7 @@ class AnsichtTest(unittest.TestCase):
         unterscheiden.
         """
         anfang = self.app.index("function cockpitKarte")
-        ende = self.app.index("function kompaktKachel")
+        ende = self.app.index("function widgetKarte")
         kopien = [z.strip() for z in self.app[anfang:ende].splitlines()
                   if "keine Daten" in z and not z.strip().startswith("//")]
         self.assertEqual(len(kopien), 0,
@@ -304,7 +325,7 @@ class AnsichtTest(unittest.TestCase):
         migrierten Feldern mehr trägt.
         """
         anfang = self.app.index("function cockpitKarte")
-        ende = self.app.index("function kompaktKachel")
+        ende = self.app.index("function widgetKarte")
         karte = self.app[anfang:ende]
         self.assertIn("Regeln.cockpitFeldText", karte)
         eigene = [z.strip() for z in karte.splitlines()

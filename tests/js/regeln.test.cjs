@@ -529,3 +529,76 @@ test("alle drei migrierten Felder stehen in der Tabelle (SWR-146, DoD 4)", () =>
   assert.deepStrictEqual(Object.keys(R.COCKPIT_TEXTE).sort(),
                          ["kpi", "letzte_baseline", "team.letzter_digest"]);
 });
+
+// ---------- SWR-148 (team-mail/T-0004): Widgets ----------
+
+test("widgetZeile: Datum, Mailzahl und Reaktionspunkte in einer Zeile", () => {
+  const z = R.widgetZeile({ takt: "tag", zustand: "wert", datum: "2026-08-16",
+                            mails: 89, reaktion: 4, reaktion_zustand: "wert" });
+  assert.strictEqual(z.titel, "Tag");
+  assert.ok(z.text.includes("2026-08-16"));
+  assert.ok(z.text.includes("89 Mails"));
+  assert.ok(z.text.includes("4× Blick oder Reaktion"));
+});
+
+test("⚠ nicht_geliefert nennt den GRUND — sonst sind zwei Handlungen dasselbe Nichts", () => {
+  // „nicht eingerichtet" kann der Mensch aendern, „noch keiner erstellt" muss er abwarten.
+  const a = R.widgetZeile({ takt: "monat", zustand: "nicht_geliefert",
+                            grund: "nicht eingerichtet — Takt fehlt in konfiguration.yaml" });
+  const b = R.widgetZeile({ takt: "monat", zustand: "nicht_geliefert",
+                            grund: "noch keiner erstellt" });
+  assert.strictEqual(a.text, R.KEINE_DATEN);
+  assert.strictEqual(b.text, R.KEINE_DATEN);
+  assert.notStrictEqual(a.grund, b.grund);
+  assert.ok(a.grund.length && b.grund.length);
+});
+
+test("⚠ GEGENPROBE: eine fehlende Rubrik ist nicht 0 Reaktionspunkte", () => {
+  // Ein Digest ohne die Rubrik sagt NICHTS ueber offene Punkte. „0" zu melden hiesse
+  // „nichts zu tun" behaupten — die teuerste Verwechslung dieser Anzeige.
+  const ohne = R.widgetZeile({ takt: "tag", zustand: "wert", datum: "2026-08-16",
+                               mails: 89, reaktion: null,
+                               reaktion_zustand: "nicht_geliefert" });
+  const null_ = R.widgetZeile({ takt: "tag", zustand: "wert", datum: "2026-08-16",
+                                mails: 89, reaktion: 0, reaktion_zustand: "echte_null" });
+  assert.ok(ohne.text.includes("Reaktion: " + R.KEINE_DATEN));
+  assert.ok(null_.text.includes("0× Blick oder Reaktion"));
+  assert.notStrictEqual(ohne.text, null_.text);
+});
+
+test("eine fehlende Mailzahl wird nicht als 0 erfunden (B038)", () => {
+  const z = R.widgetZeile({ takt: "woche", zustand: "wert", datum: "2026-08-16",
+                            mails: null, reaktion: 4, reaktion_zustand: "wert" });
+  assert.ok(!z.text.includes("0 Mails"));
+  assert.ok(z.text.includes("2026-08-16"));
+});
+
+test("⚠ auftrag ist PFLICHT — ein Widget ohne Auftrag wird nicht angezeigt", () => {
+  // Der Wunsch lautete „jedes widget soll eine beschreibung als Auftrag erhalten". Ohne
+  // Pflichtpruefung waere die Regel nach zwei Teams wieder weg (SWR-125).
+  const gut = { id: "a", titel: "T", auftrag: "was es zeigt", ziel: "#/x" };
+  assert.strictEqual(R.widgetVollstaendig(gut), true);
+  assert.strictEqual(R.widgetVollstaendig({ ...gut, auftrag: "" }), false);
+  assert.strictEqual(R.widgetVollstaendig({ ...gut, auftrag: "   " }), false);
+  assert.strictEqual(R.widgetVollstaendig({ ...gut, ziel: "" }), false);
+  assert.strictEqual(R.widgetVollstaendig({ ...gut, id: "" }), false);
+  assert.strictEqual(R.widgetVollstaendig(null), false);
+});
+
+test("widgetMaengel NENNT das fehlende Feld statt nur 'unvollstaendig' (B038)", () => {
+  assert.deepStrictEqual(R.widgetMaengel({ id: "a", titel: "T", auftrag: " ", ziel: "" }),
+                         ["auftrag", "ziel"]);
+  assert.deepStrictEqual(R.widgetMaengel({ id: "a", titel: "T", auftrag: "x", ziel: "#/x" }),
+                         []);
+});
+
+test("die Touch-Mindesthoehe ist eine Zahl an EINER Stelle, nicht eine Behauptung", () => {
+  // „Touchscreen geeignet" ohne pruefbare Zahl waere eine Zusage ohne Pruefung (SWR-125).
+  assert.strictEqual(typeof R.TOUCH_MIN_PX, "number");
+  assert.ok(R.TOUCH_MIN_PX >= 44, "unter 44 px ist keine Fingerflaeche");
+});
+
+test("ein unbekannter Takt wird durchgereicht statt verschluckt", () => {
+  const z = R.widgetZeile({ takt: "quartal", zustand: "nicht_geliefert", grund: "x" });
+  assert.strictEqual(z.titel, "quartal");
+});

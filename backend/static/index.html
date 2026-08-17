@@ -49,6 +49,29 @@
      verlangt, dass ein fehlender Beitrag als fehlend erkennbar ist. Waeren beide gleich
      formatiert, waere die Unterscheidung im Code richtig und auf dem Schirm wertlos. */
   .kompakt dd.leer { color:var(--grau); font-style:italic; font-size:.78rem; }
+  /* SWR-148 (team-mail/T-0004): Widgets. „soll klickbar sein (Touchscreen geeignet)" —
+     das GANZE Widget ist das Klickziel, nicht ein Link im Text. `min-height` setzt app.js
+     aus `Regeln.TOUCH_MIN_PX`, damit die Zahl pruefbar an EINER Stelle steht. */
+  .widget { display:block; text-decoration:none; color:inherit; background:#fff;
+            border:1px solid var(--rand); border-radius:.6rem; padding:.7rem .8rem; }
+  .widget:hover, .widget:focus-visible { border-color:var(--akzent);
+            box-shadow:0 1px 6px rgba(47,129,247,.28); outline:none; }
+  /* ⚠ `:active` sichtbar machen: auf einem Touchscreen gibt es kein Hover, und ohne
+     Rueckmeldung weiss der Finger nicht, ob er getroffen hat. */
+  .widget:active { background:#f0f6ff; }
+  .widget h4 { margin:0 0 .25rem; font-size:1.05rem; color:var(--haupt); }
+  .widget .auftrag { margin:0 0 .5rem; font-size:.82rem; color:var(--grau); line-height:1.45; }
+  .widget dl { display:grid; grid-template-columns:auto 1fr; gap:.25rem .6rem; margin:0;
+               font-size:.9rem; }
+  .widget dt { color:var(--grau); font-weight:600; }
+  .widget dd { margin:0; }
+  .widget dd.leer { color:var(--grau); font-style:italic; }
+  .widget .grund { color:var(--grau); font-style:normal; font-size:.78rem; }
+  /* Finger sind groesser als Mauszeiger: auf kleinen Schirmen mehr Luft je Zeile. */
+  @media (pointer: coarse) {
+    .widget { padding:.9rem 1rem; }
+    .widget dl { gap:.5rem .6rem; font-size:.95rem; }
+  }
   .karte { background:#fff; border:1px solid var(--rand); border-radius:.5rem; padding: .8rem 1rem; margin-bottom:.8rem; }
   .karte h3 { margin:.1rem 0 .4rem; font-size:1rem; }
   .zeile { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.15rem 0; font-size:.9rem; }

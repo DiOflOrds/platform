@@ -463,7 +463,74 @@ var Regeln = (function () {
     return String(wert);
   }
 
-  return { feldText: feldText, kachelFelder: kachelFelder,
+  // --------------------------------------------------------------------------
+  // SWR-148 (team-mail/T-0004): Widgets — Ergebnisse, nicht Zustaende.
+  // --------------------------------------------------------------------------
+
+  //: Mindesthoehe eines Klickziels in Pixeln. 44 ist die gaengige Empfehlung fuer
+  //: Fingerbedienung; der Auftraggeber hat „Touchscreen geeignet" ausdruecklich verlangt.
+  //: ⚠ Die Zahl steht HIER und nicht nur im CSS, damit ein Test sie halten kann — eine
+  //: Zusage „touch-geeignet" ohne pruefbare Zahl ist eine Behauptung (SWR-125).
+  var TOUCH_MIN_PX = 44;
+
+  var TAKT_TITEL = { tag: "Tag", woche: "Woche", monat: "Monat" };
+
+  /** Was zeigt eine Widget-Zeile? — `{titel, text, zustand, grund}`.
+   *
+   * Dieselbe Vertragsregel wie `feldText` (SWR-135): `echte_null` ist eine `0`,
+   * `nicht_geliefert` ist „keine Daten" und **nie** eine `0`. Neu ist nur der **Grund**:
+   * bei einem Widget ist „warum nichts da ist" die eigentliche Nachricht.
+   *
+   * ⚠ Der Grund wird **angezeigt und nicht verschluckt**. „Nicht eingerichtet" kann der
+   * Mensch aendern, „noch keiner erstellt" muss er abwarten — zwei verschiedene Handlungen
+   * hinter demselben leeren Feld. Ohne den Grund waeren beide dasselbe Nichts.
+   */
+  function widgetZeile(eintrag) {
+    eintrag = eintrag || {};
+    var titel = TAKT_TITEL[eintrag.takt] || eintrag.takt || "";
+    if (eintrag.zustand === "nicht_geliefert") {
+      return { titel: titel, text: KEINE_DATEN, zustand: eintrag.zustand,
+               grund: eintrag.grund || "" };
+    }
+    var teile = [];
+    if (eintrag.datum) teile.push(eintrag.datum);
+    if (eintrag.mails !== null && eintrag.mails !== undefined) {
+      teile.push(eintrag.mails + " Mails");
+    }
+    // Die Reaktionspunkte tragen ihren EIGENEN Zustand: eine Rubrik, die fehlt, ist nicht
+    // dasselbe wie eine Rubrik mit null Punkten. „0 zu tun" ist ein Ergebnis.
+    if (eintrag.reaktion_zustand === "nicht_geliefert") {
+      teile.push("Reaktion: " + KEINE_DATEN);
+    } else if (eintrag.reaktion !== null && eintrag.reaktion !== undefined) {
+      teile.push(eintrag.reaktion + "× Blick oder Reaktion");
+    }
+    return { titel: titel, text: teile.join(" · ") || KEINE_DATEN,
+             zustand: eintrag.zustand, grund: eintrag.grund || "" };
+  }
+
+  /** Ist dieses Widget vollstaendig genug, um angezeigt zu werden?
+   *
+   * ⚠ **`auftrag` ist Pflicht.** Der Wunsch lautete: *„jedes widget soll eine beschreibung
+   * als Auftrag erhalten"*. Ein Widget ohne Auftrag zu zeigen hiesse, den Wunsch zur Bitte
+   * zu machen — und die Regel waere nach zwei Teams wieder weg. Fehlt er, erscheint das
+   * Widget **nicht** und der Mangel wird gemeldet (nicht still uebergangen, SWR-114).
+   */
+  function widgetVollstaendig(w) {
+    w = w || {};
+    return !!(w.id && w.titel && String(w.auftrag || "").trim() && w.ziel);
+  }
+
+  /** Was fehlt diesem Widget? `[]`, wenn nichts fehlt — fuer eine Meldung, die den Mangel nennt. */
+  function widgetMaengel(w) {
+    w = w || {};
+    var pflicht = [["id", w.id], ["titel", w.titel],
+                   ["auftrag", String(w.auftrag || "").trim()], ["ziel", w.ziel]];
+    return pflicht.filter(function (p) { return !p[1]; }).map(function (p) { return p[0]; });
+  }
+
+  return { widgetZeile: widgetZeile, widgetVollstaendig: widgetVollstaendig,
+           widgetMaengel: widgetMaengel, TOUCH_MIN_PX: TOUCH_MIN_PX,
+           feldText: feldText, kachelFelder: kachelFelder,
            terminierKnopf: terminierKnopf,
            cockpitFeldText: cockpitFeldText, COCKPIT_TEXTE: COCKPIT_TEXTE,
            fuerDichAbschnitte: fuerDichAbschnitte,
