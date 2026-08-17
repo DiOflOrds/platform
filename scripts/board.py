@@ -42,6 +42,25 @@ TAKTE_MIT_UHRZEIT = ("taeglich", "woechentlich")
 WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]  # Index = date.weekday()
 UHRZEIT_MUSTER = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 ID_MUSTER = re.compile(r"^T-\d{4}$")
+# SWR-116 (pm/T-0038 Teil a, B053, Brief pm/N-0030): WER handelt — Team oder Mensch.
+#
+# Bewusst ein **eigenes** Feld statt einer Umdeutung von `rolle`. `rolle` sagt die
+# FACHROLLE (pl, cm, dev, qm …) und trägt in `board.validiere` bereits eine zweite,
+# verhaltensändernde Bedeutung: Tickets mit `rolle: mensch` sind Gates und von der
+# Status-Übergangsprüfung ausgenommen. Vorhandene Tickets auf diese Bedeutung
+# umzustellen, würde ihnen still die Übergangsprüfung abschalten — ein Feld für zwei
+# Zwecke, genau die Familie aus B033.
+#
+# Feld OPTIONAL, leer = `team`. Ein Pflichtfeld hätte 200+ Tickets in einem Zug ungültig
+# gemacht und wäre damit dieselbe Formatänderung, die Teil b) (pm/T-0050) bewusst
+# abgetrennt bekommen hat.
+VERANTWORTLICH = ["team", "mensch"]
+VERANTWORTLICH_DEFAULT = "team"
+# SWR-116: Steht `mensch`, verlangt die Validierung einen Abschnitt, der die Handlung
+# BENENNT. Ohne ihn wäre „ein Mensch muss ran" eine Behauptung ohne Beleg (B038) — und
+# der Kanal aus pm/T-0052 würde eine Liste von Tickets zeigen, bei denen niemand sagen
+# kann, was zu tun ist.
+HANDLUNG_UEBERSCHRIFT = "## Handlung beim Menschen"
 DATUM_MUSTER = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ZEITPUNKT_MUSTER = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]([01]\d|2[0-3]):([0-5]\d)$")
 # SWR-079 (P10, pm/N-0013): frei gewählte Mehrfach-Labels. Bewusst konservativer
@@ -73,7 +92,7 @@ SAMMEL_REPO = "projects"
 # Weg für Dinge, die genau einen haben müssen (ADR-007).
 EDITIERBARE_FELDER = ("titel", "typ", "prio", "rolle", "sprint", "status",
                       "takt", "labels", "reviewer", "frist", "zuletzt_erledigt",
-                      "geplant_sprint")
+                      "geplant_sprint", "verantwortlich")  # SWR-116
 GESCHLOSSEN = ("done", "rejected")  # SWR-077: Archiv — nur Wiedereröffnung
 
 
@@ -541,6 +560,17 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
         fehler.append(f"ungültiger typ: {t.get('typ')}")
     if t.get("prio") not in PRIOS:
         fehler.append(f"ungültige prio: {t.get('prio')}")
+    # SWR-116 (pm/T-0038 Teil a): `verantwortlich` ist optional, aber wenn gesetzt, gültig —
+    # und `mensch` verlangt einen Beleg, was der Mensch tun soll.
+    if t.get("verantwortlich"):
+        if t["verantwortlich"] not in VERANTWORTLICH:
+            fehler.append(f"ungültiges verantwortlich: {t['verantwortlich']} "
+                          f"(erlaubt: {', '.join(VERANTWORTLICH)})")
+        elif t["verantwortlich"] == "mensch" and \
+                HANDLUNG_UEBERSCHRIFT not in (t.get("_body") or ""):
+            fehler.append(f"verantwortlich: mensch ohne Abschnitt "
+                          f"„{HANDLUNG_UEBERSCHRIFT}\" — wer handeln soll, muss auch "
+                          f"lesen können, was zu tun ist (B038)")
     if t.get("erstellt") and not ist_datum(t["erstellt"]):
         fehler.append(f"ungültiges Datum erstellt: {t['erstellt']}")
     if t.get("takt") and not parse_takt(t["takt"]):  # SWR-074/104: optional, aber wenn, dann gültig
@@ -628,6 +658,16 @@ def validiere_alle(tickets, repo=None, git_pruefen=True):
         for e in validiere(t, alle_ids, repo, git_pruefen):
             probleme.append(f"{t.get('_datei', '?')}: {e}")
     return probleme
+
+
+def verantwortlich_wert(t):
+    """SWR-116: Wer handelt — `team` (Default) oder `mensch`.
+
+    Eine Stelle, die die Frage beantwortet. Ohne sie läse jeder Leser das leere Feld
+    selbst und entschiede selbst, was leer bedeutet — zwei Leser, zwei Antworten (B033).
+    """
+    wert = (t.get("verantwortlich") or "").strip()
+    return wert if wert in VERANTWORTLICH else VERANTWORTLICH_DEFAULT
 
 
 def offene_blocker(t, tickets_nach_id):
