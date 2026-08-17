@@ -25,6 +25,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import board  # noqa: E402  — gemeinsame Projekt-Discovery (SWR-070, p9/T-0007)
+import konsole  # noqa: E402  — Kodierung an beiden Enden eines Laufs (platform/T-0009)
 
 REPOS = ["process", "platform", "p0"]
 
@@ -153,7 +154,8 @@ def board_check(projekt_repo):
     skript = os.path.join(os.path.dirname(os.path.abspath(__file__)), "board.py")
     out = subprocess.run([sys.executable, skript, "--check"],
                          capture_output=True,
-                             text=True, encoding="utf-8", errors="replace", cwd=projekt_repo)
+                             text=True, encoding="utf-8", errors="replace",
+                         env=konsole.kind_umgebung(), cwd=projekt_repo)
     return out.returncode == 0, (out.stdout + out.stderr).strip()
 
 
@@ -161,7 +163,8 @@ def unit_tests(platform_repo):
     """Unit-Tests wie in CI (python -m unittest discover tests). (ok, letzte Zeilen)."""
     out = subprocess.run([sys.executable, "-m", "unittest", "discover", "tests"],
                          capture_output=True,
-                             text=True, encoding="utf-8", errors="replace", cwd=platform_repo)
+                             text=True, encoding="utf-8", errors="replace",
+                         env=konsole.kind_umgebung(), cwd=platform_repo)
     tail = "\n".join((out.stdout + out.stderr).strip().splitlines()[-3:])
     return out.returncode == 0, tail
 
@@ -274,4 +277,8 @@ def main():
 
 
 if __name__ == "__main__":
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import konsole
+    konsole.sichere_ausgabe()  # platform/T-0009: am Melden nicht sterben
     main()

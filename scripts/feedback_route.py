@@ -140,4 +140,8 @@ def main():
 
 
 if __name__ == "__main__":
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import konsole
+    konsole.sichere_ausgabe()  # platform/T-0009: am Melden nicht sterben
     main()

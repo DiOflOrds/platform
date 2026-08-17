@@ -270,11 +270,14 @@ def _werkzeug(root, projekt):
 
 def _standard_runner(root, projekt, *argumente):
     import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+    import konsole  # platform/T-0009: Kind schreibt in derselben Kodierung, in der wir lesen
 
     def runner(pfad):  # noqa: ANN001
         lauf = subprocess.run([_sys.executable, pfad, *argumente],
                               capture_output=True,
                                   text=True, encoding="utf-8", errors="replace", timeout=600,
+                              env=konsole.kind_umgebung(),
                               cwd=os.path.join(root, projekt))
         return lauf.returncode, (lauf.stdout + lauf.stderr).strip()
     return runner
