@@ -30,12 +30,29 @@ class MeldungTest(unittest.TestCase):
     def _sende(self):
         return briefkasten.sende(self.root, "p0", "Testnachricht", von="E. John")
 
+    def _git_kaputt(self):
+        """Git dauerhaft unbrauchbar machen — .git entfernen.
+
+        ⚠ Bis Sprint 10 haben diese Tests den Fehler mit einer belegten `.git/index.lock`
+        erzeugt. Genau diese Sperre raeumt SWR-123 (pm/T-0055 Teil 2) jetzt weg und
+        wiederholt den Commit: der Ablauf gelingt, und die drei Tests schlugen fehl,
+        obwohl an SWR-121 nichts falsch war.
+
+        **Die Lehre steckt in dieser Zeile:** ein Test, der seinen Fehlerfall ueber einen
+        Mechanismus erzeugt, den das System spaeter repariert, prueft ab dann nicht mehr,
+        was in seinem Namen steht. Provoziert wird deshalb ein Fehler, den kein Raeumen
+        heilt — eine unlesbare `.git/config`. Das `.git`-Verzeichnis bleibt dabei stehen,
+        weil die Projekt-Discovery es braucht: entfernte man es, scheiterte der Aufruf
+        schon an „unbekanntes Projekt" und der Test pruefte eine ganz andere Meldung. SWR-121 (die ehrliche Meldung) gilt unveraendert und
+        wird hier weiter geprueft.
+        """
+        with open(os.path.join(self.repo, ".git", "config"), "w") as f:
+            f.write("[core\nkaputt")
+
     def test_bei_gescheitertem_commit_bleibt_die_nachricht_auf_der_platte(self):
         """Der Kern: die Datei wird VOR dem Git-Aufruf geschrieben. „Commit
         gescheitert" heisst deshalb nie „Nachricht verloren"."""
-        # Git unbrauchbar machen: index.lock belegen -> add/commit scheitern.
-        with open(os.path.join(self.repo, ".git", "index.lock"), "w") as f:
-            f.write("")
+        self._git_kaputt()
         try:
             self._sende()
             fehler = None
@@ -52,8 +69,7 @@ class MeldungTest(unittest.TestCase):
         Sie kostet sonst dasselbe wie eine beschoenigende: der Leser handelt am
         Sachverhalt vorbei — hier, indem er dieselbe Nachricht ein zweites Mal schickt.
         """
-        with open(os.path.join(self.repo, ".git", "index.lock"), "w") as f:
-            f.write("")
+        self._git_kaputt()
         with self.assertRaises(briefkasten.BriefkastenFehler) as ctx:
             self._sende()
         text = str(ctx.exception)
@@ -64,8 +80,7 @@ class MeldungTest(unittest.TestCase):
     def test_meldung_verschweigt_die_ursache_nicht(self):
         """Der Gegentest zur Beruhigung: „gespeichert" darf den technischen Grund nicht
         ersetzen, sonst ist die Meldung nur anders einseitig."""
-        with open(os.path.join(self.repo, ".git", "index.lock"), "w") as f:
-            f.write("")
+        self._git_kaputt()
         with self.assertRaises(briefkasten.BriefkastenFehler) as ctx:
             self._sende()
         self.assertIn("Ursache:", str(ctx.exception))

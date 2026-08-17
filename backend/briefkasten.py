@@ -28,6 +28,80 @@ class BriefkastenFehler(Exception):
         self.code = code
 
 
+def _entsperre(repo):
+    """SWR-123 (pm/T-0055 Teil 2): verwaiste Git-Sperren dieses Repos wegräumen.
+
+    **Kein zweiter Räummechanismus.** Die Organisation hat seit Sprint 5 genau einen —
+    `preflight.finde_lock_artefakte` / `entferne_artefakte`, zweistufig (löschen, sonst
+    wegbenennen), weil dieser Mount kein `unlink` erlaubt. Einen eigenen daneben zu
+    stellen wäre B033: zwei Stellen, die dieselbe Frage beantworten und irgendwann
+    verschieden.
+
+    Der Import steht **hier drin** und nicht oben: `preflight` importiert `board` und
+    `backend`, ein Modulimport an der Dateispitze schlösse einen Zyklus. Schlägt er
+    fehl, ist das kein Fehler des Schreibpfads — dann bleibt es beim alten Verhalten,
+    also bei der ehrlichen Meldung aus SWR-121.
+
+    Rückgabe: Anzahl weggeräumter Artefakte (0 = nichts zu tun oder nicht möglich).
+    """
+    try:
+        import sys
+        skripte = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "scripts")
+        if skripte not in sys.path:
+            sys.path.insert(0, skripte)
+        import preflight as _preflight
+    except Exception:
+        return 0
+    try:
+        locks = _preflight.finde_lock_artefakte(repo)
+        if not locks:
+            return 0
+        entfernt, geparkt, _kaputt = _preflight.entferne_artefakte(locks)
+        return len(entfernt) + len(geparkt)
+    except Exception:
+        return 0
+
+
+def _verbuche(repo, rel, meldung):
+    """SWR-123: `git add` + `commit`, bei verwaister Sperre EINMAL wiederholen.
+
+    Der gemessene Ablauf des Fehlers (pm/N-0039): `git add` hinterlässt auf diesem Mount
+    eine `index.lock`, die es nicht mehr löschen kann, und der **nachfolgende** `commit`
+    scheitert an ihr. Der Fehler entsteht also zwischen den beiden Schritten, die diese
+    Funktion macht — und genau dort wird er behandelt.
+
+    **Warum genau einmal.** Eine Schleife würde einen echten, dauerhaften Fehler in eine
+    Wartezeit verwandeln und ihn am Ende trotzdem melden. Der Fall, den wir kennen, ist
+    nach einem Räumen behoben; jeder andere gehört gemeldet statt wiederholt.
+
+    Rückgabe: `(ok, fehlertext, wiederholt)`.
+    """
+    def lauf():
+        add = subprocess.run(["git", "-C", repo, "add", "--", rel], capture_output=True,
+                             text=True, encoding="utf-8", errors="replace")
+        commit = subprocess.run(
+            ["git", "-C", repo] + COMMIT_IDENTITAET + ["commit", "-m", meldung],
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        ok = not (add.returncode or commit.returncode)
+        return ok, (add.stderr + commit.stderr).strip()
+
+    ok, fehler = lauf()
+    if ok:
+        return True, "", False
+    # Der Aufruf ist eingefasst, obwohl `_entsperre` selbst schon fängt: die Zusicherung
+    # lautet, dass eine **scheiternde Reparatur** nie schlimmer ist als keine. Wer sie
+    # ersetzt (Test, Fork, späterer Umbau), soll diese Zusicherung nicht brechen können.
+    try:
+        geraeumt = _entsperre(repo)
+    except Exception:
+        geraeumt = 0
+    if not geraeumt:
+        return False, fehler, False
+    ok, fehler2 = lauf()
+    return ok, fehler2, True
+
+
 def _verzeichnis(root, projekt):
     return os.path.join(aggregation.projekt_pfad(root, projekt), "management", "briefkasten")
 
@@ -110,12 +184,13 @@ def sende(root, projekt, text, von="E. John"):
     with open(pfad, "w", encoding="utf-8", newline="\n") as f:
         f.write(f"---\nvon: {von}\nzeit: {zeit}\nstatus: offen\n---\n\n{text}\n")
     rel = os.path.relpath(pfad, repo)
-    add = subprocess.run(["git", "-C", repo, "add", "--", rel], capture_output=True,
-        text=True, encoding="utf-8", errors="replace")
-    commit = subprocess.run(["git", "-C", repo] + COMMIT_IDENTITAET +
-                            ["commit", "-m", f"Briefkasten {brief_id}: Nachricht vom Menschen"],
-                            capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if add.returncode or commit.returncode:
+    # SWR-123 (pm/T-0055 Teil 2): Sperre räumen und EINMAL wiederholen, bevor gemeldet
+    # wird. Damit tritt der Fall, den der Auftraggeber gemeldet hat, für ihn gar nicht
+    # mehr auf; die ehrliche Meldung aus SWR-121 bleibt für alles, was danach noch
+    # scheitert.
+    ok, fehler, _wiederholt = _verbuche(
+        repo, rel, f"Briefkasten {brief_id}: Nachricht vom Menschen")
+    if not ok:
         # SWR-121 (pm/T-0055, Brief pm/N-0039): Die Nachricht steht zu diesem Zeitpunkt
         # BEREITS auf der Platte — sie wird oben geschrieben, bevor Git überhaupt läuft.
         # Scheitert der Commit, ist sie also gespeichert und nur nicht verbucht.
@@ -136,5 +211,5 @@ def sende(root, projekt, text, von="E. John"):
         raise BriefkastenFehler(503,
             f"Deine Nachricht ist GESPEICHERT ({brief_id}) — aber noch nicht in Git "
             f"verbucht. Bitte NICHT erneut senden; die nächste Routine-Session nimmt sie "
-            f"mit. Ursache: " + (add.stderr + commit.stderr).strip()[:300])
+            f"mit. Ursache: " + fehler[:300])
     return {"brief": brief_id, "projekt": projekt, "zeit": zeit}
