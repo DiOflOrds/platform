@@ -189,9 +189,22 @@ class HmiKopfblockTest(unittest.TestCase):
             self.js = f.read()
 
     def test_kopfblock_wird_vor_den_projektgruppen_eingehaengt(self):
+        """Der Kopfblock steht ÜBER den Kacheln — die Zahl gilt der Organisation.
+
+        ⚠ Dieser Test ist in Sprint 13 an SWR-133 rot geworden, weil die Gruppenliste
+        einen dritten Eintrag (den Falt-Standard) bekam und das gesuchte Literal
+        `["festes-team", "Feste Teams"]` damit nicht mehr existierte. Das war ein
+        **Fehlalarm über die Schreibweise**, nicht über die Reihenfolge — dieselbe
+        Fehlerart wie der Kommentar-Fehlalarm beim Bau von SWR-128.
+
+        Gesucht wird deshalb nur noch der **Gruppenname**, der die Ordnung tatsächlich
+        trägt. Die Gegenprobe bleibt: der Name muss überhaupt vorkommen, sonst wäre der
+        `assertLess` gegen eine ValueError-freie Zufälligkeit gerichtet.
+        """
         self.assertIn("orgKopfblock(u.organisation)", self.js)
+        self.assertIn('"festes-team"', self.js)
         self.assertLess(self.js.index("orgKopfblock(u.organisation)"),
-                        self.js.index('["festes-team", "Feste Teams"]'))
+                        self.js.index('"festes-team", "Feste Teams"'))
 
     def test_kopfblock_haengt_nicht_an_der_zahl_sondern_am_block(self):
         """Der Gegentest: `if (u.organisation)` und nicht

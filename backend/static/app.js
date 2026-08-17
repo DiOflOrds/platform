@@ -510,11 +510,23 @@ function ladeUebersicht() {  // SWR-046 + P9 SWR-067: Org-Cockpit mit Gruppen
     // (B049). Er erscheint AUCH bei 0: ein stiller Check ist von einem nicht gelaufenen
     // nicht zu unterscheiden (dieselbe Begründung wie die Preflight-Zeile aus SWR-114).
     if (u.organisation) teile.push(orgKopfblock(u.organisation));
-    [["festes-team", "Feste Teams"], ["projekt-team", "Projekt-Teams"],
-     ["aktiv", "Aktive Projekte"]].forEach(function (g) {
+    // SWR-133 (pm/T-0067 aus Brief pm/N-0042): kompakt heisst **falten, nicht weglassen**.
+    // Die Gruppen sind zuklappbar; die Zahl steht am Titel, also verschwindet kein
+    // Eintrag ohne Zähler. Der Faltzustand liegt in `faltung` (Modulvariable) und
+    // überlebt damit einen Reiterwechsel — die Seite wird dabei nicht neu geladen.
+    //
+    // ⚠ Verdichtet wird in der ANSICHT, nicht in der Quelle: `/api/cockpit` liefert
+    // unverändert alle Projekte. Ein zweiter Kürzungsort neben `offene[:3]` wäre B033.
+    [["festes-team", "Feste Teams", true], ["projekt-team", "Projekt-Teams", true],
+     ["aktiv", "Aktive Projekte", true]].forEach(function (g) {
       if (!gruppen[g[0]].length) return;
-      teile.push(el("h3", {}, g[1] + " (" + gruppen[g[0]].length + ")"));
-      gruppen[g[0]].forEach(function (p) { teile.push(cockpitKarte(p)); });
+      var offen = Regeln.istGruppeOffen(faltung, g[0], g[2]);
+      var block = el("details", offen ? { open: "open" } : {});
+      block.appendChild(el("summary", { style: "cursor:pointer;font-weight:600;font-size:1.05rem;padding:.4rem 0" },
+        Regeln.gruppenTitel({ rolle: g[1], aufgaben: gruppen[g[0]] })));
+      gruppen[g[0]].forEach(function (p) { block.appendChild(cockpitKarte(p)); });
+      block.addEventListener("toggle", function () { faltung[g[0]] = block.open; });
+      teile.push(block);
     });
     if (gruppen.abgeschlossen.length) {  // SWR-067: eingeklappt
       var container = el("div", { style: "display:none" });
@@ -1541,6 +1553,11 @@ function ladeBaselines() {  // SWR-032
 // diese Funktion macht aus der Antwort Elemente, nichts weiter.
 // --------------------------------------------------------------------------
 var aufgabenGruppiert = true;   // Rollen-Sicht ist die Voreinstellung (pm/N-0042)
+// SWR-133 (pm/T-0067): Faltzustand der Cockpit-Gruppen. Modulvariable und **kein**
+// Browser-Speicher: der Zustand soll einen Reiterwechsel überleben (die Seite wird dabei
+// nicht neu geladen), nicht einen Neustart. Ein Zustand, der einen Neustart überlebt,
+// müsste beim Wiedersehen erklärt werden — sonst fehlt eine Gruppe und niemand weiß, warum.
+var faltung = {};
 
 function aufgabenZeile(a) {
   var tr = el("tr", {});

@@ -228,3 +228,31 @@ test("leere und fehlende Liste liefern eine leere Gruppierung, keinen Fehler", (
   assert.deepStrictEqual(R.aufgabenNachRolle(null), []);
   assert.deepStrictEqual(R.sortiereAufgaben(undefined), []);
 });
+
+// ---------- SWR-133 (pm/T-0067 aus pm/T-0066, Brief pm/N-0042): falten ----------
+
+test("istGruppeOffen: nie angefasst -> Standard der Gruppe", () => {
+  assert.strictEqual(R.istGruppeOffen({}, "aktiv", true), true);
+  assert.strictEqual(R.istGruppeOffen({}, "abgeschlossen", false), false);
+});
+
+test("⚠ GEGENPROBE: 'nie angefasst' ist NICHT 'zugeklappt' (SWR-108)", () => {
+  // Wuerde `undefined` als `false` gelesen, waere beim ersten Aufruf jede Gruppe zu —
+  // der Auftraggeber saehe WENIGER als vorher, das Gegenteil beider Briefe.
+  assert.strictEqual(R.istGruppeOffen(undefined, "aktiv", true), true);
+  assert.strictEqual(R.istGruppeOffen(null, "aktiv", true), true);
+  assert.notStrictEqual(R.istGruppeOffen({}, "aktiv", true),
+                        R.istGruppeOffen({ aktiv: false }, "aktiv", true));
+});
+
+test("ein zugeklappter Zustand gewinnt ueber den Standard und ueberlebt", () => {
+  const zustand = { aktiv: false, "festes-team": true };
+  assert.strictEqual(R.istGruppeOffen(zustand, "aktiv", true), false);
+  assert.strictEqual(R.istGruppeOffen(zustand, "festes-team", false), true);
+});
+
+test("gruppenTitel traegt die Zahl auch fuer die Cockpit-Gruppen — nichts ohne Zaehler", () => {
+  // Dieselbe Funktion wie in der Aufgabenliste: eine Faltregel, ein Titelformat (B033).
+  assert.strictEqual(R.gruppenTitel({ rolle: "Aktive Projekte", aufgaben: [1, 2] }),
+                     "Aktive Projekte (2)");
+});

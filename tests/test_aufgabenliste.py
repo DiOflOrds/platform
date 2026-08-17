@@ -194,6 +194,42 @@ class AnsichtLiestDieRegelnTest(unittest.TestCase):
         """„nichts da" und „nicht geladen" duerfen nicht gleich aussehen (SWR-114)."""
         self.assertIn("echte Null", self.app)
 
+    def test_cockpit_gruppen_falten_ueber_die_regel(self):
+        """SWR-133 (pm/T-0067): die Faltregel liegt in `regeln.js`, nicht in `app.js`."""
+        self.assertIn("Regeln.istGruppeOffen", self.app)
+        self.assertIn("<details", self.app.replace("el(\"details\"", "<details"))
+
+    def test_die_quelle_wird_nicht_gekuerzt(self):
+        """SWR-133: verdichtet wird in der ANSICHT, nicht in der Quelle.
+
+        ⚠ Gegenprobe gegen einen zweiten Kuerzungsort neben `offene[:3]` in
+        `aggregation.cockpit` (B033). Die Regel steht seit SWR-111 woertlich in `app.js`:
+        die Kuerzung gehoert in die Quelle, nicht ins JavaScript — und die Faltung
+        umgekehrt in die Ansicht, nicht in die Quelle.
+        """
+        import re as _re
+        verdaechtig = _re.findall(r"\.slice\(0,\s*3\)|\[0:3\]", self.app)
+        self.assertEqual(verdaechtig, [],
+                         f"app.js kuerzt selbst: {verdaechtig}")
+
+    def test_faltzustand_ist_kein_dauerhafter_speicher(self):
+        """SWR-133: der Zustand ueberlebt einen Reiterwechsel, nicht einen Neustart.
+
+        Ein Zustand, der einen Neustart ueberlebt, muesste beim Wiedersehen erklaert
+        werden — sonst fehlt eine Gruppe und niemand weiss, warum.
+
+        ⚠ Der Test darf **nicht** einfach `sessionStorage` im ganzen `app.js` verbieten:
+        die PIN liegt dort zu Recht (SWR-053). Ein Verbot ueber die ganze Datei waere eine
+        Pruefung, die den Nachbarfall bestraft — genau der Fehlalarm, der beim Bau von
+        SWR-128 an einer Kommentarzeile aufgetreten ist. Geprueft wird deshalb, dass
+        **keine Speicherzeile den Faltzustand nennt**.
+        """
+        self.assertIn("var faltung", self.app)
+        speicherzeilen = [z for z in self.app.splitlines()
+                          if "Storage" in z and "falt" in z.lower()]
+        self.assertEqual(speicherzeilen, [],
+                         f"der Faltzustand wandert in einen Speicher: {speicherzeilen}")
+
 
 if __name__ == "__main__":
     unittest.main()

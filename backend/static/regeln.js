@@ -218,7 +218,34 @@ var Regeln = (function () {
            ((gruppe.aufgaben && gruppe.aufgaben.length) || 0) + ")";
   }
 
-  return { urheber: urheber, beitragKopf: beitragKopf, istWiederOffen: istWiederOffen,
+  // --------------------------------------------------------------------------
+  // SWR-133 (pm/T-0067 aus pm/T-0066, Brief pm/N-0042): kompakt heisst **falten**.
+  // --------------------------------------------------------------------------
+
+  /** Ist diese Gruppe aufgeklappt? — `zustand` gewinnt ueber `standard`.
+   *
+   * Der Wunsch: *"mach das Cockpit bischen uebersichtlicher, da muss man so viel
+   * scrollen -> kompakter"* (`pm/N-0042`). Der **Widerspruch** dazu steht im Brief
+   * desselben Morgens: `pm/N-0038` verlangt, **alle** offenen Aufgaben zu sehen.
+   *
+   * > **Aufgeloest als: falten, nicht weglassen.** Zugeklappt ist nicht weg — die Zahl
+   * > steht am Titel (`gruppenTitel`), und ein Griff holt es zurueck. Weggelassen waere
+   * > eine zweite, stille Priorisierung; genau die hat er zweimal geruegt.
+   *
+   * ⚠ **`undefined` und `false` sind hier zwei verschiedene Dinge** (SWR-108: echte Null
+   * vs. nicht geliefert). *Nie angefasst* heisst „nimm den Standard dieser Gruppe";
+   * *zugeklappt* heisst „der Mensch hat zugeklappt" und muss einen Reiterwechsel
+   * ueberleben. Wuerde `undefined` als `false` gelesen, waere jede Gruppe beim ersten
+   * Aufruf zu — und der Auftraggeber saehe **weniger** als vorher, was das Gegenteil
+   * beider Briefe waere.
+   */
+  function istGruppeOffen(zustand, name, standard) {
+    var z = (zustand || {})[name];
+    return z === undefined ? !!standard : !!z;
+  }
+
+  return { istGruppeOffen: istGruppeOffen,
+           urheber: urheber, beitragKopf: beitragKopf, istWiederOffen: istWiederOffen,
            verlauf: verlauf, sortiereBriefe: sortiereBriefe,
            briefIdAusFehler: briefIdAusFehler,
            sortiereAufgaben: sortiereAufgaben, aufgabenNachRolle: aufgabenNachRolle,
