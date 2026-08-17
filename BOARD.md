@@ -10,13 +10,7 @@ Stand: 2026-08-17 · Tickets: 18 · davon wiederkehrend: 1
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0016](tickets/T-0016.md) | Die Drei-Zustände-Regel des Widget-Vertrags steht in der Cockpit-Ansicht dreimal inline | problem | einmalig | cm | Team | mittel | 0 | — |
 
-## in_review (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0018](tickets/T-0018.md) | Die Sperren-Räumung des einen Git-Schreibwegs lief in Produktion nicht — sie fand preflight nur, wenn der Aufrufer ihn mitbrachte | problem | einmalig | cm | Team | hoch | 0 | — |
-
-## done (15)
+## done (16)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -33,5 +27,6 @@ Stand: 2026-08-17 · Tickets: 18 · davon wiederkehrend: 1
 | [T-0013](tickets/T-0013.md) | Sprintregister kennt kein Ende — zwei Routine-Läufe können gleichzeitig in dieselben Repos schreiben | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0014](tickets/T-0014.md) | Eine entschiedene Frage blieb 16 Minuten lang „liegt beim Menschen" — Inbox und Preflight meinen Verschiedenes mit „entschieden | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0017](tickets/T-0017.md) | Statuswechsel und sein Commit sind zwei Vorgänge — eine Git-Sperre dazwischen verliert einen Zustand lautlos | problem | einmalig | cm | Team | hoch | 0 | — |
+| [T-0018](tickets/T-0018.md) | Die Sperren-Räumung des einen Git-Schreibwegs lief in Produktion nicht — sie fand preflight nur, wenn der Aufrufer ihn mitbrachte | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0015](tickets/T-0015.md) | SWR-123 räumt Git-Locks per unlink — auf dem Cowork-Mount ist das verboten, rename gelingt | problem | einmalig | cm | Team | mittel | 0 | — |
