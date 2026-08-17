@@ -89,13 +89,31 @@ window.addEventListener("hashchange", function () { parseHash(); lade(); });
 // ---------- Bausteine ----------
 function pille(text, klasse) { return el("span", { "class": "pille " + (klasse || "") }, String(text)); }
 
+// SWR-150 (projects/p11/T-0012): der EINE Weg, aus einer Kennung einen Link zu machen.
+// ⚠ Nimmt die Kennung `ref` **vom Server** und setzt nichts zusammen. Ohne Ziel entsteht
+// **Text und kein Link** — ein Link auf das falsche Projekt ist schlimmer als keiner, weil
+// er ein fremdes Ticket oeffnet und dabei richtig aussieht.
+function ticketLink(ref, beschriftung, klasse, titel) {
+  var route = Regeln.ticketRoute(ref);
+  var text = String(beschriftung || ref || "");
+  if (!route) return document.createTextNode(text);
+  var attr = { "class": klasse || "tlink", href: route };
+  if (titel) attr.title = titel;
+  return el("a", attr, text);
+}
+
 function tlinks(text, proj) {
   // T-xxxx im Text als Links auf die Detailansicht (SWR-040)
   var knoten = [], rest = String(text || ""), m;
   while ((m = rest.match(/T-\d{4}/))) {
     if (m.index > 0) knoten.push(document.createTextNode(rest.slice(0, m.index)));
     (function (id) {
-      knoten.push(el("a", { "class": "tlink", href: "#/ticket/" + proj + "/" + id }, id));
+      // SWR-150: die Kennung entsteht in EINER Stelle, und fuer Fliesstext heisst sie
+      // `textRefAnnahme` — weil sie eine ist. Der `title` sagt es dem Leser.
+      var ref = Regeln.textRefAnnahme(proj, id), route = Regeln.ticketRoute(ref);
+      knoten.push(route
+        ? el("a", { "class": "tlink", href: route, title: "angenommen: " + ref }, id)
+        : document.createTextNode(id));
     })(m[0]);
     rest = rest.slice(m.index + 6);
   }
@@ -249,9 +267,8 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
             " wiederkehrend" : "") + "): ";  // SWR-074
         var az = el("div", { "class": "zeile" }, offenText);
         p.aufgaben.forEach(function (a) {
-          az.appendChild(el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + a.id,
-                                   title: a.titel + (a.takt ? " (wiederkehrend: " +
-                                     TAKT_TEXT(a.takt) + ")" : "") }, a.ref || a.id));  // SWR-087
+          az.appendChild(ticketLink(a.ref, a.ref || a.id, "tlink",
+            a.titel + (a.takt ? " (wiederkehrend: " + TAKT_TEXT(a.takt) + ")" : "")));  // SWR-087/150
           // SWR-074 (pm/N-0017): dieselbe Klartext-Pille wie im Board statt eines Symbols —
           // ein "↻" war zwar da, hat aber niemandem gesagt, was es bedeutet.
           if (a.takt) {
@@ -271,8 +288,7 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
           karte.appendChild(el("div", { "class": "zeile" },
             pille("Frist " + u.frist + " (" + u.tage + " Tag" + (u.tage === 1 ? "" : "e") +
                   " über)", AMPEL_KLASSE.rot),
-            el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + u.id },
-               u.ref || u.id),
+            ticketLink(u.ref, u.ref || u.id),  // SWR-150
             " " + u.titel));
         });
       }
@@ -287,8 +303,7 @@ function cockpitKarte(p) {  // SWR-046 + P9 SWR-067/068
           karte.appendChild(el("div", { "class": "zeile" },
             pille("überfällig seit " + u.seit, AMPEL_KLASSE[u.ampel] || AMPEL_KLASSE.rot),
             pille(u.takt_klartext, "in_progress"),
-            el("a", { "class": "tlink", href: "#/ticket/" + p.projekt + "/" + u.id },
-               u.ref || u.id),
+            ticketLink(u.ref, u.ref || u.id),  // SWR-150
             " " + u.titel));
         });
       }
@@ -482,8 +497,8 @@ function sprintKachel(s) {
     var liste = el("div", { "class": "meldung fehler" },
       fehlend.length + " offene(s) Ticket(s) stehen in KEINER Planzeile:");
     fehlend.forEach(function (t) {
-      liste.appendChild(el("div", {}, el("a", { href: "#/ticket/" + t.projekt + "/" + t.id },
-        t.ref), " — " + (t.titel || "")));
+      liste.appendChild(el("div", {}, ticketLink(t.ref, t.ref),
+        " — " + (t.titel || "")));  // SWR-150
     });
     karte.appendChild(liste);
   } else if (s.offen_gesamt) {
@@ -498,12 +513,13 @@ function sprintKachel(s) {
   tab.appendChild(el("tr", {}, el("th", {}, "Aufgabe"), el("th", {}, "Rolle"),
     el("th", {}, "Fällig"), el("th", {}, "Status"), el("th", {}, "Grund")));
   s.zeilen.forEach(function (r) {
-    var erste = (r.refs || []).filter(function (x) { return x.indexOf("/") > 0; })[0] || "";
-    var teile = erste.split("/");
+    // SWR-150: die erste Kennung der Zeile ist die, die ein Ziel hat — `ticketRoute`
+    // entscheidet das, nicht ein Zaehlen von Schraegstrichen in der Ansicht.
+    var erste = (r.refs || []).filter(function (x) { return Regeln.ticketRoute(x); })[0] || "";
     var name = el("td", {});
-    if (teile.length === 2) {
-      name.appendChild(el("a", { href: "#/ticket/" + teile[0] + "/" + teile[1] }, r.aufgabe));
-    } else { name.appendChild(document.createTextNode(r.aufgabe)); }
+    var route = Regeln.ticketRoute(erste);
+    if (route) { name.appendChild(el("a", { href: route }, r.aufgabe)); }
+    else { name.appendChild(document.createTextNode(r.aufgabe)); }
     tab.appendChild(el("tr", {}, name, el("td", {}, r.rolle || ""),
       el("td", {}, pille(r.faellig || "—", AMPEL_KLASSE[r.ampel]),
         r.horizont === "warteschlange" ? pille("Warteschlange") : ""),
@@ -832,8 +848,7 @@ function ladeTicket() {  // SWR-040: Detailansicht
 // wird. Ein Knopf, der nichts tut, waere schlimmer als kein Knopf.
 function handlungsKarte(h) {
   var kopf = el("div", { "class": "zeile" },
-    el("a", { "class": "tlink", href: "#/ticket/" + h.projekt + "/" + h.id },
-      h.ref || (h.projekt + "/" + h.id)),  // SWR-087: die Kennung kommt vom Server
+    ticketLink(h.ref, h.ref),  // SWR-087/150: die Kennung kommt vom Server — auch das ZIEL
     pille(h.status, h.status));
   // `rolle` und `verantwortlich` bleiben getrennt (der Befund hinter SWR-116): die Rolle
   // sagt, WER im Team zustaendig waere — dass es beim Menschen liegt, sagt der Abschnitt.
@@ -924,8 +939,7 @@ function ladeInbox() {
         var h = el("div", { "class": "karte" }, el("h3", {}, "Historie (" + historie.length + " entschieden)"));
         historie.forEach(function (e) {
           var z = el("div", { "class": "zeile" },
-            el("a", { "class": "tlink", href: "#/ticket/" + e.projekt + "/" + e.id },
-              e.ref || (e.projekt + "/" + e.id)), " ", pille(e.status, e.status), " ");  // SWR-087
+            ticketLink(e.ref, e.ref), " ", pille(e.status, e.status), " ");  // SWR-087/150
           tlinks(e.entscheidung, e.projekt).forEach(function (k) { z.appendChild(k); });
           h.appendChild(z);
         });
@@ -1654,7 +1668,7 @@ function terminierKnopf(a, naechster, melde) {
 
 function aufgabenZeile(a, naechster, melde) {
   var tr = el("tr", {});
-  tr.appendChild(el("td", {}, el("a", { href: "#/ticket/" + a.projekt + "/" + a.id }, a.ref)));
+  tr.appendChild(el("td", {}, ticketLink(a.ref, a.ref)));  // SWR-150
   tr.appendChild(el("td", {}, a.titel || ""));
   tr.appendChild(el("td", {}, a.rolle || Regeln.OHNE_ROLLE));
   // ⚠ Zwei Spalten, nicht eine: `rolle` ist die Fachrolle, `verantwortlich` die Frage

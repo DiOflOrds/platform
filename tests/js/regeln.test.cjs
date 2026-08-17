@@ -602,3 +602,47 @@ test("ein unbekannter Takt wird durchgereicht statt verschluckt", () => {
   const z = R.widgetZeile({ takt: "quartal", zustand: "nicht_geliefert", grund: "x" });
   assert.strictEqual(z.titel, "quartal");
 });
+
+// ---------- Deep-Links (SWR-150, projects/p11/T-0012) ----------
+
+test("ticketRoute nimmt die Kennung vom Server und baut keine zusammen", () => {
+  assert.strictEqual(R.ticketRoute("pm/T-0002"), "#/ticket/pm/T-0002");
+  assert.strictEqual(R.ticketRoute("projects-p11/T-0012"),
+                     "#/ticket/projects-p11/T-0012");
+  assert.strictEqual(R.ticketRoute("  pm/T-0002  "), "#/ticket/pm/T-0002");
+});
+
+test("⚠⚠ eine NACKTE Nummer ergibt KEINEN Link — DIE Zusicherung dieses Tickets", () => {
+  // DoD 2: `T-0002` gibt es in 17 Projekten. Ein Link auf das falsche ist schlimmer als
+  // keiner, weil er ein fremdes Ticket oeffnet und dabei richtig aussieht.
+  for (const schlecht of ["T-0002", "", null, undefined, "pm/", "/T-0002", "pm/T-2",
+                          "pm/T-00021", "pm/X-0002", "pm/T-0002/extra"]) {
+    assert.strictEqual(R.ticketRoute(schlecht), "",
+                       `'${schlecht}' haette kein Ziel ergeben duerfen`);
+  }
+});
+
+test("⚠ Gegenprobe DoD 4: dieselbe Nummer in ZWEI Projekten fuehrt an ZWEI Ziele", () => {
+  const a = R.ticketRoute("pm/T-0002"), b = R.ticketRoute("p2/T-0002");
+  assert.notStrictEqual(a, b, "zwei Projekte, ein Ziel — genau der Fehler aus SWR-087");
+  assert.ok(a.endsWith("/pm/T-0002"));
+  assert.ok(b.endsWith("/p2/T-0002"));
+});
+
+test("das Routenpraefix steht an EINER Stelle und wird gelesen, nicht wiederholt", () => {
+  // Eine zweite Schreibweise derselben Zeichenkette ist die Bauart aus SWR-131.
+  assert.strictEqual(typeof R.TICKET_ROUTE_PRAEFIX, "string");
+  assert.ok(R.ticketRoute("pm/T-0002").startsWith(R.TICKET_ROUTE_PRAEFIX));
+});
+
+test("textRefAnnahme heisst so, wie sie ist — und liefert ohne Projekt nichts", () => {
+  // Ein T-xxxx im Fliesstext ist eine ZAHL und keine Referenz: der Text sagt nicht, aus
+  // welchem Projekt sie kommt. Die Annahme ist benannt statt in einer Verkettung versteckt.
+  assert.strictEqual(R.textRefAnnahme("pm", "T-0002"), "pm/T-0002");
+  assert.strictEqual(R.textRefAnnahme("", "T-0002"), "");
+  assert.strictEqual(R.textRefAnnahme("pm", "0002"), "");
+  assert.strictEqual(R.textRefAnnahme("pm", ""), "");
+  // Und sie geht durch dieselbe Route — kein zweiter Weg ins Ziel.
+  assert.strictEqual(R.ticketRoute(R.textRefAnnahme("pm", "T-0002")),
+                     R.ticketRoute("pm/T-0002"));
+});

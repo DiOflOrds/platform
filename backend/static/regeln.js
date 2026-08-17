@@ -17,6 +17,65 @@
 
 var Regeln = (function () {
 
+  // ---------- Deep-Links (SWR-150, projects/p11/T-0012) ----------
+  //
+  // ⚠⚠ **Der Befund, um den es hier geht, war nicht der fehlende Link, sondern der
+  // zweite Bauplatz.** `app.js` hatte NEUN Stellen, die `"#/ticket/" + projekt + "/" + id`
+  // zusammensetzten — und in sieben davon stand als **Beschriftung** `x.ref`, also die
+  // Kennung **vom Server**. Beschriftung und Ziel kamen damit aus zwei Quellen:
+  //
+  //   > **Ein Link, dessen Aufschrift der Server liefert und dessen Ziel die Ansicht
+  //   > zusammenbaut, ist zwei Aussagen ueber dasselbe Ticket. Solange beide gleich sind,
+  //   > merkt es niemand.**
+  //
+  // Und sie sind nicht theoretisch verschieden: **68 Ticketnummern gibt es in mehr als
+  // einem Projekt**, `T-0002` allein in **17** (gemessen 2026-08-17). Ein Ziel, das aus
+  // einer Nummer und dem *gerade angezeigten* Projekt entsteht, ist in dem Moment falsch,
+  // in dem beides auseinanderfaellt — also genau dann, wenn es niemand mehr erwartet.
+  //
+  // Deshalb: **eine** Stelle, und sie nimmt die fertige Kennung. Sie **baut keine**.
+  var TICKET_ROUTE_PRAEFIX = "#/ticket/";
+
+  // Eine Kennung ist `projekt/T-xxxx` (SWR-087, `aggregation.ref`). Das Muster ist die
+  // Zusicherung, dass hier nichts anderes durchkommt — insbesondere keine nackte Nummer.
+  var REF_MUSTER = /^([A-Za-z0-9_.\-]+)\/(T-\d{4})$/;
+
+  /** Route zur Detailseite einer Aufgabe — aus der **Kennung vom Server**.
+   *
+   * `"pm/T-0002"` -> `"#/ticket/pm/T-0002"`.
+   *
+   * ⚠⚠ **Eine nackte Nummer ergibt `""` und damit KEINEN Link.** Das ist die Substanz von
+   * DoD 2 des Tickets und nicht Strenge um ihrer selbst willen:
+   *
+   *   > **Ein Link auf das falsche Projekt ist schlimmer als kein Link. Der falsche
+   *   > oeffnet ein fremdes Ticket und sieht dabei richtig aus.**
+   *
+   * Die Ansicht prueft deshalb `if (route)` und schreibt sonst reinen Text — sichtbar
+   * unverlinkt statt unsichtbar falsch.
+   */
+  function ticketRoute(ref) {
+    var m = REF_MUSTER.exec(String(ref || "").trim());
+    return m ? TICKET_ROUTE_PRAEFIX + m[1] + "/" + m[2] : "";
+  }
+
+  /** Kennung fuer eine Nummer, die im **Fliesstext** steht — eine **ANNAHME**.
+   *
+   * ⚠ Diese Funktion heisst so, wie sie ist. Ein `T-0042` in einem Absatz ist **keine
+   * Referenz, sondern eine Zahl**: der Text sagt nicht, aus welchem Projekt sie kommt.
+   * Was hier entsteht, ist die Annahme *„gemeint ist das gerade angezeigte Projekt"* —
+   * bei 68 mehrfach vergebenen Nummern ist das eine Vermutung und keine Auflösung.
+   *
+   * Sie steht trotzdem hier und nicht in `app.js`, und zwar aus zwei Gruenden: es bleibt
+   * **eine** Stelle, an der eine Kennung entsteht, und die Annahme ist **benannt** statt
+   * in einer Zeichenverkettung versteckt. Wer sie eines Tages auflösen will, findet sie.
+   * Die Ansicht macht sie sichtbar (`title`-Attribut) — eine Vermutung, die aussieht wie
+   * eine Auskunft, ist der Fehler, gegen den SWR-114 gebaut ist.
+   */
+  function textRefAnnahme(projekt, id) {
+    var p = String(projekt || "").trim(), t = String(id || "").trim();
+    return (p && /^T-\d{4}$/.test(t)) ? p + "/" + t : "";
+  }
+
   // B054-Einstieg, woertlich wie im Backend (`briefkasten._ist_beitragskopf`): eine
   // Team-Antwort ist daran erkennbar, dass ihre Ueberschrift mit "Antwort" beginnt. Die
   // Fassung dahinter ("des Teams", "Routine-Session", Uhrzeit) variiert seit dem 15.08.
@@ -542,7 +601,9 @@ var Regeln = (function () {
            verlauf: verlauf, sortiereBriefe: sortiereBriefe,
            briefIdAusFehler: briefIdAusFehler,
            sortiereAufgaben: sortiereAufgaben, aufgabenNachRolle: aufgabenNachRolle,
-           gruppenTitel: gruppenTitel, OHNE_ROLLE: OHNE_ROLLE };
+           gruppenTitel: gruppenTitel, OHNE_ROLLE: OHNE_ROLLE,
+           ticketRoute: ticketRoute, textRefAnnahme: textRefAnnahme,
+           TICKET_ROUTE_PRAEFIX: TICKET_ROUTE_PRAEFIX };
 })();
 
 // Ein Modul fuer die Teststrecke, eine globale Variable fuer den Browser (ADR-002: kein
