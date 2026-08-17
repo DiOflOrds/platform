@@ -73,6 +73,25 @@ _TAKT_WORT = re.compile(r"jede[rmns]?\s+sprint|je\s+(sprint|session|lauf)", re.I
 _MENSCH_WORT = re.compile(r"wartet[\s-]*auf[\s-]*mensch", re.I)
 _TICKET_REF = re.compile(r"([A-Za-z0-9_.-]+)/(T-\d{4})|(T-\d{4})")
 
+# SWR-115 (pm/T-0049): Wortlaute der **Statusspalte** der Plantabelle. Sie ist die einzige
+# Spalte, die bis Sprint 8 gegen nichts gehalten wurde — `plan_drift` vergleicht die
+# Sprintnummer, `sprint_vergangen` die Gegenwart, `nicht_geplant` das Vorkommen.
+#
+# Bewusst zwei geschlossene Mengen statt einer Heuristik: was hier nicht steht, wird
+# **ignoriert** und nicht geraten. Ein Ratefehler in dieser Prüfung wäre ein Fehlalarm über
+# einen korrekt geführten Plan — und ein Fehlalarm trainiert das Wegsehen (dieselbe Sorge
+# wie SWR-109, SWR-110 und SWR-112).
+PLAN_FERTIG = ("erledigt", "fertig", "geschlossen", "done", "abgeschlossen")
+PLAN_OFFEN = ("offen", "open", "in arbeit", "in_progress", "in bearbeitung",
+              "blockiert", "blocked", "vorgelegt", "geplant", "in review", "in_review")
+
+# SWR-115: „erfüllt" ist der Wortlaut der Takt-Dauerläufer und steht in KEINER der beiden
+# Mengen. Ein Dauerläufer wird nie `done` — er trägt dauerhaft „erfüllt" im Plan und `open`
+# im Ticket, und **beides ist richtig**. Ohne diese Ausnahme meldete die Prüfung an ihrem
+# ersten Tag sechs Fehlalarme.
+TICKET_GESCHLOSSEN = ("done", "rejected")
+
+
 
 def _zellen_text(zelle):
     """Markdown-Auszeichnung aus einer Tabellenzelle nehmen (Fett, Code, Links)."""
@@ -390,6 +409,101 @@ def sprint_vergangen(offene, jetzt_nr):
     return treffer
 
 
+def alle_tickets(root):
+    """Alle Tickets aller entdeckten Repos — **einschließlich** `done` und `rejected`.
+
+    SWR-115 braucht die geschlossenen mit: die zweite Melderichtung („Ticket ist fertig,
+    der Plan sagt offen") ist über `offene_tickets` grundsätzlich unsichtbar, weil das
+    Ticket dort nicht mehr vorkommt. Genau diese Richtung hat in Sprint 7 `pm/T-0043`
+    gezeigt.
+    """
+    treffer = []
+    for name in aggregation.projekte(root):
+        try:
+            tickets, _ = board.lade_tickets(aggregation.projekt_pfad(root, name))
+        except (ValueError, OSError):
+            continue
+        for t in tickets:
+            treffer.append({"projekt": name, "id": t.get("id", ""),
+                            "ref": aggregation.ref(name, t.get("id", "")),
+                            "titel": t.get("titel", ""),
+                            "status": t.get("status", ""),
+                            "typ": t.get("typ", ""),
+                            "takt": t.get("takt", ""),
+                            "geplant_sprint": t.get("geplant_sprint", "")})
+    return treffer
+
+
+def _nach_ref(tickets):
+    """Referenzauflösung wie in `plan_drift`: volle Ref immer, nackte ID nur wenn eindeutig.
+
+    `T-0003` kommt in `p11` und `p12` gleichzeitig vor. Eine nackte ID wird deshalb nur
+    aufgelöst, wenn sie im Bestand genau einmal vorkommt — sonst ordnete die Prüfung eine
+    Planzeile dem falschen Ticket zu und meldete einen Drift, den es nicht gibt.
+    """
+    nach_ref = {t["ref"]: t for t in tickets}
+    haeufigkeit = {}
+    for t in tickets:
+        haeufigkeit[t["id"]] = haeufigkeit.get(t["id"], 0) + 1
+    for t in tickets:
+        if haeufigkeit[t["id"]] == 1:
+            nach_ref.setdefault(t["id"], t)
+    return nach_ref
+
+
+def status_drift(plan_zeilen, alle):
+    """SWR-115 (pm/T-0049): Planzeilen, deren STATUSSPALTE dem Ticket widerspricht.
+
+    Anlass (Befund 2026-08-17, Sprint 8): Sprint 7 hat `platform/T-0010` an vier Stellen
+    als erledigt gemeldet — Planzeile, Sprintabschluss, Session-Agenda und Statusbericht an
+    den Auftraggeber — während das Ticket auf `open` stand. Die Arbeit **war** fertig; nur
+    das Feld wurde nie umgelegt.
+
+    **Alle drei vorhandenen Planprüfungen meldeten leer, jede mit gutem Grund:**
+
+    * `nicht_geplant` (SWR-106) fragt nur, ob das Ticket **vorkommt** — es kam vor.
+    * `plan_drift` (SWR-109) vergleicht die **Sprintnummer** und überspringt jede Zeile,
+      deren Fälligkeitsspalte „dieser Sprint" sagt (`sprint_nr is None`). Das ist genau die
+      Zeilenart, die ein laufender Sprint **schließt** — die Prüfung sieht die Zukunft und
+      lässt die Gegenwart aus.
+    * `sprint_vergangen` (SWR-112) kann nicht anschlagen, solange der fragliche Sprint der
+      laufende ist (`7 < 7` ist falsch). Ihr frühester Zeitpunkt liegt **nach** der
+      Falschmeldung.
+
+    Die Lücke ist deshalb kein Defekt in einer der drei, sondern eine **Spalte, die keine
+    von ihnen liest**.
+
+    Beide Richtungen werden gemeldet. Die zweite — Ticket `done`, Planzeile „offen" — ist
+    die, bei der ein geschlossenes Ticket wie unerledigte Arbeit aussieht.
+    """
+    nach_ref = _nach_ref(alle)
+    treffer = []
+    for z in plan_zeilen:
+        wort = (z.get("status") or "").strip().lower().strip("*_` ")
+        if not wort:
+            continue
+        ticket = next((nach_ref[r] for r in z.get("refs", []) if r in nach_ref), None)
+        if ticket is None:                      # Zeile nennt kein bekanntes Ticket
+            continue
+        # Takt-Dauerläufer: „erfüllt" + `open` ist der Normalzustand, nie ein Befund.
+        if str(ticket.get("takt", "")).strip():
+            continue
+        geschlossen = ticket.get("status") in TICKET_GESCHLOSSEN
+        if wort in PLAN_FERTIG and not geschlossen:
+            treffer.append({"ref": ticket["ref"], "titel": ticket["titel"],
+                            "plan": wort, "ticket": ticket.get("status", ""),
+                            "richtung": "plan_zu_frueh_fertig",
+                            "meldung": "Plan sagt \u201e%s\u201c, Ticket steht auf \u201e%s\u201c"
+                                       % (wort, ticket.get("status", ""))})
+        elif wort in PLAN_OFFEN and geschlossen:
+            treffer.append({"ref": ticket["ref"], "titel": ticket["titel"],
+                            "plan": wort, "ticket": ticket.get("status", ""),
+                            "richtung": "ticket_zu_frueh_fertig",
+                            "meldung": "Ticket steht auf \u201e%s\u201c, Plan sagt \u201e%s\u201c"
+                                       % (ticket.get("status", ""), wort)})
+    return treffer
+
+
 def kennzahlen(offene):
     """SWR-113 (pm/T-0046): die Zählweise von „nicht geschlossen", festgelegt.
 
@@ -474,6 +588,7 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
     widerspruch = widersprueche(offene, jetzt_nr, takt_min, heute)
     drift = plan_drift(plan_zeilen, offene)   # SWR-109
     vergangen = sprint_vergangen(offene, jetzt_nr)   # SWR-112 (pm/T-0045)
+    statusdrift = status_drift(plan_zeilen, alle_tickets(root))  # SWR-115 (pm/T-0049)
     zahlen = kennzahlen(offene)                      # SWR-113 (pm/T-0046)
     for o in offene:
         o.pop("_ticket", None)
@@ -491,6 +606,7 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
             "widersprueche": widerspruch,   # SWR-106
             "plan_drift": drift,            # SWR-109
             "sprint_vergangen": vergangen,  # SWR-112 (pm/T-0045)
+            "status_drift": statusdrift,    # SWR-115 (pm/T-0049)
             "kennzahlen": zahlen,           # SWR-113 (pm/T-0046)
             "sprint_nr": jetzt_nr,          # SWR-106: der laufende Sprint
             "takt_min": takt_min,

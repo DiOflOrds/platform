@@ -206,6 +206,22 @@ def nur_stand_zeile(repo, pfad):
     return all(z[1:].lstrip().startswith("Stand:") for z in geaendert)
 
 
+def statusdrift(root):
+    """SWR-115 (pm/T-0049): Planzeilen, deren Statusspalte dem Ticket widerspricht.
+
+    Rückgabe `None`, wenn die Sprintsicht nicht ladbar ist — ausdrücklich **nicht** eine
+    leere Liste. „Konnte nicht prüfen" und „nichts gefunden" sind zwei Aussagen, und die
+    zweite an der Stelle der ersten ist genau die Sorte stiller Erfolgsmeldung, die dieses
+    Ticket ausgelöst hat.
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from backend import sprint as _sprint
+        return _sprint.plan(root).get("status_drift", [])
+    except Exception:
+        return None
+
+
 def unterminierte_tickets(root):
     """SWR-114 (pm/T-0036 Teil b): offene Tickets ohne Frist — org-weit, MIT Referenzen.
 
@@ -374,6 +390,22 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         print(f"[org] {len(ohne_frist)} Ticket(s) ohne Frist: {', '.join(ohne_frist)}")
     else:
         print("[org] 0 Tickets ohne Frist.")
+    # SWR-115 (pm/T-0049): die STATUSSPALTE des Sprintplans gegen den Ticketstatus.
+    # Hier und nicht später, weil Sprint 7 `platform/T-0010` vierfach als erledigt gemeldet
+    # hat — an den Auftraggeber inbegriffen — und `sprint_vergangen` (SWR-112) den Fall
+    # frühestens im FOLGESPRINT sehen kann. Eine Prüfung, die den Fehler erst findet,
+    # nachdem er berichtet wurde, verhindert die Falschmeldung nicht.
+    drift = statusdrift(root)
+    if drift is None:
+        print("[org] Statusdrift Plan/Ticket: nicht prüfbar (Sprintsicht nicht ladbar).")
+    elif drift:
+        print(f"[org] BEFUND: {len(drift)} Planzeile(n) widersprechen ihrem Ticket — "
+              f"der Plan sagt etwas anderes als das Ticketfeld:")
+        for d in drift:
+            print(f"    {d['ref']}: {d['meldung']}")
+        befunde += 1
+    else:
+        print("[org] Statusdrift Plan/Ticket: 0.")
     # SWR-051 (P4): Session-Routine "Briefkasten zuerst" — offene Briefe anzeigen (informativ)
     for name, pfad in projekte:
         verz = os.path.join(pfad, "management", "briefkasten")
