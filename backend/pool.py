@@ -732,3 +732,245 @@ def steckbrief_pruefen(felder):
             f"bleibt OHNE GitHub-Remote und trägt .kein-remote; sensible Inhalte werden "
             f"nie committet, sondern per Pfad verwiesen.")
     return werte, auflagen
+
+
+# ------------------------------------------------- Gründung VORLEGEN (SWR-147)
+# pm/T-0063, zweiter Teil von pm/T-0028 aus Brief pm/N-0022 — bei der VIERTEN Berührung
+# gebaut. Acht wortgleiche Verschiebungen stehen in der Historie des Elterntickets.
+#
+# ⚠ **Diese Funktion kann nicht gründen, und das ist die Anforderung.** Team-Gründung ist
+# Klasse A (Playbook Kap. 16). Sie schreibt zwei Dateien — einen Charter-**Entwurf** und
+# einen Gründungs-DR — und danach ist der Mensch am Zug. Kein Repo, kein Remote, kein
+# Registry-Eintrag: das sind Schritte 3/4 aus `intake.md` und passieren **nach** der
+# Freigabe. Die Gegenprobe dazu ist eine Zusicherung und kein Vorsatz im Docstring.
+
+#: Frist des Gründungs-DR in Tagen. ⚠ Ein **Kalenderdatum** und keine Sprintnummer:
+#: SWR-125 hat Kalenderdaten an TEAMAUFGABEN abgeschafft, und der Grund war, dass Teams in
+#: 60-Minuten-Läufen arbeiten. Hier wartet ein **Mensch**, dessen Antwortzeit in Tagen
+#: läuft — für ihn IST die `frist` die Steuerung (so steht es im Widget-Vertrag bei
+#: `kalenderfristen_gesamt`, wo der `decision-request` ausdrücklich ausgenommen ist).
+TG_FRIST_TAGE = 7
+
+#: Wohin der Charter-Entwurf geht. Bewusst **nicht** in ein Team-Repo: es gibt keins, und
+#: eines anzulegen wäre die Gründung, die hier nicht stattfindet.
+CHARTER_VERZEICHNIS = ("pm", "management", "kandidaten")
+
+CHARTER_VORLAGE = ("process", "templates", "team-repo", "docs", "01-team-charter.md")
+
+
+def _naechste_ticket_id(repo):
+    """Die nächste freie `T-xxxx` — gegen Arbeitskopie **und** HEAD zugleich.
+
+    ⚠ Beide Quellen, und die Vereinigung ihrer Maxima. Eine Nummer, die in der
+    Arbeitskopie frei ist, kann in HEAD belegt sein (ein Ticket, das eine parallele
+    Session committet und die Arbeitskopie noch nicht kennt) — und umgekehrt kann eine in
+    HEAD freie Nummer als ungetrackte Datei schon dastehen. Gemessen am eigenen Bestand
+    am 2026-08-16: genau so entstand eine Kollision, und die Lesson verlangt seither die
+    Prüfung gegen HEAD.
+    """
+    hoechste = 0
+    verz = os.path.join(repo, "tickets")
+    if os.path.isdir(verz):
+        for name in os.listdir(verz):
+            m = re.fullmatch(r"T-(\d{4})\.md", name)
+            if m:
+                hoechste = max(hoechste, int(m.group(1)))
+    lauf = subprocess.run(["git", "-C", repo, "ls-tree", "--name-only", "HEAD", "tickets/"],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+    for zeile in (lauf.stdout or "").splitlines():
+        m = re.search(r"T-(\d{4})\.md$", zeile.strip())
+        if m:
+            hoechste = max(hoechste, int(m.group(1)))
+    return "T-%04d" % (hoechste + 1)
+
+
+def _charter_entwurf(name, werte, dr_ref, heute_iso):
+    """Den Charter-Entwurf aus der Vorlage füllen — Platzhalter für Platzhalter.
+
+    ⚠ Aus der **Vorlagendatei** und nicht aus einem String hier: `process/templates/`
+    ist die Stelle, an der die Charter-Gestalt der Organisation steht. Eine zweite
+    Fassung im Code wäre B033, und sie würde beim ersten Vorlagenwechsel still falsch.
+    """
+    pfad = os.path.join(*CHARTER_VORLAGE)
+    ersetzungen = {
+        "TEAM_NAME": name,
+        "DATUM": heute_iso,
+        "GRUENDUNGS_DR": dr_ref,
+        "WAS_MACHT_DAS_TEAM_UND_WARUM": werte["auftrag"],
+        "PROFIL": werte["profil"],
+        # ⚠ Der SLA-Platzhalter wird BENANNT und nicht leer gelassen: eine leere Stelle im
+        # Entwurf ist von einer vergessenen nicht zu unterscheiden.
+        "BEI_WIEDERKEHREND_SLA_TABELLE": (
+            "SLA-Tabelle je Aufgabentyp ist beim Profil `wiederkehrend` Pflicht (statt G4) "
+            "und wird nach der Freigabe ergänzt."
+            if werte["profil"] == "wiederkehrend"
+            else "Profil ohne SLA-Tabelle — G4 gilt regulär."),
+        "ROLLEN_MIT_KURZBESCHREIBUNG": werte["rollen"] or
+            "*Im Steckbrief nicht angegeben — vor der Freigabe zu ergänzen.*",
+        "DATENKLASSE": werte["datenklasse"],
+        "ZUGAENGE_ODER_KEINE": werte["zugaenge"] or "keine",
+        "TEAM_SPEZIFISCHE_GRENZEN": werte["grenzen"],
+    }
+    return pfad, ersetzungen
+
+
+def gruendung_vorlegen(root, name, felder, heute=None):
+    """SWR-147 (pm/T-0063): Charter-Entwurf + Gründungs-DR in **einem** Commit.
+
+    Gibt `{ok, team, dr, ref, charter, auflagen, meldung}` zurück. Wirft `PoolFehler`.
+
+    **Was diese Funktion nicht kann: gründen.** Sie legt kein Repo an, setzt kein Remote,
+    schreibt keinen Registry-Eintrag. Das ist keine Sparsamkeit, sondern Klasse A: der
+    Mensch entscheidet, und ein Code, der die Gründung nebenbei ausführen *könnte*, wäre
+    die Gelegenheit, bei der es einmal passiert.
+
+    ⚠ **Die Auflagen aus SWR-127 stehen im DR-Text als Sätze.** Nicht als Feldwert: ein
+    Feld liest, wer weiß, dass er danach suchen muss, und dieser Text muss von jemandem
+    gelesen werden, der es **nicht** weiß.
+
+    > **Eine Auflage, die eine Funktion als Wert verlässt und in kein Dokument eingeht,
+    > ist berechnet und nicht angewandt.**
+
+    ⚠ **Ein Commit für beide Dateien.** Scheitert er, bleibt **keine** von beiden auf der
+    Platte — dieselbe Regel wie bei `kandidat_starten` und SWR-124. Eine halbe Gründung
+    ist schlimmer als keine, weil sie niemandem auffällt.
+    """
+    name = (name or "").strip()
+    if not name:
+        raise PoolFehler(400, "Teamname fehlt")
+    if "|" in name or '"' in name or "\n" in name or "/" in name:
+        raise PoolFehler(400, "Teamname enthält ein Zeichen (| \" / oder Zeilenumbruch), das im "
+                              "Ticket-Frontmatter oder im Dateipfad das Format sprengen würde.")
+    # SWR-127: prüfen, nicht bewilligen. Die Auflagen sind der Rückgabewert, den DoD 3
+    # dieses Tickets einlöst.
+    werte, auflagen = steckbrief_pruefen(felder)
+
+    pm_repo = os.path.join(root, "pm")
+    if not os.path.isdir(os.path.join(pm_repo, ".git")):
+        raise PoolFehler(404, "Repo 'pm' fehlt oder ist kein Git-Repo.")
+    heute = heute or date.today()
+    heute_iso = heute.isoformat()
+    frist = (heute + timedelta(days=TG_FRIST_TAGE)).isoformat()
+    tid = _naechste_ticket_id(pm_repo)
+    dr_ref = aggregation.ref("pm", tid)
+
+    vorlage_pfad, ersetzungen = _charter_entwurf(name, werte, dr_ref, heute_iso)
+    vorlage_abs = os.path.join(root, vorlage_pfad)
+    try:
+        with open(vorlage_abs, encoding="utf-8") as f:
+            charter = f.read()
+    except OSError:
+        raise PoolFehler(404, f"Charter-Vorlage fehlt: {vorlage_pfad}")
+    for marke, wert in ersetzungen.items():
+        charter = charter.replace("{{%s}}" % marke, wert)
+    # ⚠ Unersetzte Platzhalter werden GEMELDET und nicht stehen gelassen: ein Entwurf mit
+    # `{{...}}` darin geht als fertig durch, wenn niemand ihn liest — und der DR bittet
+    # ausdrücklich darum, ihn zu lesen.
+    offen = sorted(set(re.findall(r"\{\{([A-Z_]+)\}\}", charter)))
+    if offen:
+        raise PoolFehler(500, "Charter-Vorlage hat Platzhalter, die dieser Code nicht kennt: "
+                              + ", ".join(offen) + " — bitte pm/T-0063 nachziehen, statt einen "
+                              "Entwurf mit Lücken vorzulegen.")
+
+    auflagen_text = ("\n".join(f"- {a}" for a in auflagen) if auflagen else
+                     "- Keine besonderen Auflagen aus der Steckbrief-Prüfung "
+                     "(Datenklasse ohne Remote-Einschränkung).")
+    ticket = (
+        "---\n"
+        f"id: {tid}\n"
+        f'titel: "DR: Team-Gründung {name} freigeben (Klasse A)"\n'
+        "typ: decision-request\n"
+        "prozess: sup10\n"
+        "rolle: chg\n"
+        "sprint: 0\n"
+        "status: open\n"
+        "prio: mittel\n"
+        "reviewer: qm\n"
+        "blocked_by: []\n"
+        "repo: pm\n"
+        "optionen: [TG-a, TG-b, TG-c]\n"
+        f"frist: {frist}\n"
+        "default: TG-a\n"
+        f"geändert: {heute_iso}\n"
+        f"erstellt: {heute_iso}\n"
+        "---\n\n"
+        "## Sachverhalt\n\n"
+        f"Gründungsantrag für das Team **{name}**, geprüft nach SWR-127 "
+        "(`pool.steckbrief_pruefen`). Vorgelegt von `pm/T-0063` — **es ist nichts gegründet "
+        "worden**: es gibt kein Repo, kein Remote und keinen Registry-Eintrag. Das sind "
+        "Schritte 3/4 aus `intake.md` und folgen **nach** deiner Freigabe (Playbook Kap. 16, "
+        "Klasse A).\n\n"
+        f"Charter-**Entwurf** zum Lesen: `{'/'.join(CHARTER_VERZEICHNIS[1:])}/"
+        f"{name}-charter-entwurf.md`.\n\n"
+        "## Der geprüfte Steckbrief\n\n"
+        "| Feld | Angabe |\n"
+        "|---|---|\n"
+        + "".join(f"| {f} | {werte[f] or '—'} |\n" for f in STECKBRIEF_FELDER)
+        + "\n## ⚠ Auflagen, die mit einer Freigabe gelten\n\n"
+        "*Aus der Steckbrief-Prüfung (SWR-127). Sie stehen hier im Klartext und nicht als "
+        "Feldwert, weil ein Feld nur liest, wer weiß, dass er danach suchen muss.*\n\n"
+        + auflagen_text + "\n\n"
+        "## Optionen\n\n"
+        "- **TG-a (Empfehlung/Default):** gründen — Repo/Registry nach `intake.md` "
+        "Schritt 3/4, Charter aus dem Entwurf.\n"
+        "- **TG-b:** mit Änderungen gründen (bitte in der Begründung benennen).\n"
+        "- **TG-c:** nicht gründen — der Entwurf bleibt als Beleg stehen, es entsteht "
+        "nichts.\n\n"
+        "## Stichproben (P1-E4-Konvention)\n\n"
+        "| # | Artefakt | Wie | Status |\n"
+        "|---|---|---|---|\n"
+        f"| 1 | Charter-Entwurf — trifft der Auftrag, was du wolltest? | "
+        f"`{'/'.join(CHARTER_VERZEICHNIS)}/{name}-charter-entwurf.md` | offen — 3 Min Lesen |\n"
+        "| 2 | Auflagen oben — ist die Datenklasse richtig eingestuft? | dieses Ticket | "
+        "offen — 1 Min Lesen |\n\n"
+        "Zähler: 0 erledigt / 2 offen.\n\n"
+        "## Antwortfrist und Default\n\n"
+        f"**Frist:** {frist} · **Default:** TG-a.\n"
+    )
+
+    charter_verz = os.path.join(root, *CHARTER_VERZEICHNIS)
+    charter_datei = os.path.join(charter_verz, f"{name}-charter-entwurf.md")
+    ticket_datei = os.path.join(pm_repo, "tickets", f"{tid}.md")
+    board_pfad = os.path.join(pm_repo, "BOARD.md")
+    if os.path.exists(ticket_datei):
+        raise PoolFehler(409, f"{tid} existiert bereits — Nummernkollision, bitte CM/Session "
+                              "informieren (Lesson 2026-08-16).")
+    vorher_board = open(board_pfad, encoding="utf-8").read() if os.path.isfile(board_pfad) else None
+
+    def zuruecknehmen():
+        for p in (charter_datei, ticket_datei):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        if vorher_board is not None:
+            open(board_pfad, "w", encoding="utf-8", newline="\n").write(vorher_board)
+
+    os.makedirs(charter_verz, exist_ok=True)
+    open(charter_datei, "w", encoding="utf-8", newline="\n").write(charter)
+    open(ticket_datei, "w", encoding="utf-8", newline="\n").write(ticket)
+    tickets_alle, probleme = board.lade_tickets(pm_repo)
+    probleme += board.validiere_alle(tickets_alle, pm_repo, git_pruefen=False)
+    if probleme:
+        zuruecknehmen()
+        raise PoolFehler(500, "Erzeugter Gründungs-DR ist ungültig: " + "; ".join(probleme))
+    open(board_pfad, "w", encoding="utf-8", newline="\n").write(
+        board.generiere_board(tickets_alle))
+
+    ziele = [os.path.join("tickets", f"{tid}.md"), "BOARD.md",
+             os.path.join(*CHARTER_VERZEICHNIS[1:], f"{name}-charter-entwurf.md")]
+    v = git_schreiben.verbuche(  # SWR-134: der eine Schreibweg
+        pm_repo, ziele,
+        f"Team-Gründung „{name}“ VORGELEGT (pm/T-0063, SWR-147): Charter-Entwurf + "
+        f"Gründungs-DR {tid} — nichts gegründet, Klasse A bleibt beim Menschen — {HERKUNFT}",
+        COMMIT_IDENTITAET)
+    if not v.ok:
+        zuruecknehmen()
+        raise PoolFehler(503, "Git-Commit fehlgeschlagen — es wurde NICHTS vorgelegt, weder "
+                              "Entwurf noch DR stehen auf der Platte: " + v.fehler[:400])
+    return {"ok": True, "team": name, "dr": tid, "ref": dr_ref,
+            "charter": os.path.join(*CHARTER_VERZEICHNIS, f"{name}-charter-entwurf.md"),
+            "auflagen": auflagen,
+            "meldung": (f"Team-Gründung „{name}“ vorgelegt: Charter-Entwurf und "
+                        f"Gründungs-DR {dr_ref} (Frist {frist}, Default TG-a). "
+                        f"Es ist nichts gegründet — die Freigabe liegt bei dir.")}

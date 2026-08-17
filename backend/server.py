@@ -344,6 +344,16 @@ class Api(BaseHTTPRequestHandler):
             except pool.PoolFehler as e:
                 return self._json(e.code, {"fehler": str(e)})
             return self._json(200, erg)
+        # SWR-147 (pm/T-0063): Gründung VORLEGEN. ⚠ Die Route existiert, weil eine Funktion
+        # ohne Aufrufer der Fehlermodus von SWR-122 ist — berechnet und von niemandem
+        # gelesen. Sie heißt bewusst nicht `/api/pool/gruenden`: sie gründet nicht.
+        if self.path == "/api/pool/gruendung-vorlegen":
+            try:
+                erg = pool.gruendung_vorlegen(type(self).wurzel, daten.get("team", ""),
+                                              daten.get("steckbrief") or {})
+            except pool.PoolFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
         if self.path == "/api/briefkasten":  # SWR-050 (P4): Nachricht ans Team
             # SWR-126 (pm/T-0059): optionales `brief` hängt an einen bestehenden Brief an.
             # Fehlt es, ist der Aufruf byte-identisch zu vorher — `None` heißt „neu".
