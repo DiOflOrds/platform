@@ -170,3 +170,32 @@ class EineAbgrenzungTest(Bestand):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KopfblockTest(Bestand):
+    """Der Kopfblock zeigt die Kalenderfristen — dort sieht der Auftraggeber hin.
+
+    Eine Pruefung, deren Ergebnis nur im Startcheck erscheint, ist die halbe
+    Wiederholung von SWR-122: die Rueckkehr der Kalenderdaten hat niemand bemerkt,
+    weil sie niemandem angezeigt wurde.
+    """
+
+    def test_block_nennt_zahl_und_referenzen(self):
+        self.ticket("T-0040", geplant_sprint="12", frist="2026-08-24")
+        block = aggregation.organisation(self.root)
+        self.assertEqual(block["kalenderfristen_gesamt"], 1)
+        self.assertEqual(block["kalenderfristen_refs"], ["p0/T-0040"])
+
+    def test_block_ist_bei_null_da_und_nicht_weggelassen(self):
+        """SWR-108/SWR-114: eine echte Null, keine ausgebliebene Erhebung."""
+        self.ticket("T-0041", geplant_sprint="12")
+        block = aggregation.organisation(self.root)
+        self.assertEqual(block["kalenderfristen_gesamt"], 0)
+        self.assertEqual(block["kalenderfristen_refs"], [])
+
+    def test_die_bestehenden_schluessel_bleiben_unveraendert(self):
+        """Vertrags-ERWEITERUNG, nicht -aenderung — die Form aus SWR-117 haelt."""
+        block = aggregation.organisation(self.root)
+        for schluessel in ("unterminiert_gesamt", "unterminiert_refs",
+                           "wartet_auf_mensch_gesamt", "wartet_auf_mensch_refs"):
+            self.assertIn(schluessel, block)

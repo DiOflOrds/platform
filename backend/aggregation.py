@@ -755,9 +755,20 @@ def organisation(root):
     """
     refs = unterminierte_tickets(root)
     wartend = wartet_auf_mensch(root)  # SWR-120 (pm/T-0051)
+    # SWR-125 (platform/T-0012): der dritte Schlüssel — und der Beleg, dass die Form aus
+    # SWR-117 hält, was ihr Kommentar oben verspricht („erweiterbar um einen zweiten
+    # Schlüssel, ohne dass ein Leser sich ändert").
+    #
+    # Er steht hier und nicht nur im Preflight, weil der Auftraggeber ins Cockpit sieht
+    # und nicht in den Startcheck. Eine Prüfung, deren Ergebnis nur an einer Stelle
+    # erscheint, an die der Betroffene nicht schaut, ist die halbe Wiederholung von
+    # SWR-122 — und die Rückkehr der Kalenderdaten ist genau der Fall, den niemand
+    # bemerkte, weil ihn niemand angezeigt bekam.
+    kal = kalenderfristen(root)
     return {"unterminiert_gesamt": len(refs), "unterminiert_refs": refs,
             "wartet_auf_mensch_gesamt": len(wartend),
-            "wartet_auf_mensch_refs": wartend}
+            "wartet_auf_mensch_refs": wartend,
+            "kalenderfristen_gesamt": len(kal), "kalenderfristen_refs": kal}
 
 
 def cockpit_alle(root, heute=None, jetzt=None):
