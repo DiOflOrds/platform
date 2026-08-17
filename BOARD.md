@@ -1,13 +1,14 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-17 · Tickets: 9 · davon wiederkehrend: 1
+Stand: 2026-08-17 · Tickets: 10 · davon wiederkehrend: 1
 
 
-## open (1)
+## open (2)
 
 | ID | Titel | Typ | Takt | Rolle | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | hoch | 0 | — |
+| [T-0010](tickets/T-0010.md) | Befund: Die Verifikation misst die Arbeitskopie, der Push liefert HEAD — SWR-109 war nie committet | problem | einmalig | cm | hoch | 0 | — |
 
 ## done (8)
 

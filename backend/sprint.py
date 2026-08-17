@@ -247,6 +247,7 @@ def offene_tickets(root):
                             "ref": aggregation.ref(name, t.get("id", "")),
                             "titel": t.get("titel", ""),
                             "status": t.get("status", ""),
+                            "typ": t.get("typ", ""),      # SWR-112: DRs sind ausgenommen
                             "frist": t.get("frist", ""),
                             "takt": t.get("takt", ""),
                             "geplant_sprint": t.get("geplant_sprint", ""),  # SWR-106
@@ -342,6 +343,79 @@ def plan_drift(plan_zeilen, offene):
     return treffer
 
 
+def sprint_vergangen(offene, jetzt_nr):
+    """SWR-112 (pm/T-0045): offene Tickets, deren geplanter Sprint VORBEI ist.
+
+    Die Lücke, die dieses Ticket beschreibt: `widersprueche` (SWR-106) hält den
+    geplanten Sprint gegen die **Frist** des Tickets, `plan_drift` (SWR-109) gegen die
+    **Planzeile** — niemand hielt ihn gegen die **Gegenwart**. Beim Start von Sprint 6
+    standen zwei Tickets auf Sprint 5, und der Abschluss meldete „unterminiert 0,
+    überfällig 0". Beide Zahlen waren für sich richtig; nur die Terminierung zeigte in
+    die Vergangenheit.
+
+    Drei Abgrenzungen, die dieses Ticket ausdrücklich zur Entscheidung gestellt hat:
+
+    1. **Erledigte Tickets sind kein Fall.** `offene_tickets` liefert nur, was weder
+       `done` noch `rejected` ist; `platform/T-0009` darf für immer auf Sprint 6 stehen.
+       Die Prüfung lautet deshalb nie „Sprint < jetzt", sondern immer „offen UND
+       Sprint < jetzt".
+    2. **`in_review` zählt mit.** Ein Ticket, das nach seinem geplanten Sprint noch beim
+       Reviewer liegt, ist nicht korrekt geparkt — der Plan hat dann nicht gehalten, und
+       genau das soll sichtbar werden. Ein Review ist Teil des Sprints, für den geplant
+       wurde, nicht ein Zustand daneben.
+    3. **`decision-request` ist ausgenommen**, und zwar nicht aus Nachsicht: ein DR liegt
+       beim Menschen, das Team kann ihn nicht bewegen, und eine Sprintnummer daneben wäre
+       eine Zusage, die das Team nicht halten kann. Seine Steuerung ist `frist` + `default`
+       (Schweigen führt zum Default) — und reißt diese Frist, meldet ihn `ueberfaellig`
+       (SWR-091). Er ist also gedeckt, nur von einer anderen Prüfung. Ohne diese Ausnahme
+       hätte die Prüfung an ihrem ersten Tag `p11/T-0006` gemeldet, das seit Sprint 6
+       ordnungsgemäß beim Auftraggeber liegt — ein Fehlalarm, und ein Fehlalarm an Tag
+       eins trainiert das Wegsehen (dieselbe Sorge wie bei SWR-109 und SWR-110).
+    """
+    treffer = []
+    for t in offene:
+        if (t.get("_ticket") or {}).get("typ") == "decision-request" \
+                or t.get("typ") == "decision-request":
+            continue
+        roh = str(t.get("geplant_sprint", "")).strip()
+        if not roh.isdigit():          # Takt-Dauerläufer und leere Felder: kein Termin
+            continue
+        nr = int(roh)
+        if nr < jetzt_nr:
+            treffer.append({"ref": t["ref"], "titel": t.get("titel", ""),
+                            "status": t.get("status", ""),
+                            "geplant_sprint": nr, "jetzt": jetzt_nr,
+                            "meldung": "offen auf Sprint %d, laufend ist Sprint %d"
+                                       % (nr, jetzt_nr)})
+    return treffer
+
+
+def kennzahlen(offene):
+    """SWR-113 (pm/T-0046): die Zählweise von „nicht geschlossen", festgelegt.
+
+    Vier Sprints lang stand die Zahl auf **15** und passte zu keiner Zählweise des
+    Werkzeugs (17 mit, 11 ohne Takt-Dauerläufer). Der Befund war nicht die Abweichung,
+    sondern dass sie **nicht auflösbar** war: nirgends stand, was mitzählt. Eine
+    unwiderlegbare Kennzahl ist keine.
+
+    **Festgelegt (pm/T-0046, Sprint 7):** „nicht geschlossen" ist `offen_gesamt` —
+    jedes Ticket, dessen Status weder `done` noch `rejected` ist, **Takt-Dauerläufer
+    eingeschlossen**. Die Begründung stand schon im Docstring von `offene_tickets` und
+    wird hier nur noch angewandt: Takt-Tickets sind Dauerpflichten und gehören in jeden
+    Sprint; dass sie kein Datum tragen, macht sie nicht planlos. `sachtickets` steht
+    daneben, weil die Frage „wie viel Sacharbeit ist offen" eine andere ist — als
+    **eigene Zahl mit eigenem Namen** und nicht als zweite Lesart derselben (B033).
+
+    Die Reihe der Sprints 2–5 wird **nicht** rückwirkend korrigiert: eine still
+    ersetzte Zahl nimmt dem nächsten Leser den Hinweis, welche Art Angabe hier
+    ungeprüft durchging (L-2026-08-17g Regel 4).
+    """
+    takt = sum(1 for t in offene if str(t.get("takt", "")).strip())
+    return {"offen_gesamt": len(offene),
+            "davon_takt": takt,
+            "sachtickets": len(offene) - takt}
+
+
 def zaehler(plan_zeilen):
     """Wie viele Zeilen je Zustand — plus die Querzahl „wartet auf Mensch".
 
@@ -399,6 +473,8 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
     fehlend = nicht_geplant(plan_zeilen, offene)
     widerspruch = widersprueche(offene, jetzt_nr, takt_min, heute)
     drift = plan_drift(plan_zeilen, offene)   # SWR-109
+    vergangen = sprint_vergangen(offene, jetzt_nr)   # SWR-112 (pm/T-0045)
+    zahlen = kennzahlen(offene)                      # SWR-113 (pm/T-0046)
     for o in offene:
         o.pop("_ticket", None)
 
@@ -414,6 +490,8 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
             "nicht_geplant": fehlend,
             "widersprueche": widerspruch,   # SWR-106
             "plan_drift": drift,            # SWR-109
+            "sprint_vergangen": vergangen,  # SWR-112 (pm/T-0045)
+            "kennzahlen": zahlen,           # SWR-113 (pm/T-0046)
             "sprint_nr": jetzt_nr,          # SWR-106: der laufende Sprint
             "takt_min": takt_min,
             "stand": letzter,

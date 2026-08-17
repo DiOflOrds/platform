@@ -206,6 +206,42 @@ def nur_stand_zeile(repo, pfad):
     return all(z[1:].lstrip().startswith("Stand:") for z in geaendert)
 
 
+def unterminierte_tickets(root):
+    """SWR-114 (pm/T-0036 Teil b): offene Tickets ohne Frist — org-weit, MIT Referenzen.
+
+    Der Befund B049: der „ohne Frist"-Zähler aus SWR-091 wird **pro Kachel** gelesen und
+    nie als Summe. Drei Sessions in Folge erklärten ihn für abgearbeitet, während drei
+    Tickets in einer anderen Kachel offen blieben — „Kachel X erledigt" ist keine gültige
+    Abschlussmeldung, wenn die Frage der Organisation gilt.
+
+    Gemeldet werden **Namen und nicht nur eine Zahl** (B038: ein Gate, das „82" sagt,
+    nennt nicht, welche fünf fehlen). Die Abgrenzung ist dieselbe wie in
+    `aggregation` (SWR-091), damit nicht zwei Stellen verschieden zählen (B033):
+    Takt-Tickets tragen ihr Zeitkonzept im Feld `takt`, und ein `decision-request` wird
+    über `frist` + `default` gesteuert.
+    """
+    treffer = []
+    for name, basis in board.projekt_pfade(root):
+        verz = os.path.join(basis, "tickets")
+        if not os.path.isdir(verz):
+            continue
+        for datei in sorted(os.listdir(verz)):
+            if not datei.endswith(".md"):
+                continue
+            try:
+                with open(os.path.join(verz, datei), encoding="utf-8") as f:
+                    fm, _ = board.parse_frontmatter(f.read())
+            except OSError:
+                continue
+            fm = fm or {}
+            if fm.get("status") in ("done", "rejected"):
+                continue
+            if fm.get("frist") or fm.get("takt") or fm.get("typ") == "decision-request":
+                continue
+            treffer.append("%s/%s" % (name, fm.get("id") or datei[:-3]))
+    return treffer
+
+
 def arbeitskopie_befunde(repo, dirty):
     """(befund_pfade, gemeldete_pfade) für einen Repo-Status. SWR-110."""
     befunde, alle = [], []
@@ -330,6 +366,14 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         print(f"[{name}] board-check: {'OK' if ok else 'FEHLER — ' + meldung}")
         if not ok:
             befunde += 1
+    # SWR-114 (pm/T-0036 Teil b): org-weite Summe der Tickets ohne Frist, MIT Namen.
+    # Die Stelle, an der eine Session ohnehin hinsieht, bevor sie etwas anderes tut —
+    # und die einzige, die die Frage für die ganze Organisation stellt statt je Kachel.
+    ohne_frist = unterminierte_tickets(root)
+    if ohne_frist:
+        print(f"[org] {len(ohne_frist)} Ticket(s) ohne Frist: {', '.join(ohne_frist)}")
+    else:
+        print("[org] 0 Tickets ohne Frist.")
     # SWR-051 (P4): Session-Routine "Briefkasten zuerst" — offene Briefe anzeigen (informativ)
     for name, pfad in projekte:
         verz = os.path.join(pfad, "management", "briefkasten")
