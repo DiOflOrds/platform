@@ -607,6 +607,43 @@ def raeume_locks(root, keep_locks=False, still=False):
     return befunde
 
 
+def parkplatz_stand(root):
+    """SWR-164: wie viele weggeräumte Sperren liegen auf dem Parkplatz? `(gesamt, (repo, n))`.
+
+    Rückgabe `None`, wenn sich kein Repo lesen lässt.
+
+    ⚠⚠ **Das ist die Antwort auf Frage 3 von `platform/T-0021`, und sie lautet ja.** Die
+    Räumung ist zweistufig: erst `os.remove`, bei `OSError` **umbenennen** nach
+    `.git/verwaiste-locks/`. Auf einem Mount ohne `unlink`-Recht scheitert die erste Stufe
+    **immer** — jede geräumte Sperre wird also geparkt und nie gelöscht. Gemessen:
+
+    | Sprint | `pm/.git/verwaiste-locks` |
+    |---|---|
+    | 21 | 1975 |
+    | 24 | 2099 |
+
+    > **Das ist kein Fehler, und es ist auch nicht reparierbar, solange der Mount ist, wie
+    > er ist. Es ist eine Größe, die niemand gemessen hat — und eine ungemessene Größe ist
+    > von einer, die nicht wächst, nicht zu unterscheiden.**
+
+    ⚠ Diese Funktion räumt **nichts** und ruft **kein git**. Sie zählt Dateien.
+    """
+    gesamt = 0
+    groesster = ("—", 0)
+    gesehen = False
+    for name in repos_im_root(root):
+        pfad = os.path.join(root, name, ".git", PARKPLATZ)
+        try:
+            n = len(os.listdir(pfad))
+        except OSError:
+            continue
+        gesehen = True
+        gesamt += n
+        if n > groesster[1]:
+            groesster = (name, n)
+    return (gesamt, groesster) if gesehen else None
+
+
 def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
     """Alle Checks ausführen. Rückgabe: Anzahl Befunde (0 = startklar)."""
     befunde = raeume_locks(root, keep_locks)
@@ -771,6 +808,19 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         befunde += 1
     else:
         print("[org] Pflichtartefakte je Repo: 0 fehlend.")
+    # SWR-164 (platform/T-0021, Frage 3): der Parkplatz wächst — und zwar unbegrenzt.
+    # ⚠ Die Zeile erscheint IMMER (SWR-114/117/155) und ist **kein Befund**: es gibt
+    # nichts zu reparieren, solange der Mount kein `unlink` erlaubt. Sie steht hier, weil
+    # eine Größe, die niemand misst, von einer Größe, die nicht wächst, nicht zu
+    # unterscheiden ist.
+    stand = parkplatz_stand(root)
+    if stand is None:
+        print("[org] Parkplatz verwaiste-locks: nicht messbar.")
+    else:
+        gesamt, groesster = stand
+        print(f"[org] Parkplatz verwaiste-locks: {gesamt} Datei(en) über alle Repos, "
+              f"größter Einzelbestand {groesster[1]} in {groesster[0]}. "
+              f"Auf dem Host löschbar, von hier aus nicht (Mount ohne unlink-Recht).")
     ohne_sprint = unterminierte_tickets(root)
     if ohne_sprint:
         print(f"[org] {len(ohne_sprint)} Ticket(s) ohne Sprint: {', '.join(ohne_sprint)}")

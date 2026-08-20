@@ -21,6 +21,7 @@ Der gemessene Befund ist ein anderer und größer:
 Ausführung: python -m unittest discover platform/tests
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -446,13 +447,188 @@ class EigeneSperreTest(unittest.TestCase):
                 sys.modules["preflight"] = alt_module
 
     def test_ohne_pfade_gibt_es_kein_zwischenraeumen(self):
-        """Ohne `add` gibt es keinen Nachweis und also auch nichts zu raeumen — der Fall
-        'schon gestaget'. Verifiziert: SWR-139."""
+        """Ohne `add` gibt es keinen Nachweis und also auch KEIN ZWISCHENraeumen — der Fall
+        'schon gestaget'. Verifiziert: SWR-139, SWR-163.
+
+        ⚠ **Diese Zusicherung ist in Sprint 24 GESCHAERFT und nicht abgeschwaecht worden** —
+        dieselbe Bewegung, die ihre Nachbarin `test_vor_dem_ersten_versuch_wird_nicht_
+        geraeumt` in Sprint 16 gemacht hat, und aus demselben Grund.
+
+        Sie lautete bis hierher *„ohne Pfade wird ueberhaupt nicht geraeumt"* und wurde von
+        SWR-163 rot: dort raeumt der Schreibweg **nach** dem gelungenen Commit hinter sich
+        her. Ihre *Absicht* war aber nie „nie raeumen", sondern **kein Raeumen ohne
+        Nachweis**: das Zwischenraeumen zwischen `add` und `commit` braucht ein gelungenes
+        `add` als Beleg, dass die danach liegende Sperre die eigene ist — ohne `add` gibt
+        es diesen Beleg nicht.
+
+        > **Nach dem Commit ist der Beleg ein anderer und ein staerkerer: der eigene Aufruf
+        > ist zurueck. Was hier verboten bleibt, ist das Raeumen VOR einem Git-Aufruf.**
+
+        Zugesichert wird deshalb ab jetzt die **Reihenfolge**: vor dem Commit faellt kein
+        Raeumaufruf, danach darf einer fallen.
+        """
         spur = []
         subprocess.run(["git", "-C", self.repo, "add", "-A"], capture_output=True)
-        git_schreiben.verbuche(self.repo, [], "m",
-                               entsperren=lambda r: spur.append("raeumt") or 0)
-        self.assertNotIn("raeumt", spur)
+        echt = subprocess.run
+
+        def beobachte(befehl, *a, **kw):
+            if isinstance(befehl, (list, tuple)) and befehl and "git" in str(befehl[0]):
+                spur.append("git")
+            return echt(befehl, *a, **kw)
+
+        subprocess.run = beobachte
+        try:
+            git_schreiben.verbuche(self.repo, [], "m",
+                                   entsperren=lambda r: spur.append("raeumt") or 0)
+        finally:
+            subprocess.run = echt
+        self.assertIn("git", spur)
+        self.assertEqual(spur.index("git"), 0,
+                         f"vor dem ersten Git-Aufruf geraeumt: {spur}")
+        vor_dem_commit = spur[:spur.index("git")]
+        self.assertNotIn("raeumt", vor_dem_commit,
+                         f"ohne gelungenes add darf nicht zwischengeraeumt werden: {spur}")
+
+
+class NachraeumenTest(unittest.TestCase):
+    """SWR-163 (`platform/T-0021`): der GELUNGENE Aufruf raeumt hinter sich her.
+
+    ⚠⚠ Der Befund, der dieses Ticket vier Sprints lang getragen hat, ist in Sprint 21
+    gemessen worden und dreht die Vermutung im Ticketkopf um:
+
+    | Aufruf | Exit | Sperre bleibt liegen |
+    |---|---|---|
+    | `git status --porcelain` | 0 | **JA** |
+    | `git log`, `git diff`, `git ls-files` | 0 | nein |
+    | `git add`, `git commit` | 0 | nein |
+
+    > **Umbenennen ist auf diesem Mount erlaubt, Loeschen nicht. Git beendet einen
+    > SCHREIBENDEN Indexvorgang durch Umbenennen — das geht durch. Einen bloss LESENDEN
+    > Refresh beendet es durch Loeschen — und das scheitert. Der harmlose Lesevorgang
+    > hinterlaesst die Sperre, an der der naechste Aufruf stirbt.**
+
+    Der Rueckfall aus SWR-134 hilft dagegen nicht: er greift nach einem **Fehlschlag**, und
+    dieser Aufruf ist gelungen. Er verlegt die Kosten auf den naechsten Aufrufer.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.repo = os.path.join(self.tmp, "r")
+        os.makedirs(self.repo)
+        subprocess.run(["git", "-C", self.repo, "init", "-q"], capture_output=True)
+        subprocess.run(["git", "-C", self.repo, "config", "user.email", "t@t"],
+                       capture_output=True)
+        subprocess.run(["git", "-C", self.repo, "config", "user.name", "t"],
+                       capture_output=True)
+        with open(os.path.join(self.repo, "a.txt"), "w", encoding="utf-8") as f:
+            f.write("x")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_nach_dem_gelungenen_commit_wird_nachgeraeumt(self):
+        rufe = []
+        v = git_schreiben.verbuche(self.repo, ["a.txt"], "m",
+                                   entsperren=lambda r: rufe.append(r) or 3)
+        self.assertTrue(v.ok, v.fehler)
+        self.assertEqual(v.nachgeraeumt, 3,
+                         "der gelungene Aufruf raeumt seine eigene Sperre nicht weg")
+        self.assertEqual(rufe[-1], self.repo)
+
+    def test_ein_LESENDER_ruf_raeumt_ebenfalls_hinter_sich_her(self):
+        """⚠ Genau der gemessene Fall: `git status` kommt mit Exit 0 zurueck **und** laesst
+        die Sperre liegen. Wer nur die schreibenden Aufrufe absichert, sichert die Haelfte,
+        die das Problem nicht hat."""
+        rufe = []
+        v = git_schreiben.ruf(self.repo, ["status", "--porcelain"],
+                              entsperren=lambda r: rufe.append(r) or 1)
+        self.assertTrue(v.ok, v.fehler)
+        self.assertEqual(len(rufe), 1, "nach einem lesenden Aufruf wurde nicht nachgeraeumt")
+        self.assertEqual(v.nachgeraeumt, 1)
+        self.assertEqual(v.geraeumt, 0,
+                         "nichts musste weggeraeumt werden, damit dieser Aufruf durchkam")
+
+    def test_GEGENPROBE_nach_einem_FEHLSCHLAG_wird_nicht_nachgeraeumt(self):
+        """⚠⚠ Die Trennung, an der alles haengt.
+
+        Nach einem Fehlschlag ist ueber die liegende Sperre nichts bekannt — sie kann
+        einem laufenden Prozess gehoeren. Dort gilt weiter der alte Weg: **einmal**
+        entsperren und **wiederholen**, nicht blind wegraeumen. Waere das Nachraeumen auch
+        auf dem Fehlerpfad aktiv, waere aus der Zusicherung 'genau einmal' unbemerkt
+        'zweimal' geworden.
+        """
+        rufe = []
+        v = git_schreiben.ruf(self.repo, ["diese-unterkommando-gibt-es-nicht"],
+                              entsperren=lambda r: rufe.append(r) or 0)
+        self.assertFalse(v.ok)
+        self.assertEqual(v.nachgeraeumt, 0)
+        self.assertEqual(len(rufe), 1, f"genau ein Raeumversuch erwartet, nicht {len(rufe)}")
+
+    def test_GEGENPROBE_bei_laufendem_git_wird_NICHTS_angefasst(self):
+        """Eine Sperre, die ein laufender Prozess haelt, beiseitezubenennen ist schlimmer
+        als sie stehen zu lassen — `platform/T-0015` DoD 2, unveraendert in Kraft."""
+        import preflight as _pf
+        echt = _pf.git_prozess_aktiv
+        rufe = []
+        _pf.git_prozess_aktiv = lambda: True
+        try:
+            v = git_schreiben.verbuche(self.repo, ["a.txt"], "m",
+                                       entsperren=lambda r: rufe.append(r) or 5)
+        finally:
+            _pf.git_prozess_aktiv = echt
+        self.assertTrue(v.ok, v.fehler)
+        self.assertEqual(v.nachgeraeumt, 0)
+        self.assertNotIn(self.repo, rufe[len(rufe):],
+                         "bei laufendem Git darf nicht nachgeraeumt werden")
+
+    def test_die_pruefung_auf_einen_laufenden_git_ruft_KEIN_git_auf(self):
+        """⚠⚠ Auflage aus SWR-159, hinzugefuegt in Sprint 23.
+
+        Ein Werkzeug, das an der Nebenlaeufigkeit arbeitet und dabei selbst eine Sperre
+        erzeugt, ist sein eigener Schadensfall. Der erste Entwurf der Uhrenprobe ist genau
+        daran rot geworden. `_nachraeumen` darf deshalb die Prozessliste lesen und das Repo
+        anfassen — aber **kein git starten**.
+        """
+        gerufen = []
+        echt = subprocess.run
+
+        def beobachte(befehl, *a, **kw):
+            if isinstance(befehl, (list, tuple)) and befehl and "git" in str(befehl[0]):
+                gerufen.append(list(befehl))
+            return echt(befehl, *a, **kw)
+
+        subprocess.run = beobachte
+        try:
+            git_schreiben._nachraeumen(self.repo, entsperren=lambda r: 0)
+        finally:
+            subprocess.run = echt
+        self.assertEqual(gerufen, [], f"_nachraeumen hat git aufgerufen: {gerufen}")
+
+    def test_eine_scheiternde_nachraeumung_macht_den_gelungenen_aufruf_nicht_kaputt(self):
+        """Dieselbe Zusicherung wie fuer die Reparatur: **nie schlimmer als keine**.
+
+        Ein Commit, der durchgegangen ist, ist durchgegangen — eine Aufraeumarbeit danach
+        darf ihn nicht in einen Fehlschlag verwandeln.
+        """
+        def wirft(_repo):
+            raise RuntimeError("Raeummechanismus kaputt")
+
+        v = git_schreiben.verbuche(self.repo, ["a.txt"], "m", entsperren=wirft)
+        self.assertTrue(v.ok, v.fehler)
+        self.assertEqual(v.nachgeraeumt, 0)
+
+    def test_die_zwei_zahlen_bleiben_getrennt(self):
+        """⚠ `geraeumt` und `nachgeraeumt` beantworten zwei verschiedene Fragen.
+
+        *Wie viel musste weg, damit ich durchkam* und *wie viel habe ich fuer den naechsten
+        hinterlassen* in ein Feld zu falten hiesse, eine von beiden nicht mehr beantworten
+        zu koennen — B033 rueckwaerts, dieselbe Begruendung, aus der `stderr` und `stdout`
+        getrennt bleiben.
+        """
+        self.assertIn("nachgeraeumt", git_schreiben.Verbuchung.__slots__)
+        self.assertIn("geraeumt", git_schreiben.Verbuchung.__slots__)
+        v = git_schreiben.Verbuchung(True, geraeumt=2, nachgeraeumt=7)
+        self.assertEqual((v.geraeumt, v.nachgeraeumt), (2, 7))
 
 
 if __name__ == "__main__":

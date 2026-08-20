@@ -36,6 +36,20 @@ Geräumt wird erst, **nachdem** ein Versuch gescheitert ist — ein Lock, das ei
 Git-Prozess hält, beiseite zu benennen wäre schlimmer als der Fehler (DoD 2 aus
 `platform/T-0015`). Die Voraussetzung „kein Git-Prozess läuft" prüft `preflight`
 weiterhin selbst; sie wird hier nicht kopiert (B033).
+
+⚠⚠ **SWR-163 (`platform/T-0021`, Sprint 24): geräumt wird ab jetzt AUCH NACH DEM EIGENEN
+GELUNGENEN AUFRUF** — siehe :func:`_nachraeumen`. Das ist kein Widerspruch zu dem Absatz
+darüber, sondern seine Fortsetzung mit der Messung aus Sprint 21:
+
+> **Nicht der scheiternde Aufruf hinterlässt die Sperre, sondern der gelingende. Git
+> beendet einen SCHREIBENDEN Indexvorgang, indem es `index.lock` über `index` umbenennt —
+> das geht auf diesem Mount durch. Einen bloß LESENDEN Refresh (`git status`) beendet es,
+> indem es die Sperre LÖSCHT, und das ist hier verboten. Der harmlose Lesevorgang
+> hinterlässt die Sperre, an der der nächste Aufruf stirbt.**
+
+Verboten bleibt, was verboten war: das Räumen **vor** dem ersten Git-Aufruf. Dort gibt es
+keinen Nachweis darüber, wem die Sperre gehört. Nach dem eigenen Aufruf gibt es zwei:
+dieser Aufruf ist zurück, und `preflight.git_prozess_aktiv` sagt, ob sonst noch einer läuft.
 """
 import os
 import subprocess
@@ -59,14 +73,22 @@ class Verbuchung:
     können — zwei Fragen, ein Feld, das ist B033 rückwärts.
     """
 
-    __slots__ = ("ok", "stderr", "stdout", "wiederholt", "geraeumt")
+    __slots__ = ("ok", "stderr", "stdout", "wiederholt", "geraeumt", "nachgeraeumt")
 
-    def __init__(self, ok, stderr="", stdout="", wiederholt=False, geraeumt=0):
+    def __init__(self, ok, stderr="", stdout="", wiederholt=False, geraeumt=0,
+                 nachgeraeumt=0):
         self.ok = bool(ok)
         self.stderr = stderr or ""
         self.stdout = stdout or ""
         self.wiederholt = bool(wiederholt)
         self.geraeumt = int(geraeumt)
+        #: SWR-163: wie viele Sperren der **eigene, gelungene** Aufruf hinterlassen hat und
+        #: hinter sich weggeräumt wurden. ⚠ Ein **eigenes Feld** und nicht `geraeumt`
+        #: mitbenutzt: `geraeumt` beantwortet *„wie viel musste weg, damit ich überhaupt
+        #: durchkam"*, dies hier *„wie viel habe ich für den nächsten hinterlassen"*. Zwei
+        #: Fragen in ein Feld zu falten hieße, eine von beiden nicht mehr beantworten zu
+        #: können — dieselbe Begründung, aus der `stderr` und `stdout` getrennt bleiben.
+        self.nachgeraeumt = int(nachgeraeumt)
 
     @property
     def fehler(self):
@@ -86,7 +108,24 @@ class Verbuchung:
 
     def __repr__(self):  # pragma: no cover — Diagnose
         return (f"Verbuchung(ok={self.ok}, wiederholt={self.wiederholt}, "
-                f"geraeumt={self.geraeumt})")
+                f"geraeumt={self.geraeumt}, nachgeraeumt={self.nachgeraeumt})")
+
+
+def _lade_preflight():
+    """Das Räummodul der Organisation — oder `None`, wenn es nicht erreichbar ist.
+
+    Der Pfad wird **relativ zu dieser Datei** bestimmt und nicht aus dem Zustand des
+    Aufrufers geraten; die Begründung steht in :func:`entsperre` (SWR-143).
+    """
+    try:
+        hier = os.path.dirname(os.path.abspath(__file__))
+        skripte = os.path.normpath(os.path.join(hier, "..", "scripts"))
+        if skripte not in sys.path:
+            sys.path.insert(0, skripte)
+        import preflight as _preflight
+        return _preflight
+    except Exception:
+        return None
 
 
 def entsperre(repo):
@@ -114,13 +153,8 @@ def entsperre(repo):
     Der Pfad wird deshalb **relativ zu dieser Datei** bestimmt (`../scripts`) und nicht
     aus dem Zustand des Aufrufers geraten.
     """
-    try:
-        hier = os.path.dirname(os.path.abspath(__file__))
-        skripte = os.path.normpath(os.path.join(hier, "..", "scripts"))
-        if skripte not in sys.path:
-            sys.path.insert(0, skripte)
-        import preflight as _preflight
-    except Exception:
+    _preflight = _lade_preflight()
+    if _preflight is None:
         return 0
     try:
         locks = _preflight.finde_lock_artefakte(repo)
@@ -128,6 +162,51 @@ def entsperre(repo):
             return 0
         entfernt, geparkt, _kaputt = _preflight.entferne_artefakte(locks)
         return len(entfernt) + len(geparkt)
+    except Exception:
+        return 0
+
+
+def _nachraeumen(repo, entsperren=None):
+    """SWR-163: die Sperre wegräumen, die der **eigene, gerade beendete** Aufruf liegen ließ.
+
+    Rückgabe: Anzahl (0 = nichts da, kein Nachweis, oder Räumung nicht möglich).
+
+    ⚠⚠ **Warum das nicht das verworfene „vorsorgliche Räumen" ist.** `platform/T-0015`
+    DoD 2 verbot, **vor** einem Git-Aufruf zu räumen — dort ist über die vorgefundene
+    Sperre nichts bekannt, und eine, die ein *laufender* Prozess hält, beiseitezubenennen
+    ist schlimmer als sie stehen zu lassen. Hier ist die Lage umgekehrt: der eigene Aufruf
+    ist **zurück**. Was jetzt liegt, ist entweder seins oder gehört jemandem, der noch
+    arbeitet — und genau diese zweite Möglichkeit fragt die Funktion ab, mit dem
+    **vorhandenen** Mechanismus der Organisation (`preflight.git_prozess_aktiv`) und nicht
+    mit einem zweiten (B033).
+
+    ⚠ **Diese Funktion ruft KEIN git auf.** Das ist eine Auflage aus SWR-159: ein Werkzeug,
+    das an der Nebenläufigkeit arbeitet und dabei selbst eine Sperre erzeugt, ist sein
+    eigener Schadensfall — der erste Entwurf der Uhrenprobe ist in Sprint 23 genau daran
+    rot geworden (`test_die_messung_ruft_KEIN_git_auf`, SWR-134). `git_prozess_aktiv` liest
+    die **Prozessliste** (`tasklist`/`ps`), nicht das Repo.
+
+    ⚠ **Warum das überhaupt nötig ist, obwohl der Rückfall in
+    :func:`_einmal_wiederholen` seit SWR-134 existiert.** Der Rückfall repariert den
+    Aufruf, der **gescheitert** ist. Gemessen in Sprint 21 hinterlässt aber der Aufruf, der
+    **gelingt**, die Sperre: `git status --porcelain` kommt mit Exit 0 zurück und lässt
+    `index.lock` liegen, weil Git einen lesenden Refresh durch **Löschen** der Sperre
+    beendet und Löschen auf diesem Mount verboten ist. Der Rückfall verlegt die Kosten
+    damit auf den **nächsten** Aufrufer, und der sieht eine Fehlermeldung, die nach einem
+    fremden Prozess aussieht.
+    """
+    _preflight = _lade_preflight()
+    if _preflight is None:
+        return 0
+    try:
+        if _preflight.git_prozess_aktiv():
+            return 0
+    except Exception:
+        # Im Zweifel nichts anfassen: dieselbe Richtung, die `git_prozess_aktiv` selbst
+        # bei einem Fehler wählt („vorsichtshalber als Git läuft gewertet").
+        return 0
+    try:
+        return int((entsperren or entsperre)(repo) or 0)
     except Exception:
         return 0
 
@@ -144,7 +223,9 @@ def _einmal_wiederholen(versuch, repo, entsperren):
     """
     ok, err, out = versuch()
     if ok:
-        return Verbuchung(True, err, out, wiederholt=False)
+        # SWR-163: hinter sich aufräumen, nicht vor dem nächsten.
+        return Verbuchung(True, err, out, wiederholt=False,
+                          nachgeraeumt=_nachraeumen(repo, entsperren))
     # Eingefasst, obwohl `entsperre` selbst schon fängt: die Zusicherung lautet, dass eine
     # **scheiternde Reparatur** nie schlimmer ist als keine. Wer sie ersetzt (Test, Fork,
     # späterer Umbau), soll diese Zusicherung nicht brechen können.
@@ -155,7 +236,11 @@ def _einmal_wiederholen(versuch, repo, entsperren):
     if not geraeumt:
         return Verbuchung(False, err, out, wiederholt=False, geraeumt=0)
     ok2, err2, out2 = versuch()
-    return Verbuchung(ok2, err2, out2, wiederholt=True, geraeumt=geraeumt)
+    return Verbuchung(ok2, err2, out2, wiederholt=True, geraeumt=geraeumt,
+                      # ⚠ Auch der geglückte ZWEITE Versuch hinterlässt seine Sperre. Ohne
+                      # diese Zeile wäre die Reparatur genau an den Läufen wirkungslos, die
+                      # sie am nötigsten haben.
+                      nachgeraeumt=_nachraeumen(repo, entsperren) if ok2 else 0)
 
 
 def ruf(repo, args, identitaet=None, entsperren=None):
