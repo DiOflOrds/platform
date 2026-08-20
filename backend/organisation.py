@@ -154,6 +154,57 @@ def modellabweichungen(root):
     return abweichungen, grundmenge, default
 
 
+# SWR-171: Welcher Motor des Besetzungsregisters gehört zu welchem `--provider`?
+# ⚠ Die Zuordnung ist ABSICHTLICH unvollständig und benannt statt geraten. `ollama` heißt
+# in beiden Registern gleich; `claude`/`copilot` heißen im Besetzungsregister `cowork`,
+# und ob ein cowork-Motor einen Claude-Aufruf meint oder einen Menschen an der Tastatur,
+# steht nirgends. Eine erfundene Zeile hier wäre eine Semantik, die im Register nicht
+# steht — derselbe Fehler, den `platform/T-0033` als Option 2 ausdrücklich verworfen hat.
+MOTOR_JE_PROVIDER = {"ollama": "ollama"}
+
+
+def besetzung_mit_motor(root, rolle, einheit, motor):
+    """SWR-171: die Instanz-ID der Besetzung `rolle@einheit` mit diesem Motor ('' wenn keine).
+
+    ⚠⚠ Der Anlass ist die Gegenprobe, die Sprint 26 nicht geplant hatte. `SWR-169` holt das
+    Ollama-Modell aus dem Besetzungsregister und ist in vier Gegenproben belegt — es bekommt
+    Rolle und Einheit zur Laufzeit nur nie die richtigen. `pm/D010` hat den Schnelltakt **je
+    Besetzung** entschieden (`platform/PROB`, `team-mail/MAIL-RED`), `ollama-schnelltakt.cmd`
+    übergibt aber nur die **Einheit**, und `waehle_ticket` zieht daraufhin das nächste Ticket
+    **jeder** aktiven KI-Rolle. Gezogen wurden `CM@platform` und `DEV@team-mail`.
+
+    > **Und `DEV@team-mail` steht im Besetzungsregister überhaupt nicht.** Der Tick hat also
+    > nicht nur das falsche Modell angefragt, sondern Arbeit an eine Instanz gegeben, die
+    > niemand besetzt hat. Der leere Modellname war die Folge und nicht die Ursache.
+
+    ⚠ Deshalb prüft diese Funktion den **Motor** und nicht das Modell: ein fehlendes Modell
+    ist ein Konfigurationsloch, eine fehlende Besetzung ist eine Zuständigkeitsverletzung.
+    Sie ist auch dann richtig beantwortet, wenn irgendwann jedes Register ein Modell trägt.
+    """
+    besetzungen = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {}) or {}
+    rolle_ob = (rolle or "").upper()
+    for instanz, b in sorted(besetzungen.items()):
+        b = b or {}
+        if (b.get("rolle") or "").upper() != rolle_ob:
+            continue
+        if (b.get("einheit") or "") != einheit:
+            continue
+        if (b.get("motor") or "") != motor:
+            continue
+        return instanz
+    return ""
+
+
+def besetzungen_mit_motor(root, motor):
+    """Alle Instanzen mit diesem Motor — die Grundmenge zur Prüfung von `besetzung_mit_motor`.
+
+    ⚠ Ohne sie wäre eine Prüfung, die das Register gar nicht liest, von einer, die keine
+    Besetzung findet, nicht zu unterscheiden (SWR-128/165).
+    """
+    besetzungen = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {}) or {}
+    return sorted(i for i, b in besetzungen.items() if ((b or {}).get("motor") or "") == motor)
+
+
 def katalog(root):
     """Auswahllisten fürs Formular: Rollen (Bauplan-Registry), Motoren, Takte, Stati."""
     rollen = _lade_yaml(os.path.join(root, "process", "roles", "registry.yaml")).get("roles", {})

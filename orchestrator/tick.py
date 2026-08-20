@@ -80,14 +80,28 @@ def lade_registry(prozess_repo):
         return yaml.safe_load(f)["roles"]
 
 
-def waehle_ticket(tickets, registry, nur_ticket=None):
-    """Nächstes bearbeitbares Ticket: open, Blocker done, Rolle aktiv+ki, nach Prio/ID."""
+def waehle_ticket(tickets, registry, nur_ticket=None, nur_rolle=None):
+    """Nächstes bearbeitbares Ticket: open, Blocker done, Rolle aktiv+ki, nach Prio/ID.
+
+    ⚠ SWR-172: `nur_rolle` schränkt die Auswahl auf **eine** Rolle ein. `pm/D010` hat den
+    Schnelltakt je **Besetzung** entschieden (`platform/PROB`, `team-mail/MAIL-RED`) —
+    ausdrückbar war bisher nur die Einheit, und deshalb ist die Rolle auf dem Weg von der
+    Entscheidung zum Aufruf verloren gegangen (`platform/T-0033`).
+
+    ⚠ Der Schalter ist gebaut und **nicht umgelegt**: `ollama-schnelltakt.cmd` bleibt
+    unverändert, bis der Auftraggeber entschieden hat (`platform/T-0035`). Gemessen am
+    Bestand vom 2026-08-20 trägt **kein einziges** der 14 offenen Tickets eine Rolle mit
+    ollama-Besetzung — die Einschränkung wäre heute eine Abschaltung, und das ist eine
+    Aussage über seine Automatik, nicht über unseren Code.
+    """
     nach_id = {t["id"]: t for t in tickets if t.get("id")}
     kandidaten = []
     for t in tickets:
         if t.get("status") != "open":
             continue
         if nur_ticket and t.get("id") != nur_ticket:
+            continue
+        if nur_rolle and (t.get("rolle") or "").upper() != nur_rolle.upper():
             continue
         rolle = (t.get("rolle") or "").upper()
         r = registry.get(rolle)
@@ -211,7 +225,37 @@ def setze_status(projekt_repo, ticket_id, neu, extra_felder=None, notiz=None):
 
 # ---------- Tick ----------
 
-def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
+def besetzungsbefund(repos, rolle, einheit, provider):
+    """SWR-171: passt die gezogene Rolle zum erzwungenen Provider? '' = ja, sonst der Befund.
+
+    ⚠⚠ Gemessen am Lauf vom 2026-08-20 um 21:30: `SWR-169` war richtig gebaut und in vier
+    Gegenproben belegt — **alle vier prüften die Auflösungsfunktion, keine ihren Aufrufer.**
+    Im Betrieb bekam sie `CM@platform` und `DEV@team-mail` statt `PROB@platform` und
+    `MAIL-RED@team-mail`, lieferte korrekt `''` und fiel auf den Guardrails-Default zurück.
+    Die Anforderung war grün, die Wirkung war null.
+
+    > **Eine Gegenprobe, die die Funktion prüft und nicht ihren Aufrufer, misst die Hälfte,
+    > die man selbst geschrieben hat.**
+
+    ⚠ Geprüft wird die **Besetzung**, nicht der Modellname: `DEV@team-mail` gibt es im
+    Register überhaupt nicht. Ein Tick, der dieser Instanz Arbeit gibt, ist auch mit
+    richtigem Modell falsch.
+
+    ⚠ Ohne `--provider` greift die Prüfung nicht — dann gilt die Provider-Kette der Rolle
+    aus `registry.yaml`, und über die hat das Besetzungsregister nichts zu sagen.
+    """
+    motor = organisation.MOTOR_JE_PROVIDER.get(provider or "")
+    if not motor:
+        return ""
+    if organisation.besetzung_mit_motor(repos, rolle, einheit, motor):
+        return ""
+    besetzt = organisation.besetzungen_mit_motor(repos, motor)
+    return (f"Rolle {rolle} hat in Einheit '{einheit}' keine Besetzung mit motor "
+            f"'{motor}' (process/roles/besetzungen.yaml). Mit motor '{motor}' besetzt: "
+            f"{', '.join(besetzt) or 'keine'}.")
+
+
+def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None, nur_rolle=None):
     prozess_repo = os.path.join(repos, "process")
     projekt_repo = os.path.join(repos, projekt)
     # SWR-028/ADR-004: Projekt gegen die Discovery-Konvention validieren.
@@ -229,9 +273,11 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
         print("ABBRUCH — Board invalide:", *probleme, sep="\n  ")
         return 1
 
-    t = waehle_ticket(tickets, registry, nur_ticket)
+    t = waehle_ticket(tickets, registry, nur_ticket, nur_rolle)
     if not t:
-        print("Kein bearbeitbares Ticket (open, Blocker erledigt, Rolle aktiv). Tick beendet.")
+        zusatz = f", Rolle {nur_rolle.upper()}" if nur_rolle else ""
+        print(f"Kein bearbeitbares Ticket (open, Blocker erledigt, Rolle aktiv{zusatz}). "
+              f"Tick beendet.")
         return 0
 
     rolle = t["rolle"].upper()
@@ -239,6 +285,16 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
     if provider and route == "llm":
         kette_oder_typ = [provider]  # CLI-Override, z.B. --provider session
     print(f"Gewählt: {t['id']} '{t['titel']}' — Rolle {rolle}, Route: {route} ({kette_oder_typ})")
+
+    # SWR-171: VOR dem Gateway-Aufruf, vor dem Branch und vor jedem Statuswechsel.
+    # ⚠ Rückgabe 0 und nicht 1: der Lauf ist nicht kaputt, es gibt für diese Besetzung
+    # nichts zu tun — dieselbe Kategorie wie „Kein bearbeitbares Ticket" darüber. Das
+    # Ergebniswort trägt den Grund, wie SWR-167 es für den Fehlerfall verlangt.
+    befund = besetzungsbefund(repos, rolle, projekt, provider)
+    if befund:
+        print(f"Tick OHNE ERGEBNIS (Besetzung): {befund} Kein Gateway-Aufruf, kein Branch, "
+              f"kein Statuswechsel — {t['id']} bleibt unangetastet.")
+        return 0
 
     if dry_run:
         print("Dry-Run: keine Ausführung, keine Änderungen.")
@@ -370,6 +426,8 @@ def main():
     p.add_argument("--projekt", default="p0")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--ticket", help="nur dieses Ticket betrachten")
+    p.add_argument("--rolle", help="SWR-172: nur Tickets dieser Rolle ziehen — die Besetzung, "
+                                   "die pm/D010 entschieden hat (z.B. PROB)")
     p.add_argument("--provider", choices=["claude", "copilot", "ollama", "session"],
                    help="Provider-Kette übersteuern (z.B. session für Prompt-Austausch)")
     p.add_argument("--no-preflight", action="store_true",
@@ -382,7 +440,7 @@ def main():
             print("Tick abgebrochen: Preflight hat Befunde (T-0024). "
                   "--no-preflight nur für Diagnose.")
             sys.exit(1)
-    sys.exit(tick(wurzel, a.projekt, a.dry_run, a.ticket, a.provider))
+    sys.exit(tick(wurzel, a.projekt, a.dry_run, a.ticket, a.provider, a.rolle))
 
 
 if __name__ == "__main__":

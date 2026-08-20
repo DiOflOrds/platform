@@ -1,16 +1,22 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-20 · Tickets: 33 · davon wiederkehrend: 1
+Stand: 2026-08-20 · Tickets: 34 · davon wiederkehrend: 1
 
 
 ## open (4)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
-| [T-0033](tickets/T-0033.md) | SWR-169 greift zur Laufzeit nicht: der Schnelltakt startet die EINHEIT, D010 hat die BESETZUNG entschieden — der Rollenname geht auf dem Weg verloren | problem | einmalig | dev | Team | kritisch | 27 | — |
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0027](tickets/T-0027.md) | Der Abschlussbericht hat für seine EIGENEN Kennzahlen keine Prüfung — fünfmal in sechs Sprints eine fortgeschriebene statt einer gemessenen Zahl | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0030](tickets/T-0030.md) | Kommentare an Aufgaben — Verlauf im Ticket-Rumpf wie im Team-Chat, ein Schreibweg, kein zweiter Speicher | change-request | einmalig | dev | Team | hoch | 25 | — |
+| [T-0035](tickets/T-0035.md) | Der Schnelltakt hat nichts zu tun: 0 von 14 offenen Tickets tragen eine ollama-besetzte Rolle — bleibt er an, wird er umgestellt, oder wird er abgeschaltet? | decision-request | einmalig | pl | MENSCH | hoch | 27 | — |
+
+## in_progress (1)
+
+| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|---|
+| [T-0033](tickets/T-0033.md) | SWR-169 greift zur Laufzeit nicht: der Schnelltakt startet die EINHEIT, D010 hat die BESETZUNG entschieden — der Rollenname geht auf dem Weg verloren | problem | einmalig | dev | Team | kritisch | 27 | — |
 
 ## done (29)
 
