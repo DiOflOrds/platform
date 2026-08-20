@@ -12,13 +12,7 @@ Stand: 2026-08-20 · Tickets: 35 · davon wiederkehrend: 1
 | [T-0034](tickets/T-0034.md) | Gelernt ohne Vertreter: eine Lehre, deren Gegenmaßnahme nie ein Ticket und nie eine Prüfung geworden ist, hat vierzehn Tage lang null Wirkung gehabt | problem | einmalig | coach | Team | hoch | 27 | — |
 | [T-0035](tickets/T-0035.md) | Der Schnelltakt hat nichts zu tun: 0 von 14 offenen Tickets tragen eine ollama-besetzte Rolle — bleibt er an, wird er umgestellt, oder wird er abgeschaltet? | decision-request | einmalig | pl | MENSCH | hoch | 27 | — |
 
-## in_review (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0027](tickets/T-0027.md) | Der Abschlussbericht hat für seine EIGENEN Kennzahlen keine Prüfung — fünfmal in sechs Sprints eine fortgeschriebene statt einer gemessenen Zahl | problem | einmalig | cm | Team | hoch | 0 | — |
-
-## done (30)
+## done (31)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -46,6 +40,7 @@ Stand: 2026-08-20 · Tickets: 35 · davon wiederkehrend: 1
 | [T-0023](tickets/T-0023.md) | Cockpit: Sprint-Kapitel statt einer Tabelle, und die Sprintnummer an der letzten Session (Brief pm/N-0043) | task | einmalig | dev | Team | hoch | 0 | — |
 | [T-0024](tickets/T-0024.md) | Eine Zusicherung nagelt ein Datum an ein Verzeichnis, das von selbst wächst — rot seit 2026-08-17 22:22, gefunden am 2026-08-20 | problem | einmalig | test | Team | hoch | 0 | — |
 | [T-0025](tickets/T-0025.md) | Wir messen, ob ein Lauf sauber endete — nicht, ob der nächste jemals anfing: 60,2 Stunden Pause bei 60 Minuten Takt, unbemerkt | problem | einmalig | cm | Team | hoch | 0 | — |
+| [T-0027](tickets/T-0027.md) | Der Abschlussbericht hat für seine EIGENEN Kennzahlen keine Prüfung — fünfmal in sechs Sprints eine fortgeschriebene statt einer gemessenen Zahl | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0028](tickets/T-0028.md) | Orga-Rework: Rollen-Detail und Besetzungs-Konfiguration im HMI (organisation.py, /api/organisation/*, organisation.html v2) | change-request | einmalig | dev | Team | hoch | 24 | — |
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0015](tickets/T-0015.md) | SWR-123 räumt Git-Locks per unlink — auf dem Cowork-Mount ist das verboten, rename gelingt | problem | einmalig | cm | Team | mittel | 0 | — |
