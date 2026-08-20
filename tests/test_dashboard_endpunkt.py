@@ -1,14 +1,23 @@
-"""SWR-135 (projects/p11/T-0010): der Dashboard-Endpunkt — lesend, ohne zweiten Weg.
+"""SWR-135 (projects/p11/T-0010) — nach dem Rückbau von Sprint 24 die LAYOUT-Hälfte.
 
-Das Ticket war **viermal** verschoben und dem Auftraggeber in Sprint 11 zugesagt. Der
-Anlass zum Bauen ist eine Messung (`pm/T-0068`, zwei Aufnahmen seines 4K-Bildschirms):
-drei Projektkacheln ohne Scrollen sichtbar, links und rechts je rund ein Fuenftel der
-Breite leer.
+Die Anforderung hatte zwei Hälften. Die **Kachelhälfte** (ein Endpunkt, der aus
+`cockpit_alle` Kompaktkacheln formt) ist in Sprint 17 als Dopplung zum Cockpit gerügt und
+in ihrer Anzeige entfernt worden (SWR-148); `p11/T-0014` hat 2026-08-17 entschieden, auch
+den Endpunkt zurückzubauen (Option B), und `p11/T-0015` hat es in Sprint 24 ausgeführt.
 
-⚠ Die zentrale Zusicherung ist **nicht**, dass ein Endpunkt Daten liefert, sondern dass er
-sie **nirgendwo anders holt** — Risiko R1 aus dem P11-Sprint-0-Plan und `quelle.regel` des
-Widget-Vertrags (SWR-092): *driftet ein Widget vom Cockpit ab, ist das ein Fehler des
-Widgets.*
+Was bleibt und hier geprüft wird:
+
+* die **Zustandsregel** `_zustand` — sie war nie an den Endpunkt gebunden und trägt seit
+  SWR-146 den `zustaende`-Block des Cockpits;
+* `vertrag_version` — sie wird von `/api/widgets` gelesen;
+* die **Layout-Hälfte**: `main.breit`, das Abräumen der Breite in `zeige()`, der eigene
+  Reiter, der benannte leere Fall;
+* und ⚠ ein **Wächter gegen die Rückkehr** der Kachelhälfte.
+
+⚠ **Die drei Prüfklassen des Endpunkts sind nicht gelöscht, sondern umgedreht.** Dieselbe
+Bauform, mit der SWR-148 den Test zu `kompaktKachel` umgedreht hat: eine Dopplung, die
+einmal entfernt wurde, kommt als Verbesserung wieder („das Dashboard zeigt jetzt auch die
+Projekte"), und eine Regel, die keine Prüfung vertritt, hält keine drei Sprints (SWR-125).
 """
 import os
 import sys
@@ -55,74 +64,77 @@ class ZustandTest(unittest.TestCase):
                              repr(wert))
 
 
-class KeinZweiterErhebungswegTest(unittest.TestCase):
-    """⚠ Risiko R1 / SWR-092: `dashboard` liest AUSSCHLIESSLICH aus `cockpit_alle`."""
+class RueckbauTest(unittest.TestCase):
+    """⚠ Der Wächter gegen die RÜCKKEHR der Kachelhälfte (`p11/T-0015`, Sprint 24).
 
-    def test_ohne_cockpit_bleibt_nichts_uebrig(self):
-        """Die Attrappe ersetzt die EINZIGE erlaubte Quelle — dann muss alles leer sein.
+    Bis Sprint 23 standen hier drei Klassen — `KeinZweiterErhebungswegTest` (die Attrappe,
+    die belegte, dass `dashboard` nirgendwo anders liest), `BestandTest` (dieselbe Zusage
+    am echten Bestand) und der `KACHEL_FELDER`-Teil von `VertragTest`. Sie prüften einen
+    Endpunkt, den `p11/T-0014` mit **Option B** zum Rückbau bestimmt hat.
 
-        ⚠ Das ist die eigentliche Zusicherung des Tickets. Liefe irgendwo im Endpunkt eine
-        eigene Ticket-Lesung oder ein git-Aufruf, kaeme hier trotz leerer Quelle etwas
-        heraus. Ein Test, der nur prueft „es kommen Kacheln", haette den zweiten Weg nicht
-        bemerkt.
+    > **Ein gelöschter Test hinterlässt keine Lücke, die jemand sieht. Ein umgedrehter
+    > schon: er wird rot, wenn das Entfernte zurückkommt.**
+    """
+
+    def test_der_endpunkt_ist_weg_und_kommt_nicht_wieder(self):
+        """`aggregation.dashboard` und `KACHEL_FELDER` sind entfernt."""
+        self.assertFalse(hasattr(aggregation, "dashboard"),
+                         "aggregation.dashboard ist zurück — das ist die Kachelhälfte, "
+                         "die p11/T-0014 mit Option B zurückgebaut hat")
+        self.assertFalse(hasattr(aggregation, "KACHEL_FELDER"),
+                         "KACHEL_FELDER ist zurück — die Feldliste der Kompaktkachel")
+
+    def test_die_route_ist_weg(self):
+        """⚠ Zwei Stellen, zwei Prüfungen: das Modul kann leer sein und die Route stehen.
+
+        Eine Route, die auf eine entfernte Funktion zeigt, stirbt erst beim Aufruf — und
+        das ist der Leser und nicht der Test.
         """
-        echt = aggregation.cockpit_alle
-        aggregation.cockpit_alle = lambda root, heute=None, jetzt=None: {
-            "projekte": [], "organisation": None}
-        try:
-            d = aggregation.dashboard(WURZEL)
-        finally:
-            aggregation.cockpit_alle = echt
-        self.assertEqual(d["kacheln"], [])
-        self.assertIsNone(d["organisation"])
+        with open(os.path.join(_HIER, "..", "backend", "server.py"),
+                  encoding="utf-8") as f:
+            server = f.read()
+        treffer = [z.strip() for z in server.splitlines()
+                   if '"/api/dashboard"' in z and not z.strip().startswith("#")]
+        self.assertEqual(treffer, [], f"/api/dashboard ist wieder verdrahtet: {treffer}")
 
-    def test_jede_kachel_stammt_aus_der_quelle(self):
-        """Attrappe mit EINEM erfundenen Eintrag — genau er muss ankommen, sonst nichts."""
-        echt = aggregation.cockpit_alle
-        aggregation.cockpit_alle = lambda root, heute=None, jetzt=None: {
-            "projekte": [{"projekt": "attrappe", "beschreibung": "nur im Test",
-                          "gruppe": "aktiv", "status": "aktiv",
-                          "aufgaben_offen": 0, "briefe_offen": 2, "team": None}],
-            "organisation": {"wartet_auf_mensch_gesamt": 0}}
-        try:
-            d = aggregation.dashboard(WURZEL)
-        finally:
-            aggregation.cockpit_alle = echt
-        self.assertEqual([k["projekt"] for k in d["kacheln"]], ["attrappe"])
-        felder = d["kacheln"][0]["felder"]
-        self.assertEqual(felder["briefe_offen"],
-                         {"wert": 2, "zustand": aggregation.ZUSTAND_WERT})
-        self.assertEqual(felder["aufgaben_offen"]["zustand"],
-                         aggregation.ZUSTAND_ECHTE_NULL)
-        self.assertEqual(felder["team"]["zustand"],
-                         aggregation.ZUSTAND_NICHT_GELIEFERT)
+    def test_GEGENPROBE_die_zustandsregel_ist_NICHT_mitgenommen_worden(self):
+        """⚠⚠ Ohne diese Gegenprobe wäre der Wächter oben auch bei einem Kahlschlag grün.
 
-    def test_fehlendes_feld_der_quelle_ist_nicht_geliefert(self):
-        """Ein Feld, das die Quelle gar nicht fuehrt, wird nicht erfunden (B038)."""
-        echt = aggregation.cockpit_alle
-        aggregation.cockpit_alle = lambda root, heute=None, jetzt=None: {
-            "projekte": [{"projekt": "kahl"}], "organisation": None}
-        try:
-            d = aggregation.dashboard(WURZEL)
-        finally:
-            aggregation.cockpit_alle = echt
-        for name in aggregation.KACHEL_FELDER:
-            self.assertEqual(d["kacheln"][0]["felder"][name]["zustand"],
-                             aggregation.ZUSTAND_NICHT_GELIEFERT, name)
+        `_zustand` und `zustaende_von` sehen aus wie Dashboard-Code und sind es nicht:
+        `zustaende_von` trägt seit SWR-146 den `zustaende`-Block **des Cockpits**. Wer sie
+        beim Aufräumen mitnimmt, reißt einer abgenommenen Anforderung die Grundlage weg —
+        und `test_der_endpunkt_ist_weg` würde das mit einem grünen Haken quittieren.
+        """
+        self.assertTrue(hasattr(aggregation, "_zustand"))
+        self.assertTrue(hasattr(aggregation, "zustaende_von"))
+        eintrag = {"letzte_baseline": None, "team": {"letzter_digest": ""}}
+        z = aggregation.zustaende_von(eintrag)
+        self.assertEqual(z["letzte_baseline"], aggregation.ZUSTAND_NICHT_GELIEFERT)
+        self.assertEqual(z["team.letzter_digest"], aggregation.ZUSTAND_ECHTE_NULL)
+
+    def test_GEGENPROBE_der_reiter_und_seine_widgets_bleiben(self):
+        """Der Rückbau nimmt den Endpunkt, nicht die Ansicht — `/api/widgets` bleibt."""
+        with open(os.path.join(_HIER, "..", "backend", "server.py"),
+                  encoding="utf-8") as f:
+            server = f.read()
+        self.assertIn('"/api/widgets"', server)
 
 
 class VertragTest(unittest.TestCase):
-    """⚠ Der Endpunkt fuegt KEIN Feld hinzu — er ordnet vorhandene (B066)."""
+    """Die Vertragsversion wird GELESEN und nicht eingetragen.
+
+    ⚠ Bis Sprint 23 stand hier zusätzlich `test_jedes_kachelfeld_steht_im_vertrag` — der
+    Nachweis, dass der Endpunkt kein Feld erfindet. Er ist mit `KACHEL_FELDER` entfallen
+    (`p11/T-0015`); was er schützte, ist mit dem Endpunkt weg. Die Gegenrichtung — dass
+    KACHEL_FELDER nicht zurückkommt — steht in `RueckbauTest`.
+    """
 
     def setUp(self):
         if not os.path.exists(VERTRAG):
             self.skipTest("Widget-Vertrag nicht vorhanden")
-        self.namen = set()
-        with open(VERTRAG, encoding="utf-8") as f:
-            for zeile in f:
-                z = zeile.strip()
-                if z.startswith("- name:"):
-                    self.namen.add(z.split(":", 1)[1].strip().strip('"\''))
+        # ⚠ Der Zeilenscanner über `- name:` ist mit `test_jedes_kachelfeld_steht_im_vertrag`
+        # entfallen; ein setUp, das etwas einliest, das keine Methode mehr liest, wäre
+        # genau die stille Altlast, gegen die dieser Rückbau geführt wurde.
         # SWR-146: die Version wird gegen die DATEI verglichen und nicht gegen ein
         # Literal — mit einem anderen Verfahren als `vertrag_version` (YAML statt
         # Zeilenscanner), damit zwei unabhaengige Lesungen sich bestaetigen.
@@ -133,16 +145,6 @@ class VertragTest(unittest.TestCase):
             return
         with open(VERTRAG, encoding="utf-8") as f:
             self.vertrag = yaml.safe_load(f)
-
-    def test_jedes_kachelfeld_steht_im_vertrag(self):
-        """Sonst waere der Endpunkt ein Vertragsbruch — genau das, was B066 prueft.
-
-        ⚠ Ohne diesen Test waere „kein neues Feld" eine Absicht im Docstring. Der Vertrag
-        ist die einzige Stelle, die die Feldliste fuehrt; ein Endpunkt, der daneben ein
-        eigenes Feld erfindet, macht sie zur zweiten Liste (B033).
-        """
-        fremd = [n for n in aggregation.KACHEL_FELDER if n not in self.namen]
-        self.assertEqual(fremd, [], f"Felder ohne Vertragseintrag: {fremd}")
 
     def test_die_vertragsversion_wird_gelesen_nicht_eingetragen(self):
         """Eine Konstante im Code wuerde beim naechsten Bump still falsch (B033).
@@ -169,37 +171,6 @@ class VertragTest(unittest.TestCase):
 
     def test_fehlender_vertrag_liefert_leer_statt_einer_ausnahme(self):
         self.assertEqual(aggregation.vertrag_version("/gibt/es/nicht"), "")
-
-
-class BestandTest(unittest.TestCase):
-    """Der ECHTE Bestand — die Lehre aus SWR-128: konstruierte Faelle genuegen nicht."""
-
-    def setUp(self):
-        if not os.path.isdir(os.path.join(WURZEL, "pm", "tickets")):
-            self.skipTest("Bestand nicht vorhanden (isolierte Testumgebung)")
-        self.d = aggregation.dashboard(WURZEL)
-
-    def test_es_gibt_genauso_viele_kacheln_wie_projekte(self):
-        """Keine Kachel geht verloren, keine kommt hinzu."""
-        self.assertEqual(len(self.d["kacheln"]),
-                         len(aggregation.projekte(WURZEL)))
-
-    def test_beide_zustaende_kommen_im_bestand_wirklich_vor(self):
-        """⚠ Die Unterscheidung wird am echten Bestand nachgewiesen, nicht behauptet.
-
-        `echte_null` und `nicht_geliefert` muessen beide auftreten — kaeme nur einer vor,
-        waere die Regel im Bestand ungeprueft und nur an Attrappen gruen. Genau diese
-        Luecke hat SWR-128 aufgedeckt.
-        """
-        zustaende = {f["zustand"] for k in self.d["kacheln"]
-                     for f in k["felder"].values()}
-        self.assertIn(aggregation.ZUSTAND_ECHTE_NULL, zustaende)
-        self.assertIn(aggregation.ZUSTAND_NICHT_GELIEFERT, zustaende)
-
-    def test_die_organisation_ist_dieselbe_wie_im_cockpit(self):
-        """Dashboard und Cockpit duerfen nicht verschieden zaehlen (B033)."""
-        self.assertEqual(self.d["organisation"],
-                         aggregation.cockpit_alle(WURZEL)["organisation"])
 
 
 class AnsichtTest(unittest.TestCase):
@@ -252,10 +223,12 @@ class AnsichtTest(unittest.TestCase):
         („das Dashboard zeigt jetzt auch die Projekte"). Dieselbe Bauart wie beim Altbestand
         eine Methode weiter unten.
 
-        Was bleibt: der Endpunkt `/api/dashboard` und die Regelfunktionen sind unveraendert
-        geprueft. Ob der Endpunkt ohne Leser bestehen bleibt, entscheidet
-        `projects/p11/T-0014` — eine abgenommene Anforderung wird nicht im Vorbeigehen
-        geloescht.
+        ⚠ **Sprint 24 hat die zweite Haelfte nachgezogen.** Bis dahin stand hier, der
+        Endpunkt `/api/dashboard` bleibe unveraendert geprueft und ueber sein Schicksal
+        entscheide `projects/p11/T-0014`. Die Entscheidung ist am 2026-08-17 mit **Option
+        B** gefallen und in `p11/T-0015` ausgefuehrt: der Endpunkt ist weg. Der Waechter
+        dagegen steht in `RueckbauTest`, nicht hier — diese Methode verantwortet die
+        **Ansicht**.
         """
         self.assertNotIn("function kompaktKachel", self.app,
                          "die Projektkachel des Dashboards ist zurueck — das ist die "

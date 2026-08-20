@@ -913,13 +913,6 @@ ZUSTAND_WERT = "wert"
 ZUSTAND_ECHTE_NULL = "echte_null"
 ZUSTAND_NICHT_GELIEFERT = "nicht_geliefert"
 
-#: Felder der Kompaktkachel, in Anzeigereihenfolge. ⚠ **Jeder Name steht im
-#: Widget-Vertrag** (`team-dashboard/vertrag/widget-vertrag-v2.yaml`) — `dashboard` fügt
-#: **kein** Feld hinzu, es ordnet vorhandene. Ein Test hält das gegen den Vertrag.
-KACHEL_FELDER = ["aufgaben_offen", "briefe_offen", "unterminiert", "tickets_gesamt",
-                 "letzte_baseline", "team"]
-
-
 def _zustand(wert):
     """Welcher der drei Vertragszustände liegt für diesen Wert vor? (SWR-096/108)
 
@@ -984,55 +977,17 @@ def zustaende_von(eintrag):
     return zustaende
 
 
-def dashboard(root, heute=None, jetzt=None):
-    """SWR-135 (projects/p11/T-0010): Kompaktkacheln für das Widget-Dashboard.
-
-    **Lesend, und ohne zweiten Erhebungsweg.** Diese Funktion ruft `cockpit_alle` und
-    formt um — sie liest **kein** Ticket, ruft **kein** git, öffnet **keine** Datei. Das ist
-    nicht Sparsamkeit, sondern Risiko R1 aus dem Sprint-0-Plan von P11 und die Regel
-    `quelle.regel` des Widget-Vertrags (SWR-092): *driftet ein Widget vom Cockpit ab, ist
-    das ein Fehler des Widgets.* Der Test dazu ersetzt `cockpit_alle` durch eine Attrappe
-    und prüft, dass **nichts** übrig bleibt, was nicht von dort kam.
-
-    **Was hinzukommt, ist keine Information, sondern deren Zustand.** Je Feld der
-    Kompaktkachel wird `{wert, zustand}` geliefert, `zustand` aus
-    `{wert, echte_null, nicht_geliefert}`. ⚠ Diese Unterscheidung liefert `cockpit` seit
-    SWR-108 (`team: null` vs. `briefe_offen: 0`), und **ausgewertet hat sie bisher
-    niemand** — die Anzeige entschied selbst, was ein leeres Feld bedeutet, und damit gäbe
-    es so viele Antworten wie Leser (B033).
-
-    **Kein neues Feld.** `KACHEL_FELDER` nennt ausschließlich Namen, die der
-    Widget-Vertrag führt; ein Test hält die Liste gegen die Vertragsdatei. Ein Endpunkt,
-    der ein eigenes Feld erfindet, hätte den Vertrag gebrochen, den B066 gerade erst
-    prüfbar gemacht hat.
-
-    Rückgabe:
-        `{"kacheln": [{projekt, beschreibung, gruppe, status, felder: {name: {...}}}],
-          "organisation": {...}, "vertrag": "2.4"}`
-    """
-    roh = cockpit_alle(root, heute, jetzt)
-    kacheln = []
-    for eintrag in roh["projekte"]:
-        felder = {}
-        for name in KACHEL_FELDER:
-            wert = eintrag.get(name)
-            felder[name] = {"wert": wert, "zustand": _zustand(wert)}
-        kacheln.append({
-            # Diese vier tragen die Kachel selbst und sind im Vertrag `pflicht: true` —
-            # sie brauchen keine Zustandsangabe, weil sie immer belegt sind.
-            "projekt": eintrag.get("projekt"),
-            "beschreibung": eintrag.get("beschreibung"),
-            "gruppe": eintrag.get("gruppe"),
-            "status": eintrag.get("status"),
-            "felder": felder,
-        })
-    return {"kacheln": kacheln,
-            # Der Org-Kopfblock unverändert weitergegeben (SWR-117): dieselbe Quelle wie
-            # im Cockpit, damit Dashboard und Cockpit nicht verschieden zählen.
-            "organisation": roh.get("organisation"),
-            # Die Vertragsversion, gegen die diese Antwort gebaut ist — der Vertrag
-            # verlangt in `pflege`, dass ein Widget sie nennt.
-            "vertrag": vertrag_version(root)}
+# ⚠ `dashboard()` ist in Sprint 24 ZURÜCKGEBAUT (`projects/p11/T-0015`, Ausführung der
+# Entscheidung `p11/T-0014`, Option B). Sie formte die Kompaktkacheln von SWR-135 aus
+# `cockpit_alle`; ihre Anzeigehälfte ist seit SWR-148 entfernt (der Auftraggeber hat die
+# Dopplung zum Cockpit gerügt), und `p11/T-0011` hat die Widget-Konfiguration auf
+# `/api/widgets` gebaut, nicht hierauf. Mit dem Rückbau entfällt auch `KACHEL_FELDER`.
+#
+# ⚠ **`_zustand` und `zustaende_von` bleiben** und sind ausdrücklich NICHT Teil des
+# Rückbaus: `zustaende_von` trägt seit SWR-146 den `zustaende`-Block des Cockpits, und
+# `_zustand` ist die eine Herleitung darunter. Wer sie mitnimmt, weil sie „zum Dashboard
+# gehörten", reißt SWR-146 die Grundlage weg — und das ist genau die Sorte Kollateralschaden,
+# derentwegen dieser Rückbau ein eigenes Ticket mit eigener Teststrecke bekommen hat.
 
 
 def vertrag_version(root):

@@ -230,13 +230,12 @@ class Api(BaseHTTPRequestHandler):
                                         "gestartet": GESTARTET})
             if pfad == "/api/cockpit":  # SWR-046 (P3): alle Projekte auf einen Blick
                 return self._json(200, aggregation.cockpit_alle(wurzel))
-            # SWR-135 (projects/p11/T-0010): Kompaktkacheln fürs Widget-Dashboard.
-            # ⚠ Eigene Route und **keine** Erweiterung von `/api/cockpit`: der Widget-
-            # Vertrag prüft seit B066 die Feldliste von `cockpit`, und ein zusätzlicher
-            # Schlüssel dort wäre ein Vertragsbruch. Die Route ist eine andere **Form**
-            # derselben Daten, kein zweiter Erhebungsweg — `dashboard` ruft `cockpit_alle`.
-            if pfad == "/api/dashboard":
-                return self._json(200, aggregation.dashboard(wurzel))
+            # ⚠ `GET /api/dashboard` ist in Sprint 24 ZURÜCKGEBAUT (`projects/p11/T-0015`,
+            # Ausführung der Entscheidung `p11/T-0014`, Option B). Er lieferte die
+            # Kompaktkacheln von SWR-135; seit SWR-148 zeichnet sie niemand mehr, und seit
+            # SWR-151 liest die Widget-Konfiguration `/api/widgets`. Ein Endpunkt ohne
+            # Leser ist keine Reserve, sondern eine Einladung, die Dopplung wieder
+            # einzubauen, die der Auftraggeber gerügt hat.
             # SWR-148 (team-mail/T-0004): die Widgets des Dashboards — Ergebnisse der
             # Teams, nicht Zustaende der Projekte.
             #
