@@ -28,6 +28,11 @@ Am echten Bestand: **ein** `git log` je Repo über `tickets/` kostet zusammen ru
 Aufruf je Datei wären mehrere hundert — deshalb ein Aufruf je Repo, und deshalb war
 „teuer" als Verschiebungsgrund nicht haltbar, sobald man nachgesehen hat.
 
+⚠ **Sprint 23 (SWR-162): aus 10 s sind rund 36 s geworden**, weil der Pfadfilter jetzt
+jede Tiefe abdeckt. Die billige Fassung hatte das Sammel-Repo `projects` (p10/p11/p12)
+drei Sprints lang **gar nicht angesehen** — *eine Prüfung, die zwei Drittel prüft, ist
+nicht zwei Drittel so gut, sie ist grün.*
+
 Nutzung:
     python uebergang_historie.py --repos <wurzel>
 """
@@ -188,10 +193,18 @@ def status_wechsel(repo):
     # wieder unsichtbar. `:(glob)**/tickets/*` sagt ausdrücklich „in jeder Tiefe".
     #
     # ⚠⚠ Der erste Entwurf liess den Filter GANZ weg und behauptete im Kommentar, das
-    # koste „rund 2 s". Das war **geschätzt und danebengelegt**; nachgemessen kostet der
-    # Verzicht je Repo 0,4–2,9 s MEHR (`platform` 7,68 s statt 4,75 s). Der Filter ist
-    # also nicht nur richtiger, sondern schneller — und die Behauptung im Kommentar war
-    # genau die Bauart, gegen die `platform/T-0027` aufgemacht wurde.
+    # koste „rund 2 s". Das war **geschätzt und danebengelegt** — der sechste Beleg für
+    # `platform/T-0027`, im selben Lauf, in dem das Ticket aufgemacht wurde.
+    #
+    # ⚠ Nachgemessen am echten Bestand, `platform` allein: `tickets/` **3,24 s** ·
+    # `:(glob)**/tickets/*` **4,87 s** · ohne jeden Filter **7,68 s**. Über alle 17 Repos
+    # steigt der Gesamtlauf dieser Prüfung damit von rund **10 s** auf rund **36 s**.
+    #
+    # ⚠ **Das ist teurer, und es wird trotzdem bezahlt.** Die billige Fassung hat drei
+    # Sprints lang ein Drittel des Bestands nicht angesehen: *eine Prüfung, die zwei
+    # Drittel prüft, ist nicht zwei Drittel so gut, sie ist grün.* Der Preflight ohne
+    # Tests wächst damit von rund 60 s auf rund 85 s — genannt, damit die nächste
+    # Beschleunigung weiss, was sie aufgibt.
     #
     # ⚠ Zusätzlich wird am Dateinamen gefiltert: ein Pfadmuster ist eine Vorauswahl, die
     # Zusicherung über den Gegenstand steht in `_IST_TICKET`.
