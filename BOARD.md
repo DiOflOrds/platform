@@ -12,19 +12,14 @@ Stand: 2026-08-20 · Tickets: 34 · davon wiederkehrend: 1
 | [T-0030](tickets/T-0030.md) | Kommentare an Aufgaben — Verlauf im Ticket-Rumpf wie im Team-Chat, ein Schreibweg, kein zweiter Speicher | change-request | einmalig | dev | Team | hoch | 25 | — |
 | [T-0035](tickets/T-0035.md) | Der Schnelltakt hat nichts zu tun: 0 von 14 offenen Tickets tragen eine ollama-besetzte Rolle — bleibt er an, wird er umgestellt, oder wird er abgeschaltet? | decision-request | einmalig | pl | MENSCH | hoch | 27 | — |
 
-## in_review (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0033](tickets/T-0033.md) | SWR-169 greift zur Laufzeit nicht: der Schnelltakt startet die EINHEIT, D010 hat die BESETZUNG entschieden — der Rollenname geht auf dem Weg verloren | problem | einmalig | dev | Team | kritisch | 27 | — |
-
-## done (29)
+## done (30)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0029](tickets/T-0029.md) | Der Preflight blockiert auf Befunde, die niemand mehr beheben kann — 83 abgebrochene Push-Läufe in drei Tagen und 12 Ticks, die nie liefen | problem | einmalig | cm | Team | kritisch | 25 | — |
 | [T-0031](tickets/T-0031.md) | Der Tick meldet „abgeschlossen“, wenn das Gateway `status=fehler` liefert — und er kehrt beim zweiten Lauf desselben Tickets nicht auf den Basis-Branch zurück | problem | einmalig | dev | Team | kritisch | 26 | — |
 | [T-0032](tickets/T-0032.md) | Der Guardrails-Default `llama3.1:8b` stoppt jeden Ollama-Tick — das Besetzungsregister trägt seit dem 06.08. `gemma3:27b`, und die Lehre dazu ist vierzehn Tage alt | problem | einmalig | dev | Team | kritisch | 26 | — |
+| [T-0033](tickets/T-0033.md) | SWR-169 greift zur Laufzeit nicht: der Schnelltakt startet die EINHEIT, D010 hat die BESETZUNG entschieden — der Rollenname geht auf dem Weg verloren | problem | einmalig | dev | Team | kritisch | 27 | — |
 | [T-0002](tickets/T-0002.md) | Problem (N-0006): CI-Lauf 'tests' schlug nach dem pm/T-0024-Push fehl — lokal nicht reproduzierbar | problem | einmalig | prob | Team | hoch | 0 | — |
 | [T-0003](tickets/T-0003.md) | CR: CI-Status nach dem Push selbst prüfen — ohne Zugangsdaten (ersetzt den Blick auf die Actions-Seite) | change-request | einmalig | cm | Team | hoch | 0 | — |
 | [T-0004](tickets/T-0004.md) | CR: Ein rotes CI-Ergebnis soll den fehlgeschlagenen Schritt nennen — sonst ist ROT kein Befund, sondern eine Farbe | change-request | einmalig | cm | Team | hoch | 0 | — |
