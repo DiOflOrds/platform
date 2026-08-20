@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(_PLATFORM, "scripts"))
 import board  # noqa: E402
 import preflight as preflight_mod  # noqa: E402  (T-0024: Precondition je Tick)
 from backend import git_schreiben  # noqa: E402  — SWR-134: der eine Schreibweg nach Git
+from backend import organisation  # noqa: E402  — SWR-169: der eine Leser von besetzungen.yaml
 from gateway import core as gateway  # noqa: E402
 
 try:
@@ -113,6 +114,29 @@ def warte_lauf_phase1(t, route, kette, projekt_repo):
     antwort = os.path.join(projekt_repo, "management", "runs", "session-austausch",
                            f"{t['id']}-antwort.md")
     return not os.path.exists(antwort)
+
+
+def schlusszeile(erg, erfolgreich, branch):
+    """SWR-167: Das Ergebniswort folgt dem Ergebnis des Gateways.
+
+    Die alte Fassung war ein unbedingtes `print("Tick abgeschlossen. …")` vor `return 0`
+    — nach Erfolg, nach `wartet` und nach `fehler` gleichlautend. Am 2026-08-20 standen
+    dadurch in allen drei durchgelaufenen Ticks zwei Zeilen übereinander, die einander
+    widersprachen:
+
+        Gateway: status=fehler provider= kosten=0.00 € artefakte=[]
+        Tick abgeschlossen. Review/PR: Branch feature/t-0001-…
+
+    ⚠ „Abgeschlossen" war dabei kein falsches Wort für einen Fehler — es war gar kein Wort
+    über das Ergebnis, sondern eines über das Ende der Funktion. Diese Fassung nennt den
+    Status, den auch die Run-Registry trägt, damit Log und Registry nicht auseinanderlaufen.
+    """
+    if erfolgreich:
+        return f"Tick abgeschlossen. Review/PR: Branch {branch}"
+    if erg.status == "wartet":
+        return f"Tick wartet (status={erg.status}): {erg.meldung or 'ohne Meldung'}"
+    return (f"Tick OHNE ERGEBNIS (status={erg.status}, artefakte=0): "
+            f"{erg.meldung or 'keine Artefakte erzeugt'}")
 
 
 def aufloese_route(t, rollen_eintrag):
@@ -252,10 +276,18 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
         git(projekt_repo, "add", "-A")
         git(projekt_repo, "commit", "-m", f"{t['id']}: Status in_progress (Orchestrator-Tick)")
 
+    # SWR-168: Der Branchname ist aus Ticket-ID und Titel gebildet und damit bei JEDEM
+    # Tick derselbe. Bei einem Dauerauftrag (takt: je-session) ist der zweite Tick nicht
+    # der Sonderfall, sondern der Regelfall — im 15-Minuten-Takt nach 15 Minuten. Der alte
+    # Fallback `checkout <branch>` setzte HEAD dann auf die ALTE Spitze dieses Branches und
+    # damit rückwärts (gemessen am reflog vom 2026-08-20: zwei Commits zurück, main und
+    # Branch divergiert). Deshalb: einen bestehenden Branch auf den aktuellen Stand
+    # nachziehen, statt HEAD auf seinen alten zu ziehen.
     try:
         git(ziel_repo, "checkout", "-b", branch)
     except RuntimeError:
-        git(ziel_repo, "checkout", branch)  # Branch existiert (z.B. 2. Lauf Session-Austausch)
+        # Branch existiert (früherer Tick desselben Tickets, 2. Lauf Session-Austausch).
+        git(ziel_repo, "checkout", "-B", branch)
     try:
         erg = gateway.execute(rolle.lower(), baue_auftrag(t, t.get("repo", projekt)), {
             "arbeitsverzeichnis": ziel_repo,
@@ -263,6 +295,10 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
             "provider_kette": kette_oder_typ,
             "modell_stufe": stufe,
             "aufgaben_typ": t.get("aufgaben_typ", ""),
+            # SWR-169: Das Modell kommt aus dem Besetzungsregister der Rolle — der Stelle,
+            # die der Auftraggeber im HMI pflegt. Leer heißt „nichts gesetzt", nicht „kein
+            # Modell": dann greift der Guardrails-Wert.
+            "modell_name": organisation.modell_der_besetzung(repos, rolle, projekt),
             "ticket": t["id"],
             "guardrails_pfad": guardrails_pfad,
             "registry_pfad": registry_pfad,
@@ -276,7 +312,22 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
             git(ziel_repo, "commit", "-m", f"{t['id']}: {t['titel']} ({rolle}, {erg.provider}, "
                 f"{erg.kosten_eur:.2f} EUR)")
     finally:
+        # SWR-168: Die Rückkehr wird NACHGEPRÜFT statt mit fehler_ok=True verschluckt.
+        # Am 2026-08-20 um 20:15 ist sie stillschweigend misslungen; die Folge war ein
+        # Ergebnis-Commit auf dem Feature-Branch, ein 'in_progress' das auf main stehen
+        # blieb, und ein Preflight, der den Arbeitsbaum las und deshalb 0 meldete.
+        # Was ein Lauf hinterlässt, prüft ab hier der Lauf selbst.
+        # ⚠ Kein `return` in diesem finally: ein return hier würde eine noch fliegende
+        # Ausnahme aus dem try verschlucken. Der Befund wird gemerkt und danach gewertet.
         git(ziel_repo, "checkout", basis_branch, fehler_ok=True)
+        steht_auf = git(ziel_repo, "rev-parse", "--abbrev-ref", "HEAD",
+                        fehler_ok=True).strip()
+
+    if steht_auf != basis_branch:
+        print(f"ABBRUCH — Rückkehr auf '{basis_branch}' misslungen, HEAD steht auf "
+              f"'{steht_auf or 'unbekannt'}'. Ticket und Board werden NICHT "
+              f"fortgeschrieben, damit nichts auf dem Feature-Branch landet (SWR-168).")
+        return 1
 
     # Ticket-/Board-Fortschreibung erst nach Rückkehr auf den Basis-Branch
     # (wichtig, falls Ziel-Repo == Projekt-Repo).
@@ -309,7 +360,7 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None):
             f"{t['id']}: Warte-Lauf Phase 1 — Prompt + Run-Registry, kein Statuswechsel (T-0038)")
     else:
         git(projekt_repo, "commit", "-m", f"{t['id']}: Tick-Ergebnis (Status, Board, Run-Registry)")
-    print("Tick abgeschlossen. Review/PR: Branch", branch)
+    print(schlusszeile(erg, erfolgreich, branch))
     return 0
 
 

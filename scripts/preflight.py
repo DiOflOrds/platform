@@ -29,6 +29,9 @@ import konsole  # noqa: E402  — Kodierung an beiden Enden eines Laufs (platfor
 import js_tests  # noqa: E402  — JS-Teststrecke (SWR-128, ADR-008)
 import sprint_register  # noqa: E402  — Sprintzaehler mit Ende (SWR-136, platform/T-0013)
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from backend import organisation  # noqa: E402  — SWR-170: der eine Leser von besetzungen.yaml
+
 REPOS = ["process", "platform", "p0"]
 
 
@@ -860,6 +863,25 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         print(f"[org] Parkplatz verwaiste-locks: {gesamt} Datei(en) über alle Repos, "
               f"größter Einzelbestand {groesster[1]} in {groesster[0]}. "
               f"Auf dem Host löschbar, von hier aus nicht (Mount ohne unlink-Recht).")
+    # SWR-170: ollama-Besetzungen, deren Registermodell vom Guardrails-Default abweicht.
+    # ⚠ Die Zeile steht IMMER da, auch bei 0 (SWR-114/117/155), und sie nennt die
+    # Grundmenge mit — eine Prüfung, die das Register gar nicht liest, meldet sonst
+    # dasselbe wie eine, bei der alles stimmt (SWR-128, Gegenprobe aus SWR-165).
+    # ⚠ Gemeldet, nicht geheilt und NICHT blockierend: welcher der beiden Werte richtig
+    # ist, weiß nur, wer das Register pflegt. Ein Dauerbefund, den dieses Werkzeug nicht
+    # entscheiden kann, wäre genau der Schalter aus SWR-166.
+    try:
+        abw, grundmenge, default = organisation.modellabweichungen(root)
+        if abw:
+            namen = ", ".join(f"{i} -> {m}" for i, m in abw)
+            print(f"[org] Modell laut Besetzungsregister abweichend vom Guardrails-Default "
+                  f"'{default}': {len(abw)} von {grundmenge} ollama-Besetzung(en) — {namen}. "
+                  f"Der Gateway folgt dem Register (SWR-169).")
+        else:
+            print(f"[org] Modell laut Besetzungsregister abweichend vom Guardrails-Default "
+                  f"'{default}': 0 von {grundmenge} ollama-Besetzung(en).")
+    except Exception as e:            # noqa: BLE001 — eine unlesbare Datei ist ein Befund
+        print(f"[org] Modellabgleich Besetzungsregister/Guardrails: nicht messbar ({e}).")
     ohne_sprint = unterminierte_tickets(root)
     if ohne_sprint:
         print(f"[org] {len(ohne_sprint)} Ticket(s) ohne Sprint: {', '.join(ohne_sprint)}")

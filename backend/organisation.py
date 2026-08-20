@@ -84,6 +84,76 @@ def _einheit_pfad(root, einheit):
     return pfade[einheit]
 
 
+GUARDRAILS_DEFAULT_MODELL = "llama3.1:8b"   # nur Rückfall, siehe modell_der_besetzung
+
+
+def _guardrails_ollama_modell(root):
+    """Der Guardrails-Wert — Rückfall, nicht Vorgabe. Fehlt die Datei, gilt der Default."""
+    pfad = os.path.join(root, "platform", "orchestrator", "config", "guardrails.yaml")
+    try:
+        cfg = _lade_yaml(pfad)
+    except OrgFehler:
+        return GUARDRAILS_DEFAULT_MODELL
+    p = ((cfg.get("providers") or {}).get("ollama") or {})
+    return p.get("model") or GUARDRAILS_DEFAULT_MODELL
+
+
+def modell_der_besetzung(root, rolle, einheit):
+    """SWR-169: das Ollama-Modell der Rolle aus dem Besetzungsregister ('' wenn keins).
+
+    ⚠ Warum diese Quelle und nicht der Guardrails-Default: Am 2026-08-20 sind die ersten
+    **drei** Ticks, die je durch den Preflight kamen, alle an derselben Stelle gestorben —
+    `404: model 'llama3.1:8b' not found`. Das Register trägt für beide `takt: schnell`-
+    Besetzungen (PROB@aspice, MAIL-RED@mail) `gemma3:27b`, `pm/D010` nennt dasselbe, und
+    der Gateway hat keine der beiden Stellen gelesen.
+
+    ⚠⚠ Genau das steht seit dem 2026-08-06 als Lehre im Bestand (`L-003`, T-0011/F13):
+    *„Modell-Defaults gegen das Geräteregister prüfen; Abweichungen als
+    Registry-/Guardrails-CR nachziehen."* Dreimal aufgeschrieben, mit Erwartungswert
+    *„Wiederholungsquote in Sprint 2 = 0"*. Die Quote war 3 von 3. Es fehlte nicht die
+    Sorgfalt beim Aufschreiben, sondern die Überführung in etwas, das von allein
+    wiederkommt.
+
+    Rangfolge (gleichlautend im Code und im Docstring von ollama_executor):
+    ``OLLAMA_MODEL`` > Besetzungsregister > guardrails > ``llama3.1:8b``.
+    """
+    besetzungen = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {}) or {}
+    rolle_ob = (rolle or "").upper()
+    for b in besetzungen.values():
+        b = b or {}
+        if (b.get("rolle") or "").upper() != rolle_ob:
+            continue
+        if (b.get("einheit") or "") != einheit:
+            continue
+        return (b.get("modell") or "").strip()
+    return ""
+
+
+def modellabweichungen(root):
+    """SWR-170: ollama-Besetzungen, deren Registermodell vom Guardrails-Default abweicht.
+
+    Liefert (abweichungen, grundmenge): Liste von (Instanz, Registermodell) und die Zahl
+    der ollama-Besetzungen überhaupt. ⚠ Die Grundmenge wird mitgeliefert, damit eine
+    Prüfung, die das Register gar nicht liest, nicht als „keine Abweichung" durchgeht —
+    der Fehler aus SWR-128 und die Gegenprobe aus SWR-165.
+
+    ⚠ Diese Prüfung **meldet** und heilt nicht: welcher der beiden Werte der richtige ist,
+    ist eine Frage an den, der das Register pflegt, und keine an ein Werkzeug.
+    """
+    besetzungen = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {}) or {}
+    default = _guardrails_ollama_modell(root)
+    abweichungen, grundmenge = [], 0
+    for instanz, b in sorted(besetzungen.items()):
+        b = b or {}
+        if (b.get("motor") or "") != "ollama":
+            continue
+        grundmenge += 1
+        modell = (b.get("modell") or "").strip()
+        if modell and modell != default:
+            abweichungen.append((instanz, modell))
+    return abweichungen, grundmenge, default
+
+
 def katalog(root):
     """Auswahllisten fürs Formular: Rollen (Bauplan-Registry), Motoren, Takte, Stati."""
     rollen = _lade_yaml(os.path.join(root, "process", "roles", "registry.yaml")).get("roles", {})

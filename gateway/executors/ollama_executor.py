@@ -4,7 +4,11 @@ Lokales LLM auf dem Team-Node über die Ollama-HTTP-API (Standard:
 http://localhost:11434, übersteuerbar per OLLAMA_HOST). Kostenlos, offline-fähig,
 text-only: Dateien entstehen über die Datei-Block-Konvention (gateway/dateiblock.py).
 
-Modellwahl: OLLAMA_MODEL > guardrails providers.ollama.model > 'llama3.1:8b'.
+Modellwahl (SWR-169): OLLAMA_MODEL > Besetzungsregister (kontext['modell_name'])
+> guardrails providers.ollama.model > 'llama3.1:8b'.
+⚠ Die Reihenfolge steht hier und im Code gleichlautend — sie war es einmal nicht, und
+das Register fehlte in beiden: alle drei Ticks vom 2026-08-20 sind mit
+`404: model 'llama3.1:8b' not found` gestorben, während das Register `gemma3:27b` trug.
 Nicht erreichbar / Modell fehlt -> NotImplementedError (nächste Stufe der Kette).
 """
 import json
@@ -64,7 +68,13 @@ def messe_statisch(host, modell, systemtext, timeout_s=60):
 def fuehre_aus(rolle, aufgabe, kontext, cfg):
     host = _host()
     p_cfg = (cfg.get("providers", {}).get("ollama", {}) or {})
-    modell = os.environ.get("OLLAMA_MODEL") or p_cfg.get("model") or "llama3.1:8b"
+    # SWR-169: Rangfolge wie im Modul-Docstring. Das Besetzungsregister steht VOR den
+    # Guardrails, weil es die Stelle ist, die der Auftraggeber pflegt — eine falsche
+    # Angabe ist dort sichtbar und in einem Zug korrigierbar.
+    modell = (os.environ.get("OLLAMA_MODEL")
+              or (kontext.get("modell_name") or "").strip()
+              or p_cfg.get("model")
+              or "llama3.1:8b")
 
     try:
         with urllib.request.urlopen(host + "/api/tags", timeout=3) as r:
