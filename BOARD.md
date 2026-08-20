@@ -11,13 +11,7 @@ Stand: 2026-08-20 · Tickets: 27 · davon wiederkehrend: 1
 | [T-0022](tickets/T-0022.md) | Der Entscheidungsweg setzte eine Datei voraus, die ein anderer Weg anlegt (SWR-152) | problem | einmalig | dev | Team | hoch | 0 | — |
 | [T-0027](tickets/T-0027.md) | Der Abschlussbericht hat für seine EIGENEN Kennzahlen keine Prüfung — fünfmal in sechs Sprints eine fortgeschriebene statt einer gemessenen Zahl | problem | einmalig | cm | Team | hoch | 0 | — |
 
-## in_review (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0021](tickets/T-0021.md) | Der Commit hinterlässt die Sperre für den nächsten: tmp_obj-Reste auf einem Mount ohne unlink-Recht | problem | einmalig | cm | Team | hoch | 0 | — |
-
-## done (23)
+## done (24)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -36,6 +30,7 @@ Stand: 2026-08-20 · Tickets: 27 · davon wiederkehrend: 1
 | [T-0017](tickets/T-0017.md) | Statuswechsel und sein Commit sind zwei Vorgänge — eine Git-Sperre dazwischen verliert einen Zustand lautlos | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0018](tickets/T-0018.md) | Die Sperren-Räumung des einen Git-Schreibwegs lief in Produktion nicht — sie fand preflight nur, wenn der Aufrufer ihn mitbrachte | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0019](tickets/T-0019.md) | trace_matrix.py ohne --alle-projekte überschreibt die echte Matrix mit einer unvollständigen | problem | einmalig | cm | Team | hoch | 0 | — |
+| [T-0021](tickets/T-0021.md) | Der Commit hinterlässt die Sperre für den nächsten: tmp_obj-Reste auf einem Mount ohne unlink-Recht | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0023](tickets/T-0023.md) | Cockpit: Sprint-Kapitel statt einer Tabelle, und die Sprintnummer an der letzten Session (Brief pm/N-0043) | task | einmalig | dev | Team | hoch | 0 | — |
 | [T-0024](tickets/T-0024.md) | Eine Zusicherung nagelt ein Datum an ein Verzeichnis, das von selbst wächst — rot seit 2026-08-17 22:22, gefunden am 2026-08-20 | problem | einmalig | test | Team | hoch | 0 | — |
 | [T-0025](tickets/T-0025.md) | Wir messen, ob ein Lauf sauber endete — nicht, ob der nächste jemals anfing: 60,2 Stunden Pause bei 60 Minuten Takt, unbemerkt | problem | einmalig | cm | Team | hoch | 0 | — |
