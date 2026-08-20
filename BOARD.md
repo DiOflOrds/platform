@@ -1,9 +1,9 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-20 · Tickets: 25 · davon wiederkehrend: 1
+Stand: 2026-08-20 · Tickets: 26 · davon wiederkehrend: 1
 
 
-## open (4)
+## open (5)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -11,8 +11,9 @@ Stand: 2026-08-20 · Tickets: 25 · davon wiederkehrend: 1
 | [T-0021](tickets/T-0021.md) | Der Commit hinterlässt die Sperre für den nächsten: tmp_obj-Reste auf einem Mount ohne unlink-Recht | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0022](tickets/T-0022.md) | Der Entscheidungsweg setzte eine Datei voraus, die ein anderer Weg anlegt (SWR-152) | problem | einmalig | dev | Team | hoch | 0 | — |
 | [T-0020](tickets/T-0020.md) | Die Matrix schrumpft still: kein Vergleich mit dem Bestand beim Schreiben | problem | einmalig | cm | Team | mittel | 0 | T-0019 |
+| [T-0026](tickets/T-0026.md) | Eine von sieben Pausen im Sprintregister ist NEGATIV — die Zeitstempel stammen aus der Uhr des jeweils schreibenden Laufs | problem | einmalig | cm | Team | mittel | 0 | — |
 
-## in_progress (2)
+## in_review (2)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|

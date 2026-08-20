@@ -234,6 +234,28 @@ def sprintsicht(root, frisch=False):
     return sicht
 
 
+def pause_zum_vorlauf(root):
+    """SWR-156 (platform/T-0025): die Pause seit dem letzten Sprintende, oder `None`.
+
+    ⚠ **Kein eigener Rechenweg.** Die Antwort steht in `backend.session`, weil dort
+    schon `stille()` wohnt — die Zeitregel, an der die Kachel „Letzte Session" seit
+    SWR-102 hängt. Zwei Rechnungen über dieselbe Stille wären B033.
+
+    ⚠ Warum die Funktion in `backend.session` liegt und nicht in `sprint_register`:
+    `session` importiert `sprint_register` bereits (SWR-153). Die Gegenrichtung wäre ein
+    Importzyklus — und die einzige Alternative dazu wäre gewesen, `stille()`
+    abzuschreiben, was die DoD dieses Tickets ausdrücklich verbietet.
+
+    `None` heißt „konnte nicht prüfen" und **nicht** „keine Pause".
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from backend import session as _session
+        return _session.pause_seit_letztem_lauf(root)
+    except Exception:
+        return None
+
+
 def statusdrift(root):
     """SWR-115 (pm/T-0049): Planzeilen, deren Statusspalte dem Ticket widerspricht.
 
@@ -601,6 +623,37 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
                   f"'ende' im Register: "
                   + ", ".join(f"{e['nr']} ({e.get('kennung', '?')})" for e in luecken))
             befunde += 1
+    # SWR-156 (platform/T-0025, Brief team-mail/N-0004 des Auftraggebers): war es zu
+    # lange still? Die Zeile erscheint IMMER — auch bei unauffälliger Pause. Eine stille
+    # Prüfung ist von einer nicht gelaufenen nicht zu unterscheiden (SWR-114/117/155),
+    # und genau das war der Befund: 60,2 Stunden Pause bei 60 Minuten Takt, von keiner
+    # Ausgabe dieses Laufs erwähnt.
+    pause = pause_zum_vorlauf(root)
+    if pause is None:
+        print("[org] Pause seit dem letzten Lauf: nicht prüfbar (Modul nicht ladbar).")
+    elif pause["minuten"] is None:
+        print(f"[org] Pause seit dem letzten Lauf: nicht berechenbar — "
+              f"{pause['unberechenbar']}.")
+    elif pause["ueberlappung"]:
+        # Nicht auf 0 gekappt: eine negative Pause ist der einzige Beleg dafür, dass die
+        # Zeitstempel zweier Läufe aus Uhren stammen, die nicht übereinstimmten.
+        print(f"[org] BEFUND: Überlappung im Sprintregister — {pause['hinweis']}.")
+        befunde += 1
+    else:
+        satz = (f"[org] Pause seit dem Ende von Sprint {pause['letzter_nr']} "
+                f"({pause['letztes_ende']}) bis {pause['bezug']}: "
+                f"{pause['minuten']} Min = {pause['vielfaches']}x Takt "
+                f"({pause['takt_min']} Min)")
+        if pause["befund"]:
+            print(f"{satz} — BEFUND: mehr als {pause['takte']} Takte. "
+                  f"{pause['hinweis']}.")
+            befunde += 1
+        else:
+            print(f"{satz}.")
+        if pause["ohne_ende"]:
+            print(f"[org] Für {len(pause['ohne_ende'])} Sprint(s) ohne 'ende' ist keine "
+                  f"Pause berechenbar (vor dem Stichtag): "
+                  + ", ".join(str(n) for n in pause["ohne_ende"]) + ".")
     ohne_sprint = unterminierte_tickets(root)
     if ohne_sprint:
         print(f"[org] {len(ohne_sprint)} Ticket(s) ohne Sprint: {', '.join(ohne_sprint)}")

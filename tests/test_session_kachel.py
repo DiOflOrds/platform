@@ -6,6 +6,7 @@ bei ausgefallenem Lauf.
 Hermetisch (gb-02): Temp-Root mit echtem Mini-Repo, kein Netz, keine Uhr von aussen —
 `jetzt` wird injiziert, damit die Tests nicht um 00:00 kippen.
 """
+import json
 import os
 import shutil
 import subprocess
@@ -15,7 +16,9 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from backend import session  # noqa: E402
+import sprint_register  # noqa: E402
 
 AGENDA = """# Session-Agenda (PM-Team)
 
@@ -167,10 +170,52 @@ class StandTest(unittest.TestCase):
         self.assertEqual(s["quelle"], "pm/management/session-agenda.md")
 
     def test_ausgefallener_lauf_meldet_sich_in_der_nutzlast(self):
-        """SWR-102: zwei Takte spaeter traegt die Nutzlast den Hinweis."""
-        s = session.stand(self.root, jetzt=self.commit_zeit + timedelta(minutes=95))
+        """SWR-102: zwei Takte spaeter traegt die Nutzlast den Hinweis.
+
+        ⚠⚠ **Dieser Test stand bis Sprint 22 auf einer festen 95** — und 95 Minuten
+        waren „zwei Takte", solange der Takt 30 Minuten betrug. Er war die DRITTE Kopie
+        derselben Zahl (neben `session.TAKT_MINUTEN` und `takt_min` im Register) und
+        wurde in dem Moment rot, in dem SWR-156 die beiden anderen in Einklang brachte.
+
+        > Ein Test, der eine Zahl festschreibt, die anderswo eine Tatsache ist, haelt
+        > nicht den Code fest, sondern den Irrtum. Er war die ganze Zeit gruen.
+
+        Gerechnet wird deshalb aus dem Takt, der **gilt** — die Zusicherung ist „zwei
+        Takte", und das ist sie jetzt auch im Wortlaut.
+        """
+        takt = session.takt(self.root)
+        spaeter = takt * session.STILLE_TAKTE + 5
+        s = session.stand(self.root, jetzt=self.commit_zeit + timedelta(minutes=spaeter))
         self.assertTrue(s["veraltet"])
         self.assertEqual(s["hinweis"], "seit 20:55 keine Session")
+        # Und die Gegenprobe zur selben Grenze: knapp DARUNTER schweigt die Kachel.
+        s = session.stand(self.root,
+                          jetzt=self.commit_zeit + timedelta(minutes=takt * session.STILLE_TAKTE))
+        self.assertFalse(s["veraltet"])
+
+    def test_der_takt_der_kachel_kommt_aus_dem_register(self):
+        """SWR-156 (platform/T-0025): die Kachel folgt dem **hinterlegten** Takt.
+
+        ⚠ Der Befund dahinter ist unangenehm leise: `session.TAKT_MINUTEN` stand auf
+        **30**, waehrend das Register seit dem 17.08. **60** fuehrt. Die Kachel meldete
+        Stille nach einer statt nach zwei Stunden, und beide Zahlen sahen fuer sich
+        plausibel aus (B033). Hier wird der Zusammenhang **hergestellt**: dasselbe
+        Repo, zwei Register, zwei Antworten.
+        """
+        verz = os.path.join(self.root, "pm", "management")
+        pfad = os.path.join(verz, "sprints.jsonl")
+        for takt, veraltet_erwartet in ((30, True), (60, False)):
+            with open(pfad, "w", encoding="utf-8", newline="\n") as f:
+                f.write(json.dumps({"nr": 1, "kennung": "k1", "takt_min": takt,
+                                    "start": "2026-08-16 20:00"}) + "\n")
+            self.assertEqual(session.takt(self.root), takt)
+            s = session.stand(self.root,
+                              jetzt=self.commit_zeit + timedelta(minutes=95))
+            self.assertIs(s["veraltet"], veraltet_erwartet, takt)
+        os.remove(pfad)
+        # Ohne Register gilt der Rueckfall — und er ist ausdruecklich der des
+        # Registers (60) und nicht die alte Konstante im Quelltext (30).
+        self.assertEqual(session.takt(self.root), sprint_register.TAKT_MIN_STANDARD)
 
     def test_zweiter_commit_zaehlt_als_zweite_fortschreibung(self):
         """SWR-102: die Tageszahl kommt aus der Historie, nicht aus dem Text."""

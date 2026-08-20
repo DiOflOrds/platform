@@ -158,15 +158,58 @@ class BestandTest(unittest.TestCase):
         self.assertTrue(self.w["ziel"].startswith("#/"))
 
     def test_tag_und_woche_liefern_echte_zahlen(self):
-        """Gemessen am Bestand: 89 Mails (Tag) und 165 (Woche), je 4 Reaktionspunkte."""
+        """SWR-157 (platform/T-0024): Zahlen ja — eine **Momentaufnahme** nein.
+
+        ⚠⚠ Bis Sprint 22 stand hier `datum == "2026-08-16"`, `mails == 89`,
+        `mails == 165`. Am 2026-08-17 um **22:22** — vier Minuten nach dem
+        Abschlussbericht von Sprint 20 — ist ein neuer Digest entstanden, und die
+        Zusicherung war ab da rot. **Drei Tage** hat es niemand gesehen.
+
+        > **Ein Test gegen den echten Bestand prüft mehr als eine Attrappe — aber wenn
+        > er eine Momentaufnahme festschreibt, prüft er ab morgen die Uhr statt den
+        > Code.**
+
+        Geblieben ist, was eine Aussage **über den Code** ist: die Rubriken werden
+        erkannt, die Zahl wird gefunden, der Zustand stimmt. Weggefallen ist der
+        Wortlaut des Tages. ⚠ Das Datum ist **nicht** hochgezählt worden — das hätte
+        den Befund nur bis zum nächsten Digest verschoben.
+        """
         nach = {e["takt"]: e for e in self.w["eintraege"]}
-        self.assertEqual(nach["tag"]["zustand"], widgets.ZUSTAND_WERT)
-        self.assertEqual(nach["tag"]["datum"], "2026-08-16")
-        self.assertEqual(nach["tag"]["mails"], 89)
-        self.assertEqual(nach["woche"]["mails"], 165)
         for takt in ("tag", "woche"):
+            self.assertEqual(nach[takt]["zustand"], widgets.ZUSTAND_WERT, takt)
+            self.assertIsNotNone(nach[takt]["mails"], takt)
+            self.assertGreaterEqual(nach[takt]["mails"], 1,
+                                    "%s: ein Digest ohne Mails wäre keiner" % takt)
             self.assertIsNotNone(nach[takt]["reaktion"],
                                  "die Rubrik steht in beiden Digests")
+
+    def test_der_juengste_tages_digest_ist_wirklich_der_juengste(self):
+        """SWR-157: die **Auswahl** ist die Zusicherung, nicht der ausgewählte Tag.
+
+        Das Datum kommt hier aus dem **Verzeichnis** und nicht aus dem Quelltext. Damit
+        wächst der Test mit dem Bestand mit, statt an ihm zu zerbrechen — und er prüft
+        genau das, was `post_widget` tut: das jüngste Vorkommen je Takt nehmen.
+        """
+        verz = os.path.join(WURZEL, "team-mail", "digest")
+        nach = {e["takt"]: e for e in self.w["eintraege"]}
+        for takt in ("tag", "woche"):
+            daten = sorted(n[:10] for n in os.listdir(verz)
+                           if n.endswith("-%s-digest.md" % takt))
+            self.assertTrue(daten, "kein %s-Digest im Bestand" % takt)
+            self.assertEqual(nach[takt]["datum"], daten[-1], takt)
+
+    def test_die_digestliste_liefert_die_neuesten_zuerst(self):
+        """⚠ Die **unausgesprochene** Annahme von `post_widget`, jetzt ausgesprochen.
+
+        Der Kommentar dort sagt: *„`digest_liste` liefert neueste zuerst — das erste
+        Vorkommen ist damit das jüngste, und es wird hier nicht ein zweites Mal
+        sortiert."* Diese Annahme trug die ganze Auswahl und war von **keiner**
+        Zusicherung gedeckt. Ein Kommentar ist keine Prüfung (`L-2026-08-17ag`).
+        """
+        from backend import teams
+        daten = [e["datum"] for e in teams.digest_liste(WURZEL, "team-mail")]
+        self.assertTrue(daten)
+        self.assertEqual(daten, sorted(daten, reverse=True))
 
     def test_die_mailzahl_wird_wirklich_gefunden(self):
         """⚠ GEGENPROBE zum eigenen ersten Entwurf.
@@ -312,6 +355,98 @@ class AnsichtTest(unittest.TestCase):
 
     def test_der_leere_fall_wird_benannt(self):
         self.assertIn("kein Ladefehler", self.app)
+
+
+class AblaufdatumTest(unittest.TestCase):
+    """SWR-157 (platform/T-0024, Frage 3): **wie viele Zusicherungen dieser Bauart gibt
+    es?** — die Zählung, die vor der Reparatur stand, als dauerhafte Prüfung.
+
+    ⚠ **Erst zählen, dann reparieren.** Eine Reparatur je Fundstelle wäre dieselbe
+    Annahme noch einmal (dieselbe Auflage wie `platform/T-0022` Frage 2). Gemessen über
+    alle 66 Testdateien mit dem Syntaxbaum — nicht mit einer Textsuche, die in dieser
+    Organisation schon fünf Fehlalarme an Kommentaren und Nachbarregeln erzeugt hat:
+
+    > **Genau EINE.** Die rote. Drei feste Werte in einer Methode.
+
+    Das ist der beruhigende Teil des Befundes. Der beunruhigende ist, dass die
+    Gegenbauart — eine **Schranke** über den echten Bestand
+    (`assertGreaterEqual(gepruefte, 41)`) — an **zwei** Stellen längst existierte. Das
+    Haus konnte es also, und an dieser einen Stelle hat es das Datum festgeschrieben.
+
+    ⚠ **Was diese Prüfung NICHT leistet, und das gehört dazu:** sie erkennt den
+    scharfen Marker — ein ISO-Datum als Literal in einer Methode, die den echten
+    Bestand liest. Eine festgeschriebene **Zahl** (89, 165) erkennt sie nicht
+    zuverlässig, weil eine Zahl im Testcode tausend legitime Gründe hat. Sie zieht
+    also eine Untergrenze und behauptet keine Vollständigkeit.
+    """
+
+    WURZELNAMEN = ("WURZEL", "_WURZEL", "ROOT", "_ROOT", "REPOS", "_REPOS")
+
+    def _fundstellen(self):
+        import ast
+        import re
+        treffer = []
+        datum = re.compile(r"\d{4}-\d{2}-\d{2}$")
+
+        def nennt_wurzel(knoten):
+            return any(isinstance(k, ast.Name) and k.id in self.WURZELNAMEN
+                       for k in ast.walk(knoten))
+
+        for name in sorted(os.listdir(_HIER)):
+            if not (name.startswith("test_") and name.endswith(".py")):
+                continue
+            with open(os.path.join(_HIER, name), encoding="utf-8") as f:
+                quelle = f.read()
+            if not re.search(r"(WURZEL|ROOT|REPOS)\s*=\s*os\.path\.", quelle):
+                continue
+            baum = ast.parse(quelle)
+            for kl in [n for n in ast.walk(baum) if isinstance(n, ast.ClassDef)]:
+                vorbereitet = any(
+                    nennt_wurzel(m) for m in kl.body
+                    if isinstance(m, ast.FunctionDef)
+                    and m.name in ("setUp", "setUpClass"))
+                for m in [n for n in kl.body if isinstance(n, ast.FunctionDef)
+                          and n.name.startswith("test")]:
+                    if not (vorbereitet or nennt_wurzel(m)):
+                        continue
+                    for k in ast.walk(m):
+                        if not (isinstance(k, ast.Call)
+                                and isinstance(k.func, ast.Attribute)
+                                and k.func.attr in ("assertEqual", "assertEquals")):
+                            continue
+                        for a in k.args[:2]:
+                            if (isinstance(a, ast.Constant)
+                                    and isinstance(a.value, str)
+                                    and datum.match(a.value)):
+                                treffer.append("%s:%s %s" % (name, k.lineno, a.value))
+        return treffer
+
+    def test_keine_zusicherung_nagelt_ein_datum_an_den_echten_bestand(self):
+        """Vor der Reparatur: 1. Danach: 0. Die Zahl ist gemessen, nicht geschätzt."""
+        self.assertEqual(self._fundstellen(), [])
+
+    def test_die_pruefung_findet_ihren_eigenen_gegenstand(self):
+        """⚠ **Gegenprobe an der Prüfung selbst.** Eine Zählung, die auf 0 steht, ist
+        von einer kaputten Zählung nicht zu unterscheiden — genau der Fehlertyp, der
+        `L-2026-08-17ai` trägt. Deshalb wird der Fall **hergestellt**: ein Testmodul
+        mit exakt der alten Bauart muss gefunden werden.
+        """
+        verz = tempfile.mkdtemp(prefix="ablaufdatum-")
+        self.addCleanup(shutil.rmtree, verz, ignore_errors=True)
+        with open(os.path.join(verz, "test_beispiel.py"), "w", encoding="utf-8") as f:
+            f.write("import os\n"
+                    "WURZEL = os.path.dirname(__file__)\n"
+                    "class T:\n"
+                    "    def setUp(self):\n"
+                    "        self.d = lade(WURZEL)\n"
+                    "    def test_x(self):\n"
+                    "        self.assertEqual(self.d['datum'], '2026-08-16')\n")
+        hier = _HIER
+        try:
+            globals()["_HIER"] = verz
+            self.assertEqual(len(self._fundstellen()), 1)
+        finally:
+            globals()["_HIER"] = hier
 
 
 if __name__ == "__main__":
