@@ -256,6 +256,56 @@ def pause_zum_vorlauf(root):
         return None
 
 
+#: SWR-161 (platform/T-0022 Frage 2/3): Pflichtartefakte, die `pool._projekt_dateien_schreiben`
+#: bei der Gründung anlegt und die ein Repo braucht, das DRs führen kann (Playbook Kap. 16).
+#:
+#: ⚠ **Diese Liste ist kurz, und das ist das Ergebnis der Zählung und keine Bescheidenheit.**
+#: Gemessen über alle 17 entdeckten Projekte und Teams fehlt von den sechs Artefakten des
+#: Gründungswegs (`README.md`, `steckbrief.yaml`, `BOARD.md`, `tickets/`,
+#: `docs/01-projektauftrag.md`, `management/decisions/decision-log.md`) nur **eines** an
+#: mehr als einer Stelle. Vier fehlen **nirgends**.
+#:
+#: ⚠⚠ `docs/01-projektauftrag.md` steht bewusst NICHT hier. Es fehlt in 6 von 17 Repos —
+#: aber fünf davon führen stattdessen `01-team-charter.md`, `01-rollenbeschreibung.md` oder
+#: `02-initialprojekt-p0.md`. Eine Prüfung müsste **raten**, welcher Name in welchem Repo
+#: der richtige ist; das wäre B038, und ein Befund, der auf fünf richtige Fälle zeigt,
+#: trainiert das Wegsehen (SWR-109/110/112). Der eine echte Fall (`platform` hat weder das
+#: eine noch das andere) ist eine **Frage an das PM** und keine Prüfung.
+PFLICHTARTEFAKTE = [os.path.join("management", "decisions", "decision-log.md")]
+
+
+def fehlende_pflichtartefakte(root):
+    """SWR-161: Repos, denen ein Pflichtartefakt des Gründungswegs fehlt.
+
+    ⚠⚠ **Warum es diese Prüfung NEBEN dem selbstheilenden Weg gibt.** SWR-152 legt das
+    Entscheidungslog an, wenn es beim Verbuchen fehlt — richtig, denn *eine getroffene
+    Entscheidung, die am Ablageort scheitert, ist verloren, sobald das Fenster zu ist.*
+    Aber:
+
+    > **Der selbstheilende Weg rettet die eine Entscheidung, die gerade getroffen wird.
+    > Den Mangel, in den noch niemand hineingelaufen ist, kann er nicht finden — das kann
+    > nur eine Prüfung, die alle Repos durchgeht.**
+
+    Das ist keine Überlegung, sondern gemessen: der Vorfall vom 17.08. betraf
+    `promt-team`; dort ist das Log seither da, **weil jemand hineingelaufen ist**. In
+    `platform` und `produkt-datakonv` fehlt es unverändert, und `produkt-datakonv` stand
+    in keinem Ticket — die Zählung hat es gefunden, nicht der Vorfall.
+
+    Rückgabe: `[(repo, artefakt), ...]`, leer = geprüft und vollständig.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import board as _board
+        fehlend = []
+        for name, basis in _board.projekt_pfade(root):
+            for artefakt in PFLICHTARTEFAKTE:
+                if not os.path.exists(os.path.join(basis, artefakt)):
+                    fehlend.append((name, artefakt.replace(os.sep, "/")))
+        return fehlend
+    except Exception:
+        return None
+
+
 def uhrenprobe_register(root):
     """SWR-159 (platform/T-0026): Registerzeiten, die in der Zukunft ihres Commits liegen.
 
@@ -707,6 +757,20 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
                 print(f"    {u['kennung']} '{u['feld']}' = {u['registerzeit']}, "
                       f"Commit {u['commit']} um {u['commitzeit']} ({u['minuten']:+.1f} Min)")
             befunde += 1
+    # SWR-161 (platform/T-0022): fehlt einem Repo ein Pflichtartefakt des Gründungswegs?
+    # ⚠ Die Zeile erscheint IMMER — auch bei 0 (SWR-114/117/155).
+    artefakte = fehlende_pflichtartefakte(root)
+    if artefakte is None:
+        print("[org] Pflichtartefakte je Repo: nicht prüfbar (Discovery nicht ladbar).")
+    elif artefakte:
+        print(f"[org] BEFUND: {len(artefakte)} fehlende(s) Pflichtartefakt(e) — ein Repo "
+              f"ohne Entscheidungslog verliert die erste Klasse-A-Entscheidung, die "
+              f"darin verbucht werden soll:")
+        for repo, artefakt in artefakte:
+            print(f"    {repo}: {artefakt} FEHLT")
+        befunde += 1
+    else:
+        print("[org] Pflichtartefakte je Repo: 0 fehlend.")
     ohne_sprint = unterminierte_tickets(root)
     if ohne_sprint:
         print(f"[org] {len(ohne_sprint)} Ticket(s) ohne Sprint: {', '.join(ohne_sprint)}")
