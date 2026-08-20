@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""SWR-173/174 (platform/T-0027, VIERTE Berührung): die Kennzahlen des Abschlussberichts
+
+**entstehen** hier, statt in ihn abgeschrieben zu werden — und eine Zusicherung hält den
+Bericht dagegen.
+
+⚠⚠ Der Anlass, gezählt statt behauptet. Seit Sprint 18 stand in **fünf** Berichten eine
+fortgeschriebene statt einer gemessenen Zahl; zweimal war die Abweichung beziffert
+(1155/1128, 1128/1147). **Fünfmal ist sie vor dem Commit gefunden worden — fünfmal durch
+Nachrechnen und kein einziges Mal durch eine Zusicherung.**
+
+> **Jede dieser fünf Korrekturen ist ein Beleg dafür, dass die Sorgfalt DA war. Was fehlt,
+> ist nicht Aufmerksamkeit, sondern eine Stelle, an der die Zahl ENTSTEHT.** Das ist der
+> Satz aus `platform/T-0027` Frage 1, und diese Datei ist seine Antwort.
+
+⚠ **Warum ein Skript und keine Schablone** (Frage 2 des Tickets): der achte Beleg stand in
+einem **Fließtext**, den keine Vorlage vorgibt (`9` statt `11` JS-Zusicherungen, in einem
+Abschnitt mit der Überschrift *„gezählt, nicht übersehen"*). Was ihn gefunden hat, war ein
+Durchlauf über die Datei. Deshalb: messen und **dagegenhalten**, nicht den Bericht
+formatieren.
+
+⚠ **Warum der Parkplatz anders behandelt wird als alles andere hier** (der neunte Beleg):
+`9506` war zum Zeitpunkt des Lesens bereits falsch — nicht weil jemand geschätzt hätte,
+sondern weil die Zahl **ohne ihren Zeitpunkt** dastand.
+
+> **Eine gemessene Zahl ohne den Zeitpunkt ihrer Messung altert genauso lautlos wie eine
+> geschätzte.** Deshalb trägt der Block einen Zeitstempel, und `parkplatz` wird
+> ausdrücklich **nicht** auf Gleichheit geprüft, sondern nur darauf, dass er einen hat.
+
+Nutzung:
+
+    python platform/scripts/kennzahlen.py --repos .            # Block ausgeben
+    python platform/scripts/kennzahlen.py --repos . --schreibe # Block in den Sprintplan setzen
+"""
+import argparse
+import io
+import glob
+import os
+import re
+import sys
+import unittest
+from datetime import datetime
+
+_PLATFORM = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _PLATFORM)
+
+MARKE_AUF = "<!-- kennzahlen v1"
+MARKE_ZU = "-->"
+PLAN = os.path.join("pm", "management", "sprint-aktuell.md")
+
+# ⚠ Die Felder, die auf GLEICHHEIT geprüft werden. `parkplatz` steht bewusst nicht hier:
+# er ist eine Momentaufnahme und wächst zwischen Messung und Lesen weiter (der neunte
+# Beleg von T-0027). Er wird trotzdem gemessen und ausgegeben — mit Zeitstempel.
+VERGLEICHSFELDER = ("tests", "testdateien", "swr", "luecken", "briefkasten_offen",
+                    "tickets_offen", "wartet_auf_mensch")
+
+
+def zaehle_tests(root):
+    """Tests in der Sammlung und Zahl der Testdateien — die Zahl, die fünfmal falsch war.
+
+    ⚠ Gezählt wird die **Sammlung**, nicht die Summe von Testläufen. Genau deren
+    Auseinanderlaufen hat in Sprint 24 den Fehler aufgedeckt (1201 vs. 1208): die Blöcke
+    waren nach einer Dateiliste geschnitten, die sich **während** des Laufs geändert hatte.
+    Eine Quelle, nicht zwei.
+    """
+    tests_dir = os.path.join(root, "platform", "tests")
+    loader = unittest.defaultTestLoader
+    alt = os.getcwd()
+    try:
+        os.chdir(os.path.join(root, "platform"))
+        suite = loader.discover("tests")
+    finally:
+        os.chdir(alt)
+
+    def tief(x):
+        return sum(tief(y) for y in x) if hasattr(x, "__iter__") else 1
+
+    dateien = [f for f in os.listdir(tests_dir)
+               if f.startswith("test_") and f.endswith(".py")]
+    return tief(suite), len(dateien), list(loader.errors or [])
+
+
+def lies_matrix(root):
+    """SWR-Zahl und Lückenzahl aus dem generierten Matrixbericht — nicht aus dem Gedächtnis."""
+    pfad = os.path.join(root, "p0", "verification", "reports", "swr-test-matrix.md")
+    if not os.path.isfile(pfad):
+        return None, None
+    with io.open(pfad, encoding="utf-8") as f:
+        kopf = f.read(4000)
+    m = re.search(r"SWRs:\s*(\d+)", kopf)
+    swr = int(m.group(1)) if m else None
+    luecken = len(re.findall(r"\|\s*—\s*\|\s*0 Test", kopf))
+    # Die Lücken stehen als Zeilen ohne Test; der Generator meldet sie beim --check.
+    tabelle = io.open(pfad, encoding="utf-8").read()
+    luecken = len(re.findall(r"\|\s*0 Test\(s\)\s*\|", tabelle))
+    return swr, luecken
+
+
+def _frontmatter(pfad):
+    try:
+        with io.open(pfad, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return {}
+    teile = text.split("---")
+    if len(teile) < 3:
+        return {}
+    d = {}
+    for zeile in teile[1].splitlines():
+        if ":" in zeile:
+            k, _, v = zeile.partition(":")
+            d[k.strip()] = v.strip().strip('"')
+    return d
+
+
+def zaehle_briefkasten(root):
+    """Offene Briefe über ALLE Repos — der Brief ist das Erste, was eine Session anfasst."""
+    offen = 0
+    for pfad in glob.glob(os.path.join(root, "*", "management", "briefkasten", "N-*.md")) + \
+            glob.glob(os.path.join(root, "*", "*", "management", "briefkasten", "N-*.md")):
+        if (_frontmatter(pfad).get("status") or "").lower() == "offen":
+            offen += 1
+    return offen
+
+
+def zaehle_tickets(root):
+    """Offene Tickets und die davon, die auf einen Menschen warten (Entscheidungsanfragen)."""
+    offen = warten = 0
+    muster = [os.path.join(root, "*", "tickets", "T-*.md"),
+              os.path.join(root, "*", "*", "tickets", "T-*.md")]
+    gesehen = set()
+    for m in muster:
+        for pfad in glob.glob(m):
+            echt = os.path.realpath(pfad)
+            if echt in gesehen or os.sep + "templates" + os.sep in pfad:
+                continue
+            gesehen.add(echt)
+            fm = _frontmatter(pfad)
+            if fm.get("status") != "open":
+                continue
+            offen += 1
+            if fm.get("typ") == "decision-request":
+                warten += 1
+    return offen, warten
+
+
+def zaehle_parkplatz(root):
+    """⚠ Momentaufnahme, ausdrücklich KEIN Befund — und ohne Zeitstempel wertlos."""
+    n = 0
+    for eintrag in sorted(os.listdir(root)):
+        pfad = os.path.join(root, eintrag, ".git", "verwaiste-locks")
+        if os.path.isdir(pfad):
+            n += sum(len(fs) for _, _, fs in os.walk(pfad))
+    return n
+
+
+def miss(root):
+    """Alle Kennzahlen aus ihren Quellen — genau einmal je Zahl."""
+    tests, dateien, fehler = zaehle_tests(root)
+    swr, luecken = lies_matrix(root)
+    offen, warten = zaehle_tickets(root)
+    return {
+        "tests": tests,
+        "testdateien": dateien,
+        "ladefehler": len(fehler),
+        "swr": swr,
+        "luecken": luecken,
+        "briefkasten_offen": zaehle_briefkasten(root),
+        "tickets_offen": offen,
+        "wartet_auf_mensch": warten,
+        "parkplatz": zaehle_parkplatz(root),
+    }
+
+
+def block(werte, sprint=None, zeitpunkt=None):
+    """Der kanonische Block. ⚠ Der Zeitstempel gehört dazu und ist nicht Zierrat."""
+    zp = zeitpunkt or datetime.now().strftime("%Y-%m-%d %H:%M")
+    kopf = f"{MARKE_AUF} | gemessen {zp}"
+    if sprint:
+        kopf += f" | sprint {sprint}"
+    zeilen = " ".join(f"{k}={werte[k]}" for k in sorted(werte) if werte[k] is not None)
+    return f"{kopf}\n{zeilen}\n{MARKE_ZU}"
+
+
+def lies_block(text):
+    """Den Block aus einem Bericht lesen: (werte, zeitpunkt) — ({}, '') wenn keiner da ist."""
+    m = re.search(re.escape(MARKE_AUF) + r"(.*?)\n(.*?)\n\s*" + re.escape(MARKE_ZU),
+                  text, re.S)
+    if not m:
+        return {}, ""
+    zp = re.search(r"gemessen\s+([0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2})", m.group(1))
+    werte = {}
+    for k, v in re.findall(r"(\w+)=(-?\d+)", m.group(2)):
+        werte[k] = int(v)
+    return werte, (zp.group(1) if zp else "")
+
+
+def vergleiche(bericht, gemessen):
+    """Abweichungen zwischen Bericht und Messung — Liste von (Feld, im Bericht, gemessen).
+
+    ⚠ Geprüft werden nur `VERGLEICHSFELDER`. Eine Zahl, die im Bericht **fehlt**, ist
+    ebenfalls eine Abweichung — sonst wäre ein Bericht ohne Zahlen der grünste von allen,
+    und das ist genau der Fehler, den SWR-128 fünf Sprints lang verborgen hat.
+    """
+    ab = []
+    for feld in VERGLEICHSFELDER:
+        soll = gemessen.get(feld)
+        if soll is None:
+            continue
+        ist = bericht.get(feld)
+        if ist != soll:
+            ab.append((feld, ist, soll))
+    return ab
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description="Kennzahlen des Abschlussberichts messen (T-0027)")
+    p.add_argument("--repos", default=".")
+    p.add_argument("--sprint", default="")
+    p.add_argument("--schreibe", action="store_true",
+                   help="Block in pm/management/sprint-aktuell.md setzen/ersetzen")
+    a = p.parse_args(argv)
+    root = os.path.abspath(a.repos)
+    werte = miss(root)
+    b = block(werte, a.sprint or None)
+    print(b)
+    if a.schreibe:
+        pfad = os.path.join(root, PLAN)
+        text = io.open(pfad, encoding="utf-8").read()
+        muster = re.compile(re.escape(MARKE_AUF) + r".*?" + re.escape(MARKE_ZU), re.S)
+        text = muster.sub(b, text, count=1) if muster.search(text) else text.rstrip() + "\n\n" + b + "\n"
+        io.open(pfad, "w", encoding="utf-8", newline="\n").write(text)
+        print(f"-> geschrieben nach {PLAN}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
