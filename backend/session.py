@@ -19,7 +19,13 @@ Kein Zustand, kein Cache (SWR-024): jede Anfrage liest frisch aus Datei und Git.
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime, timedelta
+
+_SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+if _SCRIPTS not in sys.path:
+    sys.path.insert(0, _SCRIPTS)
+import sprint_register  # noqa: E402  — SWR-153: der Sprintzähler ist die EINE Quelle
 
 # Der Session-Takt aus p0/D027 bzw. pm/D004: die Routine-Session läuft alle 30 Minuten.
 TAKT_MINUTEN = 30
@@ -129,6 +135,8 @@ def stand(root, jetzt=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATEI):
     `stand`     Zeitpunkt des letzten **Commits** dieser Datei (nicht aus dem Text)
     `fortschreibungen_heute`  Zahl der Agenda-Commits des laufenden Tages
     `veraltet`/`hinweis`      „seit HH:MM keine Session", wenn zwei Takte still waren
+    `sprint_nr` SWR-153: zu welchem Sprint dieser Lauf gehörte — aus dem **Register**
+                über den **Commit**-Zeitpunkt, nie aus der Überschrift der Datei
     `quelle`    welche Datei gelesen wurde — damit die Kachel prüfbar bleibt
     """
     jetzt = jetzt or datetime.now().astimezone()
@@ -148,4 +156,9 @@ def stand(root, jetzt=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATEI):
             "fortschreibungen_heute": fortschreibungen_heute(zeiten, jetzt),
             "veraltet": veraltet,
             "hinweis": hinweis,
+            # SWR-153 (pm/N-0043 Punkt 1): die Sprintnummer des Laufs. Sie hängt am
+            # **selben** Zeitstempel wie die Staleness-Aussage — an `letzter` und damit
+            # am Commit. Damit können Zeit und Nummer der Kachel nicht auseinanderlaufen:
+            # es ist eine Eingabe, nicht zwei.
+            "sprint_nr": sprint_register.sprint_zu_zeit(root, letzter),
             "quelle": "%s/%s" % (projekt, datei)}

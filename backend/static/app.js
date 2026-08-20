@@ -389,6 +389,12 @@ function sessionKachel(s) {
   var karte = el("div", { "class": "karte" });
   var kopf = el("div", { "class": "zeile" }, el("h3", { style: "margin:0" }, "Letzte Session"),
     pille(sessionZeit(s.stand) || "Zeitpunkt unbekannt", s.veraltet ? "in_progress" : "done"));
+  // SWR-153 (Brief pm/N-0043 Punkt 1): zu welchem Sprint gehoerte dieser Lauf? Die
+  // Nummer kommt fertig aus dem Server (Register, ueber den Commit-Zeitpunkt) — die
+  // Ansicht rechnet nichts und liest nichts aus dem Text.
+  kopf.appendChild(s.sprint_nr
+    ? pille("Sprint " + s.sprint_nr, "done")
+    : pille("keinem Sprint zugeordnet", "in_review"));
   if (s.fortschreibungen_heute) {
     kopf.appendChild(pille(s.fortschreibungen_heute + "× heute fortgeschrieben"));
   }
@@ -504,13 +510,52 @@ function sprintKachel(s) {
       "Alle " + s.offen_gesamt + " offenen Aufgaben der Organisation sind im Plan."));
   }
   if (!(s.zeilen || []).length) {
+    // ⚠ Das ist NICHT dasselbe wie ein leeres Kapitel: hier wurde gar kein Plan
+    // gefunden (Überschrift fehlt, Datei unlesbar). Ein leeres Kapitel sagt „nichts
+    // geplant", diese Zeile sagt „nichts gelesen" — zwei verschiedene Aussagen.
     karte.appendChild(el("p", { "class": "leer" }, "Kein Sprint-Plan in " + s.quelle + "."));
     return karte;
   }
+  // SWR-154 (Brief pm/N-0043 Punkt 2): Kapitel statt einer Tabelle. Die Zuordnung steht
+  // als Feld an jeder Zeile (`kapitel`) und die Reihenfolge in `s.kapitel` — beides vom
+  // Server. Die Ansicht gruppiert und rechnet nicht: ein `sprint_nr === jetzt + 1` hier
+  // wäre die zweite Antwort auf „welcher ist der nächste Sprint?" (ADR-P11-001, B033).
+  var koepfe = s.kapitel || [];
+  if (!koepfe.length) {
+    // Kein Sprintregister lesbar -> keine Kapitel. Die flache Tabelle bleibt; eine
+    // erfundene Überschrift „Sprint 0 (aktuell)" wäre schlimmer als keine.
+    karte.appendChild(planTabelle(s.zeilen));
+  } else {
+    koepfe.forEach(function (k) {
+      var zeilenDesKapitels = s.zeilen.filter(function (r) { return r.kapitel === k.schluessel; });
+      karte.appendChild(el("div", { "class": "zeile" },
+        el("h4", { style: "margin:12px 0 4px" }, k.titel),
+        pille(zeilenDesKapitels.length + " Aufgabe(n)",
+          zeilenDesKapitels.length ? "open" : "done")));
+      if (zeilenDesKapitels.length) {
+        karte.appendChild(planTabelle(zeilenDesKapitels));
+      } else {
+        // ⚠ Der leere Fall bekommt einen SATZ und nicht nichts. „Nichts geplant" ist
+        // eine Aussage; ein weggelassenes Kapitel ist von „nicht nachgesehen" nicht zu
+        // unterscheiden (dieselbe Regel wie SWR-114/SWR-117).
+        karte.appendChild(el("div", { "class": "hinweis" },
+          "Für dieses Kapitel ist nichts geplant."));
+      }
+    });
+  }
+  karte.appendChild(el("div", { "class": "zeile" },
+    "Quelle: " + s.quelle + " · Zeitstempel aus dem Git-Commit, nicht aus dem Text."));
+  return karte;
+}
+
+// SWR-154: die Plantabelle als eigener Baustein — sie wird jetzt je Kapitel gebraucht.
+// Bewusst EINE Funktion und keine Kopie je Kapitel: zwei Tabellenbauer würden
+// auseinanderlaufen, und die Spalten sind die Zusicherung aus SWR-103.
+function planTabelle(zeilen) {
   var tab = el("table", { "class": "tab" });
   tab.appendChild(el("tr", {}, el("th", {}, "Aufgabe"), el("th", {}, "Rolle"),
     el("th", {}, "Fällig"), el("th", {}, "Status"), el("th", {}, "Grund")));
-  s.zeilen.forEach(function (r) {
+  zeilen.forEach(function (r) {
     // SWR-150: die erste Kennung der Zeile ist die, die ein Ziel hat — `ticketRoute`
     // entscheidet das, nicht ein Zaehlen von Schraegstrichen in der Ansicht.
     var erste = (r.refs || []).filter(function (x) { return Regeln.ticketRoute(x); })[0] || "";
@@ -523,10 +568,7 @@ function sprintKachel(s) {
         r.horizont === "warteschlange" ? pille("Warteschlange") : ""),
       el("td", {}, r.status || ""), el("td", {}, r.grund || "")));
   });
-  karte.appendChild(tab);
-  karte.appendChild(el("div", { "class": "zeile" },
-    "Quelle: " + s.quelle + " · Zeitstempel aus dem Git-Commit, nicht aus dem Text."));
-  return karte;
+  return tab;
 }
 
 function sprintZeit(iso) { return sessionZeit(iso); }

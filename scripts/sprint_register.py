@@ -167,6 +167,58 @@ def aktuell(root):
     return z[-1]["nr"] if z else 0
 
 
+def _wanduhr(wert):
+    """Ein Zeitwert (Register `%Y-%m-%d %H:%M` oder git `%cI`) als naive Wanduhrzeit.
+
+    ⚠ **Warum die Zeitzone bewusst FALLENGELASSEN wird.** Das Register schreibt mit
+    `datetime.now()` ohne Offset, git liefert `%cI` **mit** Offset. Beide entstehen auf
+    demselben Host und meinen dieselbe Wanduhr. Ein aware/naive-Vergleich wuerde in
+    Python werfen; die Offsets kuenstlich zu ergaenzen hiesse, eine Zeitzone zu
+    behaupten, die im Register gar nicht steht. Verglichen wird deshalb, was in beiden
+    Faellen wirklich dasteht: die abgelesene Uhrzeit.
+    """
+    s = str(wert or "").strip()
+    if not s:
+        return None
+    try:
+        a = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return a.replace(tzinfo=None)
+
+
+def sprint_zu_zeit(root, zeit):
+    """SWR-153: Nummer des Sprints, in dessen Fenster `zeit` faellt — sonst `None`.
+
+    Fuer die Kachel „Letzte Session" (`pm/N-0043` Punkt 1): zu welchem Sprint gehoerte
+    der Lauf, der die Agenda zuletzt geschrieben hat?
+
+    ⚠ **Gefragt wird das Register, nicht der Text.** In der Ueberschrift der Agenda steht
+    dieselbe Zahl — als Text. Faellt ein Lauf aus, bleibt sie stehen und behauptet einen
+    Sprint, der nie lief. Genau diese Falle hat SWR-102 fuer den **Zeitstempel** bereits
+    geschlossen; sie fuer die **Nummer** daneben wieder aufzumachen waere der teuerste
+    Fehler dieser Aenderung.
+
+    Ein Sprint ohne `ende` **laeuft noch** und reicht bis in die Gegenwart. Ein Zeitpunkt
+    zwischen zwei Sprints gehoert zu **keinem** — und das wird als `None` gemeldet und
+    nicht auf den naechstgelegenen gerundet: ein Commit ausserhalb jedes Sprints ist
+    selbst ein Befund, und eine geratene Nummer verdeckt ihn (B038).
+    """
+    t = _wanduhr(zeit)
+    if t is None:
+        return None
+    treffer = None
+    for e in lies(root):
+        start = _wanduhr(e.get("start"))
+        if start is None or t < start:
+            continue
+        ende = _wanduhr(e.get("ende"))
+        if ende is not None and t > ende:
+            continue
+        treffer = e.get("nr")
+    return treffer
+
+
 def takt_minuten(root, standard=TAKT_MIN_STANDARD):
     """Taktlaenge des letzten Sprints — die Grundlage jeder Zeitschaetzung."""
     z = lies(root)

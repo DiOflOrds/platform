@@ -176,6 +176,95 @@ def horizont(nr, jetzt_nr):
     return "fest" if nr <= jetzt_nr + HORIZONT else "warteschlange"
 
 
+# SWR-154 (pm/N-0043 Punkt 2): die Kapitel des Plans, in Anzeigereihenfolge.
+#
+# ⚠ **Die ersten beiden erscheinen AUCH LEER.** Ein leeres Kapitel sagt „hier ist nichts
+# geplant"; ein fehlendes ist von „das haben wir nicht nachgesehen" nicht zu
+# unterscheiden. Dieselbe Entscheidung hat SWR-114 für die Preflight-Zeile und SWR-117
+# für den Org-Kopfblock bereits getroffen — hier zum dritten Mal, aus demselben Grund.
+#
+# ⚠ Die übrigen drei erscheinen **nur mit Inhalt**. Das ist keine Inkonsequenz, sondern
+# der Wortlaut des Auftrags: *„und ggf. spätere Sprints, fall aufgaben geplant sind"*.
+# „Aktuell" und „nächster" sind Fragen, die immer gestellt werden; „später", „Takt" und
+# „ohne Sprintbezug" sind Behälter, die es nur gibt, wenn etwas darin liegt.
+KAPITEL_AKTUELL = "aktuell"
+KAPITEL_NAECHSTER = "naechster"
+KAPITEL_SPAETER = "spaeter"
+KAPITEL_TAKT = "takt"
+KAPITEL_OHNE = "ohne"
+
+KAPITEL_REIHENFOLGE = (KAPITEL_AKTUELL, KAPITEL_NAECHSTER, KAPITEL_SPAETER,
+                       KAPITEL_TAKT, KAPITEL_OHNE)
+KAPITEL_IMMER = (KAPITEL_AKTUELL, KAPITEL_NAECHSTER)
+
+
+def kapitel(faellig, jetzt_nr):
+    """SWR-154: In welches Kapitel gehört diese Planzeile? -> Schlüssel oder "".
+
+    Gelesen wird die **Fällig-Zelle**, dieselbe Eingabe wie bei `faellig_zustand` und
+    `sprint_nummer` — kein zweiter Erhebungsweg (B033).
+
+    ⚠ **Takt zuerst.** `faellig_zustand` faltet „dieser Sprint" und „jeder Sprint" in
+    denselben Zustand `sprint`, und das ist dort richtig: beide sind in diesem Lauf
+    fällig. Für die Kapitel ist der Unterschied genau der Punkt — ein Dauerläufer gehört
+    nicht unter eine Sprintnummer, weil er in **jedem** Sprint läuft. Die Reihenfolge
+    dieser beiden Prüfungen ist deshalb Absicht und keine Laune.
+
+    ⚠ **Ohne bekannte Sprintnummer gibt es keine Kapitel.** `jetzt_nr == 0` heißt, das
+    Register ist nicht lesbar. „Sprint 0 (aktuell)" wäre eine Behauptung, die niemand
+    getroffen hat (B038) — die Sicht bleibt dann bei ihrer flachen Tabelle.
+    """
+    if not jetzt_nr:
+        return ""
+    s = _zellen_text(faellig)
+    if _TAKT_WORT.search(s):
+        return KAPITEL_TAKT
+    if _SPRINT_WORT.search(s):
+        return KAPITEL_AKTUELL
+    nr = sprint_nummer(s)
+    if nr is None:
+        # Datum, „wartet-auf-Mensch" oder gar nichts. ⚠ Solche Zeilen kommen NICHT nach
+        # „Später": das wäre eine Aussage über einen Sprint, die im Plan nicht steht. Sie
+        # bekommen ihr eigenes Kapitel, das nur erscheint, wenn es Zeilen hat.
+        return KAPITEL_OHNE
+    if nr <= jetzt_nr:
+        return KAPITEL_AKTUELL
+    if nr == jetzt_nr + 1:
+        return KAPITEL_NAECHSTER
+    return KAPITEL_SPAETER
+
+
+def kapitel_koepfe(plan_zeilen, jetzt_nr):
+    """SWR-154: die Kapitelüberschriften in Anzeigereihenfolge, mit Nummer im Titel.
+
+    Der **Server** entscheidet die Zuordnung und liefert sie mit; die Ansicht gruppiert
+    nur noch. `sprint_nr == jetzt + 1` in JavaScript wäre eine zweite Antwort auf die
+    Frage „welcher ist der nächste Sprint?" neben der, die seit SWR-144 im Payload steht
+    (`naechster_sprint`) — und sie wäre genau dann falsch, wenn zwischen Laden und Klick
+    ein Sprint gewechselt hat (ADR-P11-001, B033).
+    """
+    if not jetzt_nr:
+        return []
+    anzahl = {k: 0 for k in KAPITEL_REIHENFOLGE}
+    for z in plan_zeilen:
+        k = z.get("kapitel")
+        if k in anzahl:
+            anzahl[k] += 1
+    titel = {KAPITEL_AKTUELL: "Sprint %d (aktuell)" % jetzt_nr,
+             KAPITEL_NAECHSTER: "Sprint %d (nächster)" % (jetzt_nr + 1),
+             KAPITEL_SPAETER: "Später",
+             KAPITEL_TAKT: "Jeder Sprint (Takt)",
+             KAPITEL_OHNE: "Ohne Sprintbezug"}
+    nummer = {KAPITEL_AKTUELL: jetzt_nr, KAPITEL_NAECHSTER: jetzt_nr + 1}
+    koepfe = []
+    for k in KAPITEL_REIHENFOLGE:
+        if not anzahl[k] and k not in KAPITEL_IMMER:
+            continue
+        koepfe.append({"schluessel": k, "titel": titel[k],
+                       "sprint_nr": nummer.get(k), "anzahl": anzahl[k]})
+    return koepfe
+
+
 def wartet_auf_mensch(*zellen):
     """Wartet diese Zeile auf eine Handlung des Menschen? (quer zum Termin)
 
@@ -240,6 +329,7 @@ def zeilen(tabelle, heute=None, jetzt_nr=0):
                          "ampel": ampel,
                          "sprint_nr": nr,                      # SWR-106
                          "horizont": horizont(nr, jetzt_nr),   # fest / warteschlange
+                         "kapitel": kapitel(faellig, jetzt_nr),  # SWR-154
                          "wartet_auf_mensch": wartet_auf_mensch(faellig, status),
                          "status": status,
                          "grund": hole(z, i_grund)})
@@ -614,6 +704,12 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
 
     return {"text": session.wichtigstes(text),
             "zeilen": plan_zeilen,
+            # SWR-154 (pm/N-0043 Punkt 2): die Kapitelüberschriften in Reihenfolge. ⚠ Die
+            # ZEILEN stehen weiterhin **einmal** in `zeilen`; hier liegen nur die Köpfe.
+            # Die Zeilen zusätzlich je Kapitel mitzuliefern wäre eine zweite Kopie
+            # desselben Bestands — und zwei Kopien laufen auseinander (B033). Die
+            # Zuordnung ist ein Feld an der Zeile.
+            "kapitel": kapitel_koepfe(plan_zeilen, jetzt_nr),
             "zaehler": zaehler(plan_zeilen),
             "offen_gesamt": len(offene),
             # SWR-132 (pm/T-0064, Brief pm/N-0038): die **Liste** zu der Zahl.
