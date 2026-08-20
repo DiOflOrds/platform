@@ -454,6 +454,22 @@ def dr_entschieden_nicht_verbucht(root):
         return None
 
 
+def decision_log_halb_geschrieben(root):
+    """SWR-165: Weiterleitung auf `aggregation.decision_log_ohne_marker`.
+
+    Dieselbe Bauart wie `dr_entschieden_nicht_verbucht` — die Weiterleitung ist keine
+    zweite Quelle, sondern der Beleg, dass es nur eine gibt.
+
+    `None` heißt „konnte nicht prüfen" und ausdrücklich nicht „nichts gefunden".
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from backend import aggregation as _aggregation
+        return _aggregation.decision_log_ohne_marker(root)
+    except Exception:
+        return None
+
+
 def uebergangshistorie(root):
     """SWR-118 (pm/T-0048): `(neue, altbestand, register)` oder `None`.
 
@@ -876,6 +892,21 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         befunde += 1
     else:
         print("[org] Entschiedene, unverbuchte DRs: 0.")
+    # SWR-165 (platform/T-0022 Frage 1): die Naht zwischen dem ERSTEN und dem ZWEITEN der
+    # drei Schreibvorgänge von `inbox.entscheide`. Fällt sie aus, steht die Entscheidung im
+    # Log und **jede** Prüfung hält den DR weiter für offen — der Mensch bekommt eine
+    # Frage erneut vorgelegt, die er beantwortet hat. Zeile IMMER (SWR-114/117/155).
+    halb = decision_log_halb_geschrieben(root)
+    if halb is None:
+        print("[org] Decision-Log gegen Ticketmarker: nicht prüfbar (Aggregation nicht ladbar).")
+    elif halb:
+        print(f"[org] BEFUND: {len(halb)} protokollierte Entscheidung(en) ohne Vermerk im "
+              f"Ticket — die Entscheidung ist gefallen und für jede Prüfung unsichtbar:")
+        for projekt, d_id, ticket_id, grund in halb:
+            print(f"    {projekt}/{ticket_id} ({d_id}): {grund}")
+        befunde += 1
+    else:
+        print("[org] Decision-Log gegen Ticketmarker: 0 halb geschriebene Entscheidungen.")
     # SWR-115 (pm/T-0049): die STATUSSPALTE des Sprintplans gegen den Ticketstatus.
     # Hier und nicht später, weil Sprint 7 `platform/T-0010` vierfach als erledigt gemeldet
     # hat — an den Auftraggeber inbegriffen — und `sprint_vergangen` (SWR-112) den Fall

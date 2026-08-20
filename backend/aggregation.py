@@ -856,6 +856,89 @@ def dr_entschieden_nicht_verbucht(root):
     return treffer
 
 
+#: SWR-165: der Rumpfmarker, den `inbox.entscheide` als **zweiten** von drei
+#: Schreibvorgängen ins Ticket schreibt. Er steht hier und nicht als Literal in der
+#: Prüfung, weil `inbox` ihn schreibt und diese Funktion ihn sucht — zwei Schreibweisen
+#: desselben Markers wären eine Prüfung, die irgendwann nichts mehr findet und grün bleibt.
+DR_RUMPFMARKER = "**Entscheidung ("
+
+
+def decision_log_ohne_marker(root):
+    """SWR-165 (`platform/T-0022` Frage 1): Logzeilen, deren Ticket den Marker NICHT trägt.
+
+    Rückgabe: Liste von `(projekt, D-ID, ticket_id, grund)`.
+
+    ⚠⚠ **Das ist die Antwort auf Frage 1 von `platform/T-0022`, und sie lautet: prüfen,
+    nicht umbauen.** `inbox.entscheide` schreibt **drei** Dateien und committet:
+
+    | # | Datei | Art |
+    |---|---|---|
+    | 1 | `management/decisions/decision-log.md` | append |
+    | 2 | `tickets/T-xxxx.md` (Rumpfmarker) | append |
+    | 3 | `BOARD.md` | überschreiben |
+
+    Nur die erste ist seit SWR-152 gegen ihr **Fehlen** abgesichert. Der Fehlschlag vom
+    2026-08-17 war **sauber**, weil er die erste traf — *Glück in der Reihenfolge und keine
+    Zusicherung.*
+
+    ⚠ **Die gefährliche Lücke liegt zwischen 1 und 2, und sie ist die schlimmere Richtung.**
+    `board.dr_entschieden` liest „entschieden" am **Rumpfmarker** (SWR-131). Fällt der
+    Schreibvorgang zwischen 1 und 2 aus, steht die Entscheidung im Log — und **jede**
+    Prüfung hält den DR weiter für offen und legt ihn dem Menschen erneut vor. Das ist
+    wörtlich der Vorfall, für den SWR-131 gebaut wurde, nur mit vertauschten Rollen: dort
+    war der Marker da und der Status fehlte, hier fehlt der Marker selbst.
+
+    > **Eine Entscheidung, die protokolliert ist und im Ticket unsichtbar bleibt, ist
+    > schlimmer als eine, die gar nicht ankam: die eine merkt der Mensch, die andere
+    > nicht.**
+
+    ⚠ **Warum nicht der Schreibweg umgebaut wird.** Ein Bau am Schreibpfad einer
+    Klasse-A-Entscheidung verlangt eine Aussage darüber, was gelten soll, wenn die zweite
+    von drei Dateien scheitert — Rücknahme, Teilzustand oder Abbruch vor dem ersten
+    Schreiben. Diese Frage ist niemandem gestellt worden, und sie ungefragt zu beantworten
+    wäre der Fehler, den `platform/T-0020` vier Sprints lang vermieden hat. Eine Prüfung
+    **daneben** lässt den Weg unangetastet und macht den halben Zustand sichtbar.
+
+    ⚠ **Geprüft werden nur die Zeilen, die die Inbox geschrieben hat** — erkennbar daran,
+    dass die letzte Spalte **genau** eine Ticket-ID trägt. Handgeschriebene Logzeilen
+    führen dort eine Artefaktliste; von ihnen einen Rumpfmarker zu verlangen hieße, die
+    Prüfung am Tag ihrer Einführung 47-fach rot zu starten und damit das Wegsehen zu
+    trainieren (die Lehre der 42 Altbestands-DRs aus SWR-131).
+
+    Gemessen beim Bau (Sprint 24): **93** Logzeilen über alle Repos, davon **46** von der
+    Inbox geschrieben, **0** ohne Marker. Die Prüfung startet grün, weil der Fall bisher
+    nicht eingetreten ist — und nicht, weil sie nichts ansieht.
+    """
+    treffer = []
+    for name, basis in board.projekt_pfade(root):
+        log = os.path.join(basis, "management", "decisions", "decision-log.md")
+        if not os.path.exists(log):
+            continue
+        try:
+            with open(log, encoding="utf-8") as f:
+                zeilen = f.readlines()
+        except OSError:
+            continue
+        for zeile in zeilen:
+            z = zeile.strip()
+            if not re.match(r"\|\s*D\d+\s*\|", z):
+                continue
+            spalten = [s.strip() for s in z.strip("|").split("|")]
+            ticket_id = spalten[-1] if spalten else ""
+            if not re.fullmatch(r"T-\d{4}", ticket_id):
+                continue  # handgeschriebene Zeile, siehe Docstring
+            pfad = os.path.join(basis, "tickets", f"{ticket_id}.md")
+            try:
+                with open(pfad, encoding="utf-8") as f:
+                    rumpf = f.read()
+            except OSError:
+                treffer.append((name, spalten[0], ticket_id, "Ticketdatei fehlt"))
+                continue
+            if DR_RUMPFMARKER not in rumpf:
+                treffer.append((name, spalten[0], ticket_id, "kein Rumpfmarker im Ticket"))
+    return treffer
+
+
 def organisation(root):
     """SWR-117 (pm/T-0047): der Kopfblock — Aussagen über die ORGANISATION, nicht über
     ein Projekt.
