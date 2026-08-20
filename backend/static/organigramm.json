@@ -1,0 +1,431 @@
+{
+ "einheiten": [
+  {
+   "anzeigename": "p0",
+   "beschreibung": "Genesis: Gruendung von Team, Prozess und Plattform (Bootstrap-Projekt, genesis-v1.0)",
+   "datenklasse": "intern",
+   "einheit": "p0",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "abgeschlossen",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p1",
+   "beschreibung": "Mission Control 2.0: Multi-Projekt-Leitstand, Inbox-Regelkanal, E-Mail-Benachrichtigung",
+   "datenklasse": "intern",
+   "einheit": "p1",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "ohne Status",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p10",
+   "beschreibung": "Aufgaben bearbeiten im HMI: Ticket-Editor für offene Tickets, freie Mehrfach-Labels mit Board-Filter, Typ setzen, Konflikterkennung gegen die Routine-Session",
+   "datenklasse": "intern",
+   "einheit": "p10",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "abgeschlossen",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p11",
+   "beschreibung": "Widget-Dashboard: kompakte, nicht scrollbare Übersicht aller Projekte/Teams als konfigurierbare Widgets, Startseite + Detailseite je Projekt/Team, Mail-Widget hinter dem PIN-Lesegate",
+   "datenklasse": "intern",
+   "einheit": "p11",
+   "profil": "entwicklung",
+   "rollen": [
+    {
+     "hinweis": "",
+     "instanz": "DEV@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Entwickler",
+     "quelle": "besetzung",
+     "rolle": "DEV",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PL@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "besetzung",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "TEST@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Verifikationsingenieur",
+     "quelle": "besetzung",
+     "rolle": "TEST",
+     "status": "aktiv",
+     "takt": "sprint"
+    }
+   ],
+   "status": "aktiv",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p12",
+   "beschreibung": "Markdown-Renderer auch für Briefe/Reports: Briefe und Sprint-Reports formatiert darstellen wie den Digest — über den vorhandenen Renderer, mit Ticket-Links im Inline-Pass statt eines zweiten Textwegs",
+   "datenklasse": "intern",
+   "einheit": "p12",
+   "profil": "entwicklung",
+   "rollen": [
+    {
+     "hinweis": "",
+     "instanz": "DEV@p12",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Entwickler",
+     "quelle": "besetzung",
+     "rolle": "DEV",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PL@p12",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "besetzung",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    }
+   ],
+   "status": "aktiv",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p2",
+   "beschreibung": "Betriebshaertung: Frist-Warnmails, Katalog-Gate, Nutzer-Registry, Inbox-Haertung, Aufwandsschaetzung",
+   "datenklasse": "intern",
+   "einheit": "p2",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "ohne Status",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p3",
+   "beschreibung": "Mission Control 3.0: Jira-like HMI - Router, Board, Options-Buttons, Tabellen, Architekturbild, Cockpit",
+   "datenklasse": "intern",
+   "einheit": "p3",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "ohne Status",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p4",
+   "beschreibung": "Mission Control 3.1: LAN-Betrieb mit PIN, Handy-PWA, Briefkasten-Chat",
+   "datenklasse": "intern",
+   "einheit": "p4",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "ohne Status",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p5",
+   "beschreibung": "Genesis 2.0 Organisationsrahmen: Prozessprofile, Entscheidungsklassen, Team-Registry, PM-Gruendung",
+   "datenklasse": "intern",
+   "einheit": "p5",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "ohne Status",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p7",
+   "beschreibung": "Teams im HMI: Team-Tab mit Digest-Ansicht, Konfigurator, PIN-Lesegate, Digest-Mailversand",
+   "datenklasse": "intern",
+   "einheit": "p7",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "ohne Status",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p8",
+   "beschreibung": "Mail-Autopilot: lokale Ollama-Verdichtung, Sofort-Knopf, Mehrfach-Takt",
+   "datenklasse": "intern",
+   "einheit": "p8",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "ohne Status",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "p9",
+   "beschreibung": "Org-Cockpit: Teams/Projekte gruppiert mit Status, Beschreibung und Aufgaben; projects-Discovery",
+   "datenklasse": "intern",
+   "einheit": "p9",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "aktiv",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "ASPICE-Team",
+   "beschreibung": "ASPICE-Team: entwickelt, pflegt und maintained alle Tools/Skripte und Mission Control - fuer Genesis, sich selbst, PM und alle Projekte (festes Team)",
+   "datenklasse": "intern",
+   "einheit": "platform",
+   "profil": "entwicklung",
+   "rollen": [
+    {
+     "hinweis": "",
+     "instanz": "ARCH@aspice",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Architekt",
+     "quelle": "besetzung",
+     "rolle": "ARCH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CHG@aspice",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Change-Manager",
+     "quelle": "besetzung",
+     "rolle": "CHG",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "Nimmt REL wahr (Stufe 1, registry.yaml)",
+     "instanz": "CM@aspice",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Konfigurationsmanager",
+     "quelle": "besetzung",
+     "rolle": "CM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "COACH@aspice",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prozess-Coach",
+     "quelle": "besetzung",
+     "rolle": "COACH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "DEV@aspice",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Entwickler",
+     "quelle": "besetzung",
+     "rolle": "DEV",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PL@aspice",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "besetzung",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "Klassifikation/Trend lokal; Ursachenanalyse per Kette auf Claude",
+     "instanz": "PROB@aspice",
+     "modell": "gemma3:27b",
+     "motor": "ollama",
+     "name": "Problemmanager",
+     "quelle": "besetzung",
+     "rolle": "PROB",
+     "status": "aktiv",
+     "takt": "schnell"
+    },
+    {
+     "hinweis": "",
+     "instanz": "QM@aspice",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Qualitätsmanager",
+     "quelle": "besetzung",
+     "rolle": "QM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "RM@aspice",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Requirements-Manager",
+     "quelle": "besetzung",
+     "rolle": "RM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "TEST@aspice",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Verifikationsingenieur",
+     "quelle": "besetzung",
+     "rolle": "TEST",
+     "status": "aktiv",
+     "takt": "sprint"
+    }
+   ],
+   "status": "aktiv",
+   "team": "aspice",
+   "typ": "aspice"
+  },
+  {
+   "anzeigename": "Projektmanagement-Team",
+   "beschreibung": "Projektmanagement-Team: Intake, Staffing, Session-Agenda, Koordination, LeLe (festes Team)",
+   "datenklasse": "intern",
+   "einheit": "pm",
+   "profil": "wiederkehrend",
+   "rollen": [
+    {
+     "hinweis": "LeLe-Register über alle Teams; kuratiert Wissensbasen (Lernzyklus)",
+     "instanz": "COACH@pm",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prozess-Coach",
+     "quelle": "besetzung",
+     "rolle": "COACH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "Koordiniert alle PL-Instanzen (Session-Agenda, Prioritäten, Besetzungen)",
+     "instanz": "PL@pm",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "besetzung",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "QM@pm",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Qualitätsmanager",
+     "quelle": "besetzung",
+     "rolle": "QM",
+     "status": "aktiv",
+     "takt": "sprint"
+    }
+   ],
+   "status": "aktiv",
+   "team": "pm",
+   "typ": "pm"
+  },
+  {
+   "anzeigename": "promt-team (Prompt- und Kontext-Optimierung)",
+   "beschreibung": "Prompt- und Kontext-Optimierer (Meta-Rolle): misst und verbessert Systemprompts, Wissensschichten und Tool-Beschreibungen der KI-Rollen — Zielgroesse Aufgabenqualitaet pro Token",
+   "datenklasse": "sensibel",
+   "einheit": "promt-team",
+   "profil": "wiederkehrend",
+   "rollen": [
+    {
+     "hinweis": "Liest Transkripte (sensibel) — lokal; Vorschläge bleiben Vorschläge",
+     "instanz": "PROMPT-OPT@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prompt- und Kontext-Optimierer",
+     "quelle": "besetzung",
+     "rolle": "PROMPT-OPT",
+     "status": "aktiv",
+     "takt": "sprint"
+    }
+   ],
+   "status": "aktiv",
+   "team": "promt-team",
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "team-dashboard (Ergebnis-Darstellung)",
+   "beschreibung": "Dashboard-Team: pflegt Widget-Katalog und Widget-Vertrag der Organisation (fachlicher Auftraggeber von P11)",
+   "datenklasse": "intern",
+   "einheit": "team-dashboard",
+   "profil": "wiederkehrend",
+   "rollen": [
+    {
+     "hinweis": "",
+     "instanz": "DASH-RED@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Dashboard-Redakteur",
+     "quelle": "besetzung",
+     "rolle": "DASH-RED",
+     "status": "aktiv",
+     "takt": "sprint"
+    }
+   ],
+   "status": "aktiv",
+   "team": "team-dashboard",
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "team-mail (Mail-Zusammenfassung)",
+   "beschreibung": "Mail-Team: fasst dimitri.john83@gmail.com per lokalem Ollama zusammen (Pilot, sensibel/lokal)",
+   "datenklasse": "sensibel",
+   "einheit": "team-mail",
+   "profil": "wiederkehrend",
+   "rollen": [
+    {
+     "hinweis": "Datenklasse sensibel — lokal, nie API/Cloud",
+     "instanz": "MAIL-RED@team-mail",
+     "modell": "gemma3:27b",
+     "motor": "ollama",
+     "name": "Mail-Redakteur",
+     "quelle": "besetzung",
+     "rolle": "MAIL-RED",
+     "status": "aktiv",
+     "takt": "schnell"
+    }
+   ],
+   "status": "aktiv",
+   "team": "team-mail",
+   "typ": "projekt"
+  }
+ ],
+ "koordination": "PM-Team koordiniert alle PL-Instanzen (Charter pm/docs/01-team-charter.md)",
+ "mensch": "Auftraggeber / Eskalationsinstanz (Klasse A, Gates)"
+}

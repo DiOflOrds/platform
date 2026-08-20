@@ -16,8 +16,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend import (aggregation, briefkasten, inbox, mailer, pool,  # noqa: E402
-                     session, sprint, teams, tickets, widgets)
+from backend import (aggregation, briefkasten, inbox, mailer, organisation,  # noqa: E402
+                     pool, session, sprint, teams, tickets, widgets)
 
 
 def schreibschutz_pruefen(client_ip, pin_header):
@@ -249,6 +249,18 @@ class Api(BaseHTTPRequestHandler):
                 return self._json(200, widgets.widgets(wurzel))
             if pfad == "/api/session":  # SWR-102 (pm/T-0040): was die letzte Session tat
                 return self._json(200, session.stand(wurzel))
+            if pfad == "/api/organisation/rolle":  # Orga-Rework v2 (platform/T-0028):
+                # Detail einer Rollen-Instanz (Besetzung + Bauplan + Projektteil + Historie)
+                instanz = (parse_qs(teile.query).get("instanz") or [""])[0]
+                try:
+                    return self._json(200, organisation.detail(wurzel, instanz))
+                except organisation.OrgFehler as e:
+                    return self._json(e.code, {"fehler": str(e)})
+            if pfad == "/api/organisation/katalog":  # Orga-Rework v2: Formular-Auswahllisten
+                try:
+                    return self._json(200, organisation.katalog(wurzel))
+                except organisation.OrgFehler as e:
+                    return self._json(e.code, {"fehler": str(e)})
             if pfad == "/api/sprint":  # SWR-103 (pm/T-0016, pm/D006): Sprint-Workflow
                 return self._json(200, sprint.plan(wurzel))
             if pfad == "/api/briefkasten":  # SWR-050 (P4): Konversation lesen
@@ -341,6 +353,24 @@ class Api(BaseHTTPRequestHandler):
                 erg = tickets.speichere(type(self).wurzel, daten.get("projekt", ""),
                                         daten.get("id", ""), daten)
             except tickets.TicketFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
+        if self.path == "/api/organisation/besetzung":  # Orga-Rework v2 (platform/T-0028):
+            # Besetzung konfigurieren — Mensch via HMI (Konzept Kap. 7); PIN oben geprüft.
+            try:
+                aktion = daten.get("aktion", "")
+                instanz = daten.get("instanz", "")
+                felder = daten.get("felder", {}) or {}
+                if aktion == "setzen":
+                    erg = organisation.setzen(type(self).wurzel, instanz, felder)
+                elif aktion == "anlegen":
+                    erg = organisation.anlegen(type(self).wurzel, instanz, felder)
+                elif aktion == "entfernen":
+                    erg = organisation.entfernen(type(self).wurzel, instanz)
+                else:
+                    return self._json(400, {"fehler": f"Unbekannte Aktion: {aktion} "
+                                                      "(erlaubt: setzen, anlegen, entfernen)"})
+            except organisation.OrgFehler as e:
                 return self._json(e.code, {"fehler": str(e)})
             return self._json(200, erg)
         # SWR-144 (pm/T-0065): der Knopf je Zeile der Aufgabenliste. PIN oben geprüft wie

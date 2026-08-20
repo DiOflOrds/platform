@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<!-- Organisation & Planung v1 (Orga-Rework, process/docs/03-rollenmodell-v2-orga-rework.md Kap. 9).
+     Eigenständige Seite OHNE Eingriff in app.js — die Tab-Integration ist ein Folge-CR ans
+     ASPICE-Team. Keine Bibliothek, kein CDN (ADR-002-Geist): Organigramm als CSS-Boxen aus
+     organigramm.json; Planung aus /api/sprint (Sprint-Register, Takt 60 min); Live aus
+     /api/uebersicht + /api/board. Nur lesend. -->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1a2b3c">
+<title>Organisation &amp; Planung — Mission Control</title>
+<style>
+  :root { --haupt:#1a2b3c; --akzent:#2f81f7; --ok:#2da44e; --warn:#d4a72c; --rot:#cf222e;
+          --grau:#57606a; --rand:#d0d7de; --fond:#f6f8fa; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--fond); color:#1f2328; }
+  header { background:var(--haupt); color:#fff; padding:.7rem 1rem; display:flex; align-items:baseline; gap:.8rem; flex-wrap:wrap; }
+  header h1 { font-size:1.05rem; margin:0; }
+  header small { opacity:.7 }
+  header a { color:#cfd8e3; }
+  nav { display:flex; gap:.25rem; background:var(--haupt); padding:0 .6rem .6rem; flex-wrap:wrap; }
+  nav button { border:0; border-radius:.5rem .5rem 0 0; padding:.45rem .9rem; cursor:pointer;
+               background:#2c3e50; color:#cfd8e3; font-size:.9rem; }
+  nav button.aktiv { background:var(--fond); color:var(--haupt); font-weight:600; }
+  main { padding:1rem; max-width:none; margin:0 auto; }
+  h2 { font-size:1.05rem; margin:.2rem 0 .6rem; }
+  h3 { font-size:.95rem; margin:.8rem 0 .4rem; }
+  .hinweis { color:var(--grau); font-size:.85rem; }
+  .karte { border:1px solid var(--rand); border-radius:.6rem; background:#fff; padding:.6rem .8rem; margin:.5rem 0; }
+  table { border-collapse:collapse; width:100%; font-size:.88rem; background:#fff; }
+  th, td { border:1px solid var(--rand); padding:.3rem .5rem; text-align:left; vertical-align:top; }
+  th { background:#eef1f4; }
+  /* Organigramm als Baum aus CSS-Boxen */
+  .baum { display:flex; flex-direction:column; align-items:center; gap:0; }
+  .knoten { border:1px solid var(--rand); border-radius:.5rem; background:#fff; padding:.35rem .7rem;
+            text-align:center; font-size:.85rem; min-width:9rem; }
+  .knoten b { display:block; }
+  .knoten small { color:var(--grau); }
+  .knoten.mensch { background:var(--haupt); color:#fff; } .knoten.mensch small { color:#cfd8e3; }
+  .knoten.pm { background:#eaf2fe; border-color:var(--akzent); }
+  .strich { width:2px; height:.8rem; background:var(--rand); }
+  .reihe { display:flex; gap:.6rem; flex-wrap:wrap; justify-content:center; align-items:stretch; }
+  .zweig { display:flex; flex-direction:column; align-items:center; }
+  .knoten.einheit { cursor:pointer; }
+  .knoten.einheit:hover, .knoten.einheit.gewaehlt { border-color:var(--akzent); box-shadow:0 0 0 2px #2f81f733; }
+  .rollen { display:flex; gap:.4rem; flex-wrap:wrap; justify-content:center; margin-top:.5rem; }
+  .rolle { border:1px solid var(--rand); border-radius:.5rem; background:#fff; padding:.25rem .55rem; font-size:.8rem; cursor:pointer; }
+  .rolle:hover, .rolle.gewaehlt { border-color:var(--akzent); box-shadow:0 0 0 2px #2f81f733; }
+  .rolle.unbesetzt { border-style:dashed; color:var(--grau); }
+  .formzeile { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.35rem 0; }
+  .formzeile label { font-size:.82rem; color:var(--grau); min-width:4.5rem; }
+  .formzeile select, .formzeile input { font-size:.85rem; padding:.2rem .35rem; border:1px solid var(--rand); border-radius:.35rem; }
+  .knopf { border:1px solid var(--rand); border-radius:.4rem; padding:.3rem .8rem; cursor:pointer; background:#fff; font-size:.85rem; }
+  .knopf.primaer { background:var(--akzent); border-color:var(--akzent); color:#fff; }
+  .knopf.gefahr { color:var(--rot); border-color:var(--rot); }
+  details.doku { margin:.4rem 0; border:1px solid var(--rand); border-radius:.5rem; background:#fff; }
+  details.doku summary { cursor:pointer; padding:.35rem .6rem; font-size:.88rem; font-weight:600; }
+  details.doku pre { margin:0; padding:.6rem; border-top:1px solid var(--rand); white-space:pre-wrap;
+                     font-size:.8rem; max-height:24rem; overflow:auto; background:var(--fond); }
+  .meldung { font-size:.85rem; margin:.4rem 0; } .meldung.ok { color:var(--ok); } .meldung.rot { color:var(--rot); }
+  .motor { display:inline-block; border-radius:.6rem; padding:0 .4rem; font-size:.72rem; color:#fff; background:var(--grau); }
+  .motor.cowork { background:var(--akzent); } .motor.ollama { background:#8250df; }
+  .motor.api { background:var(--warn); color:#1f2328; } .motor.mensch { background:var(--ok); } .motor.script { background:#57606a; }
+  /* Planung: MS-Project-artiges Raster */
+  .gantt { overflow-x:auto; }
+  .gantt table { min-width:60rem; }
+  .gantt th.jetzt { background:#eaf2fe; }
+  .balken { border-radius:.4rem; padding:.15rem .4rem; font-size:.78rem; margin:.12rem 0; color:#fff;
+            background:var(--akzent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:16rem; }
+  .balken.erledigt { background:var(--ok); }
+  .balken.mensch { background:var(--warn); color:#1f2328; }
+  .balken.ueberfaellig { background:var(--rot); }
+  .balken.takt { background:#8250df; }
+  .legende span { margin-right:.9rem; font-size:.8rem; }
+  .punkt { display:inline-block; width:.7rem; height:.7rem; border-radius:.2rem; vertical-align:-.05rem; margin-right:.25rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Organisation &amp; Planung</h1>
+  <small id="stand">lädt …</small>
+  <small><a href="/">← Mission Control</a></small>
+</header>
+<nav>
+  <button id="tabOrg" class="aktiv">Organisation</button>
+  <button id="tabLive">Live</button>
+  <button id="tabPlan">Planung</button>
+</nav>
+<main>
+  <section id="ansOrg"><p class="hinweis">Organigramm lädt …</p></section>
+  <section id="ansLive" hidden><p class="hinweis">Live-Daten laden …</p></section>
+  <section id="ansPlan" hidden><p class="hinweis">Plan lädt …</p></section>
+</main>
+<script>
+"use strict";
+/* Quelle Organisation: /organigramm.json (generiert aus den Registries durch
+   platform/scripts/organigramm.py — Registry ändern, Generator laufen lassen).
+   Quelle Live: /api/uebersicht + /api/board. Quelle Planung: /api/sprint. */
+var ORG = null, PLAN = null, UEB = null, GEWAEHLT = null;
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function hole(url) {
+  return fetch(url, { cache: "no-store" }).then(function (r) {
+    if (!r.ok) { throw new Error(url + " → HTTP " + r.status); }
+    return r.json();
+  });
+}
+function tab(name) {
+  ["Org", "Live", "Plan"].forEach(function (t) {
+    document.getElementById("tab" + t).className = (t === name) ? "aktiv" : "";
+    document.getElementById("ans" + t).hidden = (t !== name);
+  });
+}
+document.getElementById("tabOrg").onclick = function () { tab("Org"); };
+document.getElementById("tabLive").onclick = function () { tab("Live"); zeigeLive(); };
+document.getElementById("tabPlan").onclick = function () { tab("Plan"); zeigePlan(); };
+
+/* ---------- Organisation ---------- */
+function motorChip(r) {
+  if (r.status === "unbesetzt") { return '<span class="motor">unbesetzt</span>'; }
+  var t = r.motor + (r.modell ? " · " + r.modell : "");
+  return '<span class="motor ' + esc(r.motor) + '">' + esc(t) + "</span>";
+}
+function zeigeOrg() {
+  var e = ORG.einheiten.filter(function (x) {
+    return x.status === "aktiv" || x.status === "in_gruendung" || x.status === "pausiert";
+  });
+  var pm = null;
+  e = e.filter(function (x) { if (x.einheit === "pm") { pm = x; return false; } return true; });
+  var h = ['<h2>Gesamtorganisation</h2>',
+    '<p class="hinweis">Quelle: Registries (teams/registry.yaml, roles/besetzungen.yaml) — generiert, nicht von Hand gepflegt. Einheit anklicken für die Besetzung. Abgeschlossene Projekte stehen in der Tabelle unten.</p>',
+    '<div class="baum">',
+    '<div class="knoten mensch"><b>Mensch</b><small>Auftraggeber · Gates (Klasse A)</small></div>',
+    '<div class="strich"></div>',
+    '<div class="knoten pm einheit" data-einheit="pm"><b>PM-Team</b><small>Intake · Staffing · koordiniert alle PL</small></div>',
+    '<div class="strich"></div>', '<div class="reihe">'];
+  e.forEach(function (x) {
+    h.push('<div class="zweig"><div class="strich"></div>' +
+      '<div class="knoten einheit" data-einheit="' + esc(x.einheit) + '"><b>' + esc(x.einheit) + "</b>" +
+      "<small>" + esc(x.profil || x.typ) + " · " + x.rollen.length + " Rollen</small></div></div>");
+  });
+  h.push("</div></div>", '<div id="orgDetail"></div>');
+  h.push("<h3>Alle Einheiten</h3><table><tr><th>Einheit</th><th>Typ</th><th>Profil</th><th>Status</th><th>Datenklasse</th><th>Besetzungen</th></tr>");
+  ORG.einheiten.forEach(function (x) {
+    var b = x.rollen.filter(function (r) { return r.quelle === "besetzung"; })
+      .map(function (r) { return r.instanz; }).join(", ") || "—";
+    h.push("<tr><td>" + esc(x.einheit) + "</td><td>" + esc(x.typ) + "</td><td>" + esc(x.profil || "—") +
+      "</td><td>" + esc(x.status) + "</td><td>" + esc(x.datenklasse) + "</td><td>" + esc(b) + "</td></tr>");
+  });
+  h.push("</table>");
+  document.getElementById("ansOrg").innerHTML = h.join("");
+  Array.prototype.forEach.call(document.querySelectorAll(".knoten.einheit"), function (k) {
+    k.onclick = function () { waehleEinheit(k.getAttribute("data-einheit"), k); };
+  });
+  if (pm) { /* pm bleibt wählbar über den Knoten */ }
+}
+function waehleEinheit(name, knoten) {
+  Array.prototype.forEach.call(document.querySelectorAll(".knoten.einheit"), function (k) {
+    k.className = k.className.replace(" gewaehlt", "");
+  });
+  if (knoten) { knoten.className += " gewaehlt"; }
+  var x = null;
+  ORG.einheiten.forEach(function (e) { if (e.einheit === name) { x = e; } });
+  if (!x) { return; }
+  var h = ['<div class="karte"><h3>' + esc(x.anzeigename !== x.einheit ? x.anzeigename : x.einheit) + "</h3>"];
+  if (x.beschreibung) { h.push('<p class="hinweis">' + esc(x.beschreibung) + "</p>"); }
+  h.push('<div class="rollen">');
+  x.rollen.forEach(function (r) {
+    h.push('<span class="rolle' + (r.status === "unbesetzt" ? " unbesetzt" : "") +
+      '" data-instanz="' + esc(r.instanz) + '" data-rolle="' + esc(r.rolle) +
+      '" data-quelle="' + esc(r.quelle) + '" title="' +
+      esc(r.name + (r.hinweis ? " — " + r.hinweis : "") + " — anklicken für Detail/Konfiguration") +
+      '"><b>' + esc(r.instanz) + "</b> " + motorChip(r) +
+      (r.takt ? ' <small>' + esc(r.takt) + "</small>" : "") + "</span>");
+  });
+  h.push('</div><div class="formzeile"><button class="knopf" id="neuBesetzung">+ Besetzung anlegen</button>' +
+    '<span class="hinweis">Rolle anklicken: Detail ansehen und konfigurieren (Motor, Modell, Takt, Status).</span></div>');
+  h.push("<p class=\"hinweis\">Bauplan: process/roles/&lt;rolle&gt;.md · projektspezifisch: roles/&lt;rolle&gt;.md im Repo · Historie: docs/historie.md · Organigramm versioniert: ORGANIGRAMM.md</p></div>");
+  h.push('<div id="rolleDetail"></div>');
+  document.getElementById("orgDetail").innerHTML = h.join("");
+  GEWAEHLT = name;
+  Array.prototype.forEach.call(document.querySelectorAll("#orgDetail .rolle"), function (chip) {
+    chip.onclick = function () {
+      Array.prototype.forEach.call(document.querySelectorAll("#orgDetail .rolle"), function (c) {
+        c.className = c.className.replace(" gewaehlt", "");
+      });
+      chip.className += " gewaehlt";
+      if (chip.getAttribute("data-quelle") === "besetzung") {
+        zeigeRolle(chip.getAttribute("data-instanz"));
+      } else {  // unbesetzt laut Team-Registry -> direkt Anlege-Formular mit Rolle vorbelegt
+        formularAnlegen(name, chip.getAttribute("data-rolle"));
+      }
+    };
+  });
+  document.getElementById("neuBesetzung").onclick = function () { formularAnlegen(name, ""); };
+}
+
+/* ---------- Rollen-Detail + Konfiguration (Konzept Kap. 7: Mensch direkt) ---------- */
+var PIN = "";
+function post(url, body) {
+  var kopf = { "Content-Type": "application/json" };
+  if (PIN) { kopf["X-MC-PIN"] = PIN; }
+  return fetch(url, { method: "POST", headers: kopf, body: JSON.stringify(body) })
+    .then(function (r) { return r.json().then(function (d) { return { status: r.status, d: d }; }); })
+    .then(function (a) {
+      if (a.status === 403 && !PIN) {
+        PIN = window.prompt("PIN (Schreibzugriff, SWR-049):") || "";
+        if (PIN) { return post(url, body); }
+      }
+      if (a.status !== 200) { throw new Error(a.d.fehler || ("HTTP " + a.status)); }
+      return a.d;
+    });
+}
+function nachSchreiben(meldungsZiel, text) {
+  // Registry hat sich geändert -> organigramm.json neu laden, Ansicht nachziehen
+  hole("/organigramm.json").then(function (o) {
+    ORG = o; zeigeOrg();
+    if (GEWAEHLT) {
+      var k = document.querySelector('.knoten.einheit[data-einheit="' + GEWAEHLT + '"]');
+      waehleEinheit(GEWAEHLT, k);
+    }
+    var z = document.getElementById(meldungsZiel);
+    if (z) { z.innerHTML = '<p class="meldung ok">' + esc(text) + "</p>"; }
+  });
+}
+function doku(titel, text, pfad) {
+  if (!text) {
+    return '<details class="doku"><summary>' + esc(titel) + ' <small class="hinweis">(' +
+      esc(pfad) + " — noch nicht angelegt)</small></summary><pre>Noch keine Datei. Anlegen per Template aus process/templates/ (Konzept Kap. 3).</pre></details>";
+  }
+  return '<details class="doku"><summary>' + esc(titel) + ' <small class="hinweis">(' + esc(pfad) +
+    ")</small></summary><pre>" + esc(text) + "</pre></details>";
+}
+function auswahl(id, optionen, wert, leerErlaubt) {
+  var h = ['<select id="' + id + '">'];
+  if (leerErlaubt) { h.push('<option value=""' + (wert ? "" : " selected") + ">—</option>"); }
+  optionen.forEach(function (o) {
+    h.push('<option value="' + esc(o) + '"' + (o === wert ? " selected" : "") + ">" + esc(o) + "</option>");
+  });
+  h.push("</select>");
+  return h.join("");
+}
+function zeigeRolle(instanz) {
+  hole("/api/organisation/rolle?instanz=" + encodeURIComponent(instanz)).then(function (d) {
+    var b = d.besetzung, k = d.katalog;
+    var h = ['<div class="karte"><h3>' + esc(instanz) + ' <small class="hinweis">' +
+      esc(b.rolle) + " in " + esc(b.einheit) + "</small></h3>"];
+    h.push('<div class="formzeile"><label>Motor</label>' + auswahl("fMotor", k.motoren, b.motor || "", false) +
+      '<label>Modell</label><input id="fModell" value="' + esc(b.modell || "") + '" placeholder="z. B. gemma3:27b" size="14">' +
+      '<label>Takt</label>' + auswahl("fTakt", k.takte, b.takt || "", true) +
+      '<label>Status</label>' + auswahl("fStatus", k.stati, b.status || "aktiv", false) + "</div>");
+    h.push('<div class="formzeile"><label>Hinweis</label><input id="fHinweis" value="' +
+      esc(b.hinweis || "") + '" size="60"></div>');
+    h.push('<div class="formzeile"><button class="knopf primaer" id="fSpeichern">Speichern</button>' +
+      '<button class="knopf gefahr" id="fEntfernen">Besetzung entfernen</button>' +
+      '<span class="hinweis">' + esc(d.hinweis_governance) + "</span></div>");
+    h.push('<div id="fMeldung"></div>');
+    h.push(doku("Rollenkarte (Bauplan, allgemein)", d.bauplan, d.bauplan_pfad));
+    h.push(doku("Projektspezifischer Teil", d.projektteil, d.projektteil_pfad));
+    h.push(doku("Historie & Lessons Learned", d.historie, d.historie_pfad));
+    if (d.wissensbasis.length) {
+      h.push('<p class="hinweis">Wissensbasis (process/knowledge/' + esc(b.rolle.toLowerCase()) +
+        "/): " + esc(d.wissensbasis.join(", ")) + "</p>");
+    }
+    h.push("</div>");
+    document.getElementById("rolleDetail").innerHTML = h.join("");
+    document.getElementById("fSpeichern").onclick = function () {
+      post("/api/organisation/besetzung", { aktion: "setzen", instanz: instanz, felder: {
+        motor: document.getElementById("fMotor").value,
+        modell: document.getElementById("fModell").value,
+        takt: document.getElementById("fTakt").value,
+        status: document.getElementById("fStatus").value,
+        hinweis: document.getElementById("fHinweis").value
+      } }).then(function () { nachSchreiben("rolleDetail", instanz + " gespeichert — Registry und Organigramme sind nachgezogen."); })
+        .catch(function (f) { document.getElementById("fMeldung").innerHTML = '<p class="meldung rot">' + esc(f.message) + "</p>"; });
+    };
+    document.getElementById("fEntfernen").onclick = function () {
+      if (!window.confirm(instanz + " wirklich entfernen? Die Rolle als Bauplan bleibt bestehen.")) { return; }
+      post("/api/organisation/besetzung", { aktion: "entfernen", instanz: instanz })
+        .then(function () { nachSchreiben("rolleDetail", instanz + " entfernt."); })
+        .catch(function (f) { document.getElementById("fMeldung").innerHTML = '<p class="meldung rot">' + esc(f.message) + "</p>"; });
+    };
+  }).catch(function (f) {
+    document.getElementById("rolleDetail").innerHTML = '<p class="meldung rot">' + esc(f.message) + "</p>";
+  });
+}
+function formularAnlegen(einheit, rolleVorbelegt) {
+  hole("/api/organisation/katalog").then(function (k) {
+    var rollen = k.rollen.slice();
+    if (rolleVorbelegt && rollen.indexOf(rolleVorbelegt) < 0) { rollen.push(rolleVorbelegt); }
+    var h = ['<div class="karte"><h3>Neue Besetzung in ' + esc(einheit) + "</h3>"];
+    h.push('<div class="formzeile"><label>Rolle</label>' + auswahl("nRolle", rollen, rolleVorbelegt || "", false) +
+      '<label>Motor</label>' + auswahl("nMotor", k.motoren, "cowork", false) +
+      '<label>Modell</label><input id="nModell" placeholder="nur ollama/api" size="14">' +
+      '<label>Takt</label>' + auswahl("nTakt", k.takte, "sprint", false) + "</div>");
+    h.push('<div class="formzeile"><button class="knopf primaer" id="nAnlegen">Anlegen</button>' +
+      '<span class="hinweis">' + esc(k.hinweis_f20) + "</span></div><div id=\"nMeldung\"></div></div>");
+    document.getElementById("rolleDetail").innerHTML = h.join("");
+    document.getElementById("nAnlegen").onclick = function () {
+      var rolle = document.getElementById("nRolle").value;
+      post("/api/organisation/besetzung", { aktion: "anlegen", instanz: rolle + "@" + einheit, felder: {
+        motor: document.getElementById("nMotor").value,
+        modell: document.getElementById("nModell").value,
+        takt: document.getElementById("nTakt").value
+      } }).then(function () { nachSchreiben("rolleDetail", rolle + "@" + einheit + " angelegt."); })
+        .catch(function (f) { document.getElementById("nMeldung").innerHTML = '<p class="meldung rot">' + esc(f.message) + "</p>"; });
+    };
+  });
+}
+
+/* ---------- Live ---------- */
+function zeigeLive() {
+  hole("/api/uebersicht").then(function (u) {
+    UEB = u;
+    var liste = u.projekte || u;  // Server liefert {projekte: [...]}
+    var aktive = {};
+    if (ORG) { ORG.einheiten.forEach(function (e) { aktive[e.einheit] = e.status; }); }
+    var h = ["<h2>Live — wer hat was offen</h2>",
+      '<p class="hinweis">Aktualisiert sich alle 60 s. Zeile anklicken lädt die offenen Tickets der Einheit mit Rolle.</p>',
+      "<table><tr><th>Einheit</th><th>Status</th><th>Tickets gesamt</th><th>offen</th><th>offene DRs</th></tr>"];
+    liste.forEach(function (z) {
+      var drs = (z.offene_drs && z.offene_drs.length !== undefined) ? z.offene_drs.length : (z.offene_drs || 0);
+      h.push('<tr class="liveZeile" data-einheit="' + esc(z.projekt) + '" style="cursor:pointer"><td>' +
+        esc(z.projekt) + "</td><td>" + esc(aktive[z.projekt] || "—") + "</td><td>" + z.tickets_gesamt +
+        "</td><td><b>" + z.tickets_offen + "</b></td><td>" + drs + "</td></tr>");
+    });
+    h.push("</table>", '<div id="liveDetail"></div>');
+    document.getElementById("ansLive").innerHTML = h.join("");
+    Array.prototype.forEach.call(document.querySelectorAll(".liveZeile"), function (z) {
+      z.onclick = function () { ladeBoard(z.getAttribute("data-einheit")); };
+    });
+  }).catch(function (f) {
+    document.getElementById("ansLive").innerHTML =
+      '<p class="hinweis">Live-Daten nicht erreichbar (' + esc(f.message) + ") — läuft der Server?</p>";
+  });
+}
+function ladeBoard(einheit) {
+  hole("/api/board?projekt=" + encodeURIComponent(einheit)).then(function (b) {
+    var h = ['<div class="karte"><h3>Offene Arbeit in ' + esc(einheit) + "</h3>",
+      "<table><tr><th>Ticket</th><th>Titel</th><th>Rolle</th><th>Prio</th><th>Sprint/Takt</th><th>blockiert durch</th></tr>"];
+    var offen = 0;
+    Object.keys(b.gruppen).sort().forEach(function (g) {
+      if (g === "done" || g === "rejected") { return; }
+      b.gruppen[g].forEach(function (t) {
+        offen += 1;
+        h.push("<tr><td>" + esc(t.id) + "</td><td>" + esc(t.titel) + "</td><td>" + esc(t.rolle || "—") +
+          "</td><td>" + esc(t.prio || "—") + "</td><td>" + esc(t.takt ? "Takt: " + t.takt : (t.sprint || "—")) +
+          "</td><td>" + esc((t.blocked_by || []).join(", ") || "—") + "</td></tr>");
+      });
+    });
+    if (!offen) { h.push('<tr><td colspan="6">keine offenen Tickets</td></tr>'); }
+    h.push("</table></div>");
+    document.getElementById("liveDetail").innerHTML = h.join("");
+  });
+}
+
+/* ---------- Planung (MS-Project-artig) ---------- */
+function sprintKopf(nr, jetzt, taktMin) {
+  if (nr === jetzt) { return "Sprint " + nr + "<br><small>jetzt</small>"; }
+  var dh = (nr - jetzt) * taktMin / 60;
+  return "Sprint " + nr + "<br><small>~" + (dh > 0 ? "+" : "") + dh + " h</small>";
+}
+function balkenKlasse(z, jetzt) {
+  if (z.status === "erledigt") { return "balken erledigt"; }
+  if (z.wartet_auf_mensch) { return "balken mensch"; }
+  if (z.sprint_nr !== null && z.sprint_nr !== undefined && z.sprint_nr < jetzt) { return "balken ueberfaellig"; }
+  if (z.kapitel === "takt") { return "balken takt"; }
+  return "balken";
+}
+function projektAusRef(z) {
+  var refs = z.refs || [];
+  for (var i = 0; i < refs.length; i++) {
+    if (refs[i].indexOf("/") > 0) { return refs[i].split("/")[0]; }
+  }
+  var a = (z.aufgabe || "").replace(/^projects\//, "");
+  return a.indexOf("/") > 0 ? a.split("/")[0] : "—";
+}
+function zeigePlan() {
+  hole("/api/sprint").then(function (p) {
+    PLAN = p;
+    var jetzt = p.sprint_nr, taktMin = p.takt_min || 60;
+    var spalten = [jetzt, jetzt + 1, jetzt + 2];
+    var reihen = {};
+    (p.zeilen || []).forEach(function (z) {
+      var e = projektAusRef(z);
+      (reihen[e] = reihen[e] || []).push(z);
+    });
+    var h = ["<h2>Planung — Sprints als Zeitachse (Takt " + taktMin + " min, Register-Stand " + esc(p.stand || "?") + ")</h2>",
+      '<div class="legende"><span><span class="punkt" style="background:var(--akzent)"></span>geplant</span>' +
+      '<span><span class="punkt" style="background:var(--ok)"></span>erledigt (dieser Sprint)</span>' +
+      '<span><span class="punkt" style="background:var(--warn)"></span>wartet auf Mensch</span>' +
+      '<span><span class="punkt" style="background:var(--rot)"></span>aus vergangenem Sprint</span>' +
+      '<span><span class="punkt" style="background:#8250df"></span>Takt (jeder Sprint)</span></div>',
+      '<div class="gantt"><table><tr><th>Einheit</th>'];
+    spalten.forEach(function (nr) {
+      h.push('<th class="' + (nr === jetzt ? "jetzt" : "") + '">' + sprintKopf(nr, jetzt, taktMin) + "</th>");
+    });
+    h.push("<th>Takt<br><small>jeder Sprint</small></th><th>später / offen</th></tr>");
+    Object.keys(reihen).sort().forEach(function (e) {
+      h.push("<tr><td><b>" + esc(e) + "</b></td>");
+      spalten.forEach(function (nr) {
+        h.push("<td>");
+        reihen[e].forEach(function (z) {
+          if (z.sprint_nr === nr) {
+            h.push('<div class="' + balkenKlasse(z, jetzt) + '" title="' + esc(z.grund || z.aufgabe) + '">' +
+              esc((z.refs && z.refs[0]) || z.aufgabe) + " · " + esc(z.rolle || "—") + "</div>");
+          }
+        });
+        h.push("</td>");
+      });
+      h.push("<td>");
+      reihen[e].forEach(function (z) {
+        if (z.kapitel === "takt") {
+          h.push('<div class="balken takt" title="' + esc(z.grund || z.aufgabe) + '">' +
+            esc((z.refs && z.refs[0]) || z.aufgabe) + "</div>");
+        }
+      });
+      h.push("</td><td>");
+      reihen[e].forEach(function (z) {
+        if (z.kapitel !== "takt" && (z.sprint_nr === null || z.sprint_nr === undefined ||
+            spalten.indexOf(z.sprint_nr) < 0) && z.sprint_nr !== jetzt) {
+          if (z.sprint_nr !== null && z.sprint_nr !== undefined && z.sprint_nr < jetzt && z.status !== "erledigt") {
+            h.push('<div class="balken ueberfaellig" title="' + esc(z.grund || z.aufgabe) + '">' +
+              esc((z.refs && z.refs[0]) || z.aufgabe) + " · Sprint " + z.sprint_nr + "</div>");
+          } else if (z.status !== "erledigt") {
+            h.push('<div class="balken" style="background:var(--grau)" title="' + esc(z.grund || z.aufgabe) + '">' +
+              esc((z.refs && z.refs[0]) || z.aufgabe) + (z.faellig ? " · " + esc(z.faellig) : "") + "</div>");
+          }
+        }
+      });
+      h.push("</td></tr>");
+    });
+    h.push("</table></div>");
+    var np = p.nicht_geplant || [];
+    if (np.length) {
+      h.push("<h3>Offen, aber nicht im Plan (" + np.length + ")</h3><table><tr><th>Ticket</th><th>Titel</th><th>Rolle</th><th>geplant für</th></tr>");
+      np.forEach(function (t) {
+        h.push("<tr><td>" + esc(t.ref || t.id) + "</td><td>" + esc(t.titel || "") + "</td><td>" +
+          esc(t.rolle || "—") + "</td><td>" + esc(t.geplant_sprint || t.frist || "—") + "</td></tr>");
+      });
+      h.push("</table>");
+    }
+    if ((p.widersprueche || []).length) {
+      h.push('<p class="hinweis">⚠ ' + p.widersprueche.length + " Plan-Widerspruch/-sprüche laut Register — Details im Sprint-Tab des Mission Control.</p>");
+    }
+    document.getElementById("ansPlan").innerHTML = h.join("");
+  }).catch(function (f) {
+    document.getElementById("ansPlan").innerHTML =
+      '<p class="hinweis">Plan nicht erreichbar (' + esc(f.message) + ") — läuft der Server?</p>";
+  });
+}
+
+/* ---------- Start + Auto-Aktualisierung ---------- */
+hole("/organigramm.json").then(function (o) {
+  ORG = o;
+  document.getElementById("stand").textContent =
+    o.einheiten.length + " Einheiten · Quelle: Registries (organigramm.py)";
+  zeigeOrg();
+}).catch(function (f) {
+  document.getElementById("ansOrg").innerHTML =
+    '<p class="hinweis">organigramm.json fehlt (' + esc(f.message) +
+    ") — bitte <code>python platform/scripts/organigramm.py --repos .</code> laufen lassen.</p>";
+});
+setInterval(function () {
+  if (!document.getElementById("ansLive").hidden) { zeigeLive(); }
+  if (!document.getElementById("ansPlan").hidden) { zeigePlan(); }
+}, 60000);
+</script>
+</body>
+</html>
