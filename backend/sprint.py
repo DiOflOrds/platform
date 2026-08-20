@@ -452,7 +452,20 @@ def plan_drift(plan_zeilen, offene):
         nr = z.get("sprint_nr")
         if nr is None:                      # „dieser Sprint", „wartet-auf-Mensch", Takt
             continue
-        ticket = next((nach_ref[r] for r in z.get("refs", []) if r in nach_ref), None)
+        # SWR-176: Nennt die Zeile ein Repo, gilt NUR die qualifizierte Form. Die nackte
+        # ID ist der Notnagel fuer handgeschriebene Zeilen ohne Repo - sie darf ein
+        # ausdruecklich genanntes Repo nicht ueberstimmen.
+        # Der Anlass, gemessen in Sprint 27: die Planzeile `p9/T-0008` (geschlossen, also
+        # nicht in `offene`) fiel auf die nackte `T-0008` zurueck, und die war unter den
+        # OFFENEN Tickets eindeutig - `promt-team/T-0008`. Gemeldet wurde ein Drift
+        # zwischen einer Zeile und einem Ticket, die nichts miteinander zu tun haben.
+        # Die Eindeutigkeit ist ueber die OFFENEN Tickets geprueft, die Zeile gehoerte
+        # einem GESCHLOSSENEN. Eine ID wird nicht dadurch eindeutig, dass die Restmenge
+        # klein ist. Das Schwestermodul `statusdrift` loest ueber ALLE Tickets auf und
+        # ist deshalb nie in diese Falle gelaufen - dieselbe Frage, zwei Grundmengen.
+        refs = sorted(z.get("refs", []))
+        qualifiziert = [r for r in refs if "/" in r]
+        ticket = next((nach_ref[r] for r in (qualifiziert or refs) if r in nach_ref), None)
         if ticket is None:
             continue
         gefeldert = str(ticket.get("geplant_sprint", "")).strip()

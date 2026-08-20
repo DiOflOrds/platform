@@ -243,3 +243,68 @@ class LebendabgleichTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QualifizierteRefGewinntTest(unittest.TestCase):
+    """SWR-176 (Sprint 27): eine Planzeile mit Repo darf nicht auf die nackte ID zurückfallen.
+
+    ⚠⚠ Gefunden hat den Fehler der Preflight dieses Laufs — er meldete einen echten Drift
+    zwischen zwei Dingen, die nichts miteinander zu tun haben. Die Planzeile `p9/T-0008`
+    gehört zu einem **geschlossenen** Ticket und steht deshalb nicht in `offene`; die
+    Auflösung fiel auf die nackte `T-0008` zurück, und die war unter den **offenen**
+    Tickets eindeutig — `promt-team/T-0008`, ein anderes Repo, ein anderer Sprint.
+
+    > **Die Eindeutigkeit ist über die OFFENEN Tickets geprüft, die Zeile gehörte einem
+    > GESCHLOSSENEN. Eine ID wird nicht dadurch eindeutig, dass die Restmenge klein ist.**
+
+    ⚠ Das Schwestermodul `statusdrift` löst über **alle** Tickets auf und ist deshalb nie
+    in diese Falle gelaufen — dieselbe Frage, zwei Grundmengen, und nur eine davon war
+    richtig gewählt.
+    """
+
+    def _zeile(self, text, nr):
+        return {"refs": sprint.refs_der_zeile(text), "sprint_nr": nr}
+
+    def _offen(self, ref, geplant):
+        return {"ref": ref, "id": ref.split("/")[-1], "titel": "x",
+                "geplant_sprint": geplant, "status": "open"}
+
+    def test_geschlossene_zeile_zieht_nicht_das_gleichnamige_offene_ticket(self):
+        """Der Fall aus dem Betrieb, wörtlich."""
+        zeilen = [self._zeile("| p9/T-0008 | mensch | Sprint 27 | erledigt |", 27)]
+        offene = [self._offen("promt-team/T-0008", "28")]
+        self.assertEqual(sprint.plan_drift(zeilen, offene), [])
+
+    def test_die_eigene_zeile_wird_weiterhin_geprueft(self):
+        """⚠ Die andere Hälfte des Paares: ohne sie bestünde eine Fassung, die gar nichts
+
+        mehr zuordnet, diesen Test — und die Prüfung wäre still statt richtig.
+        """
+        zeilen = [self._zeile("| promt-team/T-0008 | test | Sprint 27 | offen |", 27)]
+        offene = [self._offen("promt-team/T-0008", "28")]
+        treffer = sprint.plan_drift(zeilen, offene)
+        self.assertEqual(len(treffer), 1)
+        self.assertEqual(treffer[0]["ref"], "promt-team/T-0008")
+
+    def test_zeile_ohne_repo_darf_weiterhin_ueber_die_nackte_id_aufloesen(self):
+        """Der Grund, aus dem es den Notnagel gibt: der Plan wird von Hand geschrieben."""
+        zeilen = [self._zeile("| T-0071 | pl | Sprint 27 | offen |", 27)]
+        offene = [self._offen("pm/T-0071", "28")]
+        treffer = sprint.plan_drift(zeilen, offene)
+        self.assertEqual(len(treffer), 1)
+        self.assertEqual(treffer[0]["ref"], "pm/T-0071")
+
+    def test_am_echten_bestand_ist_der_plan_driftfrei(self):
+        """⚠ Gegenprobe auf eine nicht-leere Grundmenge (SWR-128/165): die Prüfung muss
+
+        über echten Planzeilen laufen, sonst ist „0 Drift" von „nichts gelesen" nicht zu
+        unterscheiden.
+        """
+        wurzel = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        pfad = os.path.join(wurzel, "pm", "management", "sprint-aktuell.md")
+        if not os.path.isfile(pfad):
+            self.skipTest("kein Sprintplan im Bestand")
+        with io.open(pfad, encoding="utf-8") as f:
+            tabelle = sprint.plan_tabelle(f.read())
+        self.assertIsNotNone(tabelle)
+        self.assertGreater(len(tabelle.get("zeilen", tabelle) or []), 5)
