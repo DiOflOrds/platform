@@ -11,7 +11,7 @@ Stand: 2026-08-20 · Tickets: 32 · davon wiederkehrend: 1
 | [T-0027](tickets/T-0027.md) | Der Abschlussbericht hat für seine EIGENEN Kennzahlen keine Prüfung — fünfmal in sechs Sprints eine fortgeschriebene statt einer gemessenen Zahl | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0030](tickets/T-0030.md) | Kommentare an Aufgaben — Verlauf im Ticket-Rumpf wie im Team-Chat, ein Schreibweg, kein zweiter Speicher | change-request | einmalig | dev | Team | hoch | 25 | — |
 
-## in_progress (2)
+## in_review (2)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
