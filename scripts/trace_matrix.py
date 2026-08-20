@@ -101,6 +101,32 @@ def swr_lesen(pfad, muster=SWR_RE):
     return eintraege
 
 
+def bestand_ids(ziel, muster=SWR_RE):
+    """SWR-158: IDs der **vorhandenen** Zielmatrix — `None`, wenn es sie noch nicht gibt.
+
+    ⚠ `None` und `set()` sind ausdrücklich zweierlei. Eine Matrix, die es noch nie gab,
+    kann nicht schrumpfen; eine, die es gibt und leer ist, sehr wohl. Beides auf `set()`
+    abzubilden hiesse, den ersten Schreibvorgang wie einen Totalverlust aussehen zu
+    lassen — und das waere ein Dauerbefund am Tag der Einfuehrung (SWR-109/110/112).
+
+    Gelesen werden **nur Tabellenzeilen**, und dort nur die **erste Spalte**. Die Datei
+    nennt dieselben IDs weiter unten noch einmal (Lueckenliste, „in Tests referenziert,
+    aber nicht im Anforderungsdokument"); wer sie mitzaehlt, vergleicht den Bestand mit
+    einer anderen Menge als der, die `generiere()` als Tabelle schreibt.
+    """
+    if not os.path.isfile(ziel):
+        return None
+    ids = set()
+    with open(ziel, encoding="utf-8") as f:
+        for zeile in f:
+            if not zeile.lstrip().startswith("|"):
+                continue
+            erste = zeile.strip().strip("|").split("|")[0].strip()
+            if muster.fullmatch(erste):
+                ids.add(erste)
+    return ids
+
+
 def generiere(swrs, abdeckung, ohne_bezug):
     """(markdown, luecken) — Matrix + Lückenliste."""
     zeilen = ["# SWR ↔ Test-Matrix (generiert von platform/scripts/trace_matrix.py — "
@@ -201,6 +227,42 @@ def main():
     text, luecken = generiere(swrs, abdeckung, ohne)
     ziel = a.ziel or os.path.join(wurzel, "p0", "verification", "reports",
                                   "swr-test-matrix.md")
+    # SWR-158 (platform/T-0020): **Der Generator liest seinen eigenen Vorgänger, bevor
+    # er ihn ersetzt.** Sprint 17: die Matrix verlor 121 Zeilen, die Anzahl fiel von 143
+    # auf 24, die Meldung lautete „Matrix geschrieben" und der Exit-Code war 0.
+    #
+    # ⚠ Die drei Fragen, die diesen Bau vier Sprints lang zurückgehalten haben, sind in
+    # Sprint 22 **gemessen** beantwortet worden — über alle 95 Commits der Datei, ID-Menge
+    # je Fassung, 94 Übergänge, **kein einziger** mit einer verschwundenen ID:
+    #
+    #   Frage 1 — Anzahl oder IDs? **IDs.** Nicht aus Prinzip: die ID-Prüfung hätte über
+    #   die gesamte Historie **null** Fehlalarme erzeugt, eine Anzahl-Prüfung wäre bei
+    #   gleichbleibendem Umfang blind gewesen.
+    #
+    #   Frage 2 — wann ist Schrumpfen legitim, und wer sagt es? **Vorerst: nie.** Die drei
+    #   gedachten Ausnahmen (`rejected`, eigene Produktmatrix, archiviertes Projekt) sind
+    #   an der kanonischen Matrix **noch nie eingetreten**; eine `rejected` Anforderung
+    #   bleibt ohnehin als Zeile stehen. *Ein Flag, das jeder Aufrufer setzt, ist keine
+    #   Regel — und eine Ausnahme, die es noch nie gab, ist keine Ausnahme, sondern eine
+    #   Vermutung über die Zukunft.* Deshalb **kein** `--darf-schrumpfen`.
+    #
+    #   Frage 3 — gilt sie auch für `--produkt`? **Ja, aber je Ziel.** Verglichen wird
+    #   gegen die **Zieldatei**, die der Aufruf ohnehin kennt. Eine Produktmatrix misst
+    #   sich an ihrer eigenen Vorgängerin und nie an der kanonischen; damit scheitert die
+    #   Prüfung nicht an ihrer eigenen Ausnahme, weil sie keine braucht.
+    #
+    # ⚠ Es wird **nichts geschrieben**. Dieselbe Bauform wie SWR-145 eine Ebene höher:
+    # der Schaden von Sprint 17 lebte und starb in einer Arbeitskopie und hat die Commits
+    # nie erreicht — eine Warnung nach dem Schreiben hätte ihn nicht verhindert.
+    alt = bestand_ids(ziel, muster)
+    if alt is not None:
+        verschwunden = sorted(alt - set(swrs))
+        if verschwunden:
+            print(f"BESTAND SCHRUMPFT — {len(verschwunden)} Anforderungs-ID(s) der "
+                  f"vorhandenen Matrix fehlen im neuen Stand: {', '.join(verschwunden)}. "
+                  f"Bestand {len(alt)}, neu {len(swrs)}. Es wird NICHTS geschrieben "
+                  f"(SWR-158). Ziel: {os.path.relpath(ziel, wurzel)}")
+            sys.exit(1)
     os.makedirs(os.path.dirname(ziel), exist_ok=True)
     open(ziel, "w", encoding="utf-8", newline="\n").write(text)
     print(f"Matrix geschrieben: {os.path.relpath(ziel, wurzel)} — "

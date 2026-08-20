@@ -302,3 +302,157 @@ class DiscoveryIstDerNormalfallTest(unittest.TestCase):
             sys.argv = alt
         self.assertEqual(ctx.exception.code, 1)
         self.assertFalse(os.path.exists(ziel))
+
+
+class BestandSchrumpftTest(unittest.TestCase):
+    """SWR-158 (platform/T-0020): der Generator liest seinen Vorgänger, bevor er ihn ersetzt.
+
+    Der Vorgang von Sprint 17 in Zahlen: `swr-test-matrix.md` verlor 121 Zeilen, die
+    Anzahl der Anforderungen fiel von **143** auf **24**, die Meldung lautete „Matrix
+    geschrieben" und der Exit-Code war **0**.
+
+    ⚠ **Gemessen wird die Zieldatei, nicht die Meldung.** Der kaputte Stand hat ebenfalls
+    gemeldet und ebenfalls 0 zurückgegeben; ein Test an Meldung oder Exit-Code allein
+    wäre auf ihm grün gewesen. Die Zusicherung, die trägt, ist: *die alte Fassung steht
+    danach unverändert da.*
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.wurzel = self.tmp.name
+        self.ziel = os.path.join(self.wurzel, "matrix.md")
+        os.makedirs(os.path.join(self.wurzel, "platform", "tests"))
+        open(os.path.join(self.wurzel, "platform", "tests", "test_x.py"), "w",
+             encoding="utf-8").write('"""Verifiziert SWR-201 und SWR-202."""\n')
+
+    def anforderungen(self, projekt, *swrs):
+        verz = os.path.join(self.wurzel, projekt, "requirements", "software")
+        os.makedirs(verz, exist_ok=True)
+        with open(os.path.join(verz, "software-requirements.md"), "w",
+                  encoding="utf-8") as f:
+            f.write("| ID | Requirement | Trace | Verification | Prio | Status |\n"
+                    "|---|---|---|---|---|---|\n")
+            for s in swrs:
+                f.write(f"| {s} | X | STK-001 | Unit tests | high | reviewed |\n")
+        os.makedirs(os.path.join(self.wurzel, projekt, "tickets"), exist_ok=True)
+
+    def _lauf(self, *argv):
+        alt = sys.argv
+        sys.argv = ["trace_matrix.py", "--repos", self.wurzel,
+                    "--ziel", self.ziel] + list(argv)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                trace_matrix.main()
+        finally:
+            sys.argv = alt
+        return ctx.exception.code
+
+    def test_der_vorgang_von_sprint_17_wird_ABGEWIESEN(self):
+        """Der Fall, der dieses Ticket ausgelöst hat — nachgestellt und nicht beschrieben.
+
+        Erst ein vollständiger Lauf (zwei Projekte), dann einer, der nur noch eines
+        sieht. ⚠ Die tragende Zusicherung ist die **letzte**: die alte Fassung steht
+        unverändert da. Ein Werkzeug, das erst schreibt und dann warnt, hätte den Schaden
+        von Sprint 17 gemeldet und trotzdem angerichtet.
+        """
+        self.anforderungen("p0", "SWR-201")
+        self.anforderungen("p9", "SWR-202")
+        self.assertEqual(self._lauf(), 0)
+        vorher = open(self.ziel, encoding="utf-8").read()
+        self.assertIn("SWR-201", vorher)
+        self.assertIn("SWR-202", vorher)
+
+        import shutil
+        shutil.rmtree(os.path.join(self.wurzel, "p9"))
+        code = self._lauf()
+
+        self.assertEqual(code, 1, "ein schrumpfender Bestand ist ein Befund, kein Exit 0")
+        self.assertEqual(open(self.ziel, encoding="utf-8").read(), vorher,
+                         "die vorhandene Matrix muss BYTEWEISE unberührt bleiben — "
+                         "sonst ist der Schaden angerichtet und nur gemeldet")
+
+    def test_die_verschwundene_ID_wird_GENANNT(self):
+        """B038: eine Meldung ohne ihren Gegenstand ist keine Meldung.
+
+        „Matrix geschrieben" war die Meldung von Sprint 17 — inhaltlich wahr und für den
+        Leser wertlos.
+        """
+        self.anforderungen("p0", "SWR-201")
+        self.anforderungen("p9", "SWR-202")
+        self._lauf()
+        import io
+        import contextlib
+        os.remove(os.path.join(self.wurzel, "p9", "requirements", "software",
+                               "software-requirements.md"))
+        puffer = io.StringIO()
+        with contextlib.redirect_stdout(puffer):
+            self._lauf()
+        self.assertIn("SWR-202", puffer.getvalue())
+        self.assertIn("NICHTS geschrieben", puffer.getvalue())
+
+    def test_wachsen_und_gleichbleiben_sind_KEIN_befund(self):
+        """⚠ Die Gegenprobe, und ohne sie belegt der Rest nichts.
+
+        Gemessen über alle 95 Commits der echten Matrix: in **94** Übergängen ist nie
+        eine ID verschwunden, die Spanne ist 21 → 157 und ausschließlich wachsend. Eine
+        Prüfung, die den Normalfall rot macht, wäre ein Dauerbefund — genau die Sorge,
+        die dieses Ticket vier Sprints lang zurückgehalten hat (SWR-109/110/112).
+        """
+        self.anforderungen("p0", "SWR-201")
+        self.assertEqual(self._lauf(), 0)
+        self.assertEqual(self._lauf(), 0, "gleicher Bestand: kein Befund")
+        self.anforderungen("p9", "SWR-202")
+        self.assertEqual(self._lauf(), 0, "wachsender Bestand: kein Befund")
+        self.assertIn("SWR-202", open(self.ziel, encoding="utf-8").read())
+
+    def test_erster_lauf_ohne_vorgaenger_ist_kein_befund(self):
+        """⚠ `None` (keine Datei) und `set()` (leere Datei) sind zweierlei.
+
+        Eine Matrix, die es noch nie gab, kann nicht schrumpfen. Beides gleich zu
+        behandeln hiesse, die Prüfung am Tag ihrer Einführung rot zu starten.
+        """
+        self.anforderungen("p0", "SWR-201")
+        self.assertFalse(os.path.exists(self.ziel))
+        self.assertEqual(self._lauf(), 0)
+        self.assertTrue(os.path.exists(self.ziel))
+
+    def test_produktmatrix_misst_sich_an_der_EIGENEN_vorgaengerin(self):
+        """Frage 3 des Tickets: die Prüfung darf nicht an ihrer eigenen Ausnahme scheitern.
+
+        Die kanonische Matrix trägt zwei Anforderungen, die Produktmatrix eine. Verglichen
+        wird je **Zieldatei** — deshalb braucht der Produktmodus keine Ausnahme und
+        bekommt auch keine.
+        """
+        self.anforderungen("p0", "SWR-201")
+        self.anforderungen("p9", "SWR-202")
+        self.assertEqual(self._lauf(), 0)
+        eine = os.path.join(self.wurzel, "p9", "requirements", "software",
+                            "software-requirements.md")
+        produktziel = os.path.join(self.wurzel, "produkt-matrix.md")
+        alt, self.ziel = self.ziel, produktziel
+        try:
+            self.assertEqual(self._lauf("--swr", eine), 0,
+                             "eine absichtlich kleine Produktmatrix ist kein Schrumpfen "
+                             "— sie hat ihre eigene Vorgängerin")
+        finally:
+            self.ziel = alt
+        self.assertNotIn("SWR-201", open(produktziel, encoding="utf-8").read())
+        self.assertIn("SWR-201", open(self.ziel, encoding="utf-8").read(),
+                      "der Produktlauf darf die kanonische Matrix nicht anfassen")
+
+    def test_bestand_ids_liest_NUR_die_erste_tabellenspalte(self):
+        """⚠ Die Datei nennt dieselben IDs weiter unten noch einmal.
+
+        Die Lückenliste und der Abschnitt „in Tests referenziert, aber nicht im
+        Anforderungsdokument" führen IDs als Aufzählung. Wer sie mitzählt, vergleicht den
+        Bestand mit einer anderen Menge als der, die `generiere()` als Tabelle schreibt —
+        und erzeugt sich seinen Dauerbefund selbst.
+        """
+        open(self.ziel, "w", encoding="utf-8").write(
+            "| SWR | Status | Unit-Tests | Abdeckung |\n"
+            "|---|---|---|---|\n"
+            "| SWR-201 | reviewed | t | 1 Test(s) |\n"
+            "\n## Lücken (reviewed ohne Testabdeckung)\n\n- SWR-999\n"
+            "\n## In Tests referenziert\n\n- SWR-888: test_x.py\n")
+        self.assertEqual(trace_matrix.bestand_ids(self.ziel), {"SWR-201"})

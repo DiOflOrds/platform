@@ -256,6 +256,33 @@ def pause_zum_vorlauf(root):
         return None
 
 
+def uhrenprobe_register(root):
+    """SWR-159 (platform/T-0026): Registerzeiten, die in der Zukunft ihres Commits liegen.
+
+    ⚠ **Kein eigener Rechenweg** — dieselbe Auflage wie bei `pause_zum_vorlauf`. Die
+    Zeitregel steht in `sprint_register`, weil dort `_wanduhr()` wohnt; sie hier
+    nachzubauen wäre eine zweite Zeitrechnung über denselben Sachverhalt (B033) — genau
+    der Befund, aus dem `platform/T-0026` entstanden ist.
+
+    ⚠⚠ **Und das Material holt ausdrücklich ein DRITTES Modul.** `sprint_register` darf
+    nach SWR-134/136 kein git aufrufen (lesende Aufrufe hinterlassen auf diesem Mount
+    Sperren); `uebergang_historie` liest ohnehin Historie. Diese Funktion ist die Naht:
+    sie fügt Material und Regel zusammen und rechnet selbst nichts.
+
+    `None` heißt „konnte nicht prüfen" und **nicht** „keine Treffer".
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import sprint_register
+        import uebergang_historie
+        pm = os.path.join(root, "pm")
+        zeilen = uebergang_historie.zugefuegte_zeilen(
+            pm, os.path.join("management", "sprints.jsonl"))
+        return sprint_register.uhrenprobe(zeilen)
+    except Exception:
+        return None
+
+
 def statusdrift(root):
     """SWR-115 (pm/T-0049): Planzeilen, deren Statusspalte dem Ticket widerspricht.
 
@@ -654,6 +681,32 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
             print(f"[org] Für {len(pause['ohne_ende'])} Sprint(s) ohne 'ende' ist keine "
                   f"Pause berechenbar (vor dem Stichtag): "
                   + ", ".join(str(n) for n in pause["ohne_ende"]) + ".")
+    # SWR-159 (platform/T-0026): stimmen die Uhren der Läufe überein? Gemessen wird eine
+    # Unmöglichkeit und keine Schwelle — eine Registerzeile kann nicht später entstanden
+    # sein als der Commit, der sie mitnimmt. ⚠ Die Zeile erscheint IMMER, auch bei 0
+    # Treffern (SWR-114/117/155): eine stille Prüfung ist von einer nicht gelaufenen
+    # nicht zu unterscheiden.
+    uhren = uhrenprobe_register(root)
+    if uhren is None:
+        print("[org] Uhrenprobe Register/Commit: nicht prüfbar (kein Git oder kein Register).")
+    else:
+        # ⚠ Der eine belegte Fall ist Altbestand und wird mit seiner ZAHL gemeldet, nicht
+        # weggelassen: die Datei ist append-only, er ist nicht reparierbar, und ihn zum
+        # Dauerbefund zu machen hiesse das Wegsehen zu trainieren (SWR-109/110/112).
+        alt = [u for u in uhren if u["altbestand"]]
+        neu = [u for u in uhren if not u["altbestand"]]
+        print(f"[org] Uhrenprobe Register/Commit: {len(neu)} neue(r), "
+              f"{len(alt)} Altbestand (namentlich eingefroren, bewusst nicht geglättet).")
+        for u in alt:
+            print(f"    ALTBESTAND  {u['kennung']} '{u['feld']}' = {u['registerzeit']}, "
+                  f"Commit {u['commit']} um {u['commitzeit']} ({u['minuten']:+.1f} Min)")
+        if neu:
+            print(f"[org] BEFUND: {len(neu)} Registerzeit(en) liegen in der Zukunft ihres "
+                  f"Commits — zwei Uhren waren uneinig:")
+            for u in neu:
+                print(f"    {u['kennung']} '{u['feld']}' = {u['registerzeit']}, "
+                      f"Commit {u['commit']} um {u['commitzeit']} ({u['minuten']:+.1f} Min)")
+            befunde += 1
     ohne_sprint = unterminierte_tickets(root)
     if ohne_sprint:
         print(f"[org] {len(ohne_sprint)} Ticket(s) ohne Sprint: {', '.join(ohne_sprint)}")

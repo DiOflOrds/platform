@@ -111,6 +111,44 @@ def _stichtag_stempel(text=STICHTAG):
     return datetime.strptime(text, "%Y-%m-%d %H:%M").timestamp()
 
 
+def zugefuegte_zeilen(repo, relpfad):
+    """SWR-159: [(sha, commitzeit_iso, zeile)] — die Zeilen, die eine Datei je Commit BEKAM.
+
+    Das allgemeine Gegenstück zu `status_wechsel`: dort interessiert der Wechsel eines
+    Feldes, hier die **neue Zeile selbst** — und mit ihr der Commit, der sie mitgenommen
+    hat, samt seiner Zeit. Für eine append-only-Datei ist das ihre gesamte Entstehung.
+
+    ⚠ **Warum das Git-Lesen hier steht und nicht in `sprint_register`.** Der Sprintzähler
+    darf nach SWR-134/136 kein git aufrufen: auf diesem Mount hinterlässt schon ein
+    lesender Aufruf eine `index.lock`, die nicht mehr gelöscht werden kann, und eine
+    Prüfung auf Nebenläufigkeit, die selbst sperrt, ist ihr eigener Schadensfall. Dieses
+    Modul liest ohnehin Historie und trägt die Kosten bereits (Messung im Modulkopf) —
+    die **Zeitregel** bleibt drüben, wo `_wanduhr()` wohnt. Zwei Rechnungen über dieselbe
+    Uhr wären B033, und genau daraus ist `platform/T-0026` entstanden.
+
+    Rückgabe `None` = **nicht prüfbar** (kein Repo, kein Erfolg). Eine leere Liste heißt
+    „geprüft, nichts gefunden" — die beiden zu verwechseln ist SWR-108/135.
+    """
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        return None
+    rel = relpfad.replace(os.sep, "/")
+    out = subprocess.run(
+        ["git", "-C", repo, "log", "--reverse", "--no-merges", "-U0",
+         "--format=%x00%H|%cI", "--", rel],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if out.returncode != 0:
+        return None
+    zeilen, sha, czeit = [], None, None
+    for zeile in out.stdout.splitlines():
+        if zeile.startswith("\x00"):
+            kopf = zeile[1:].split("|", 1)
+            sha, czeit = (kopf + [None])[0], (kopf[1] if len(kopf) == 2 else None)
+            continue
+        if czeit and zeile.startswith("+") and not zeile.startswith("+++"):
+            zeilen.append((sha, czeit, zeile[1:]))
+    return zeilen
+
+
 def status_wechsel(repo):
     """[(sha, zeit, datei, alt, neu)] — die committeten Statuswechsel eines Repos.
 

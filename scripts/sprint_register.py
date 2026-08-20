@@ -75,6 +75,23 @@ TAKT_MIN_STANDARD = 60  # Routine-Session laeuft stuendlich (Stand 2026-08-17)
 # in SWR-131. Ab diesem Sprint ist ein fehlendes `ende` ein Befund.
 STICHTAG_ENDE_SPRINT = 15
 
+# SWR-159 (platform/T-0026): der EINE belegte Uhrenstreit der Historie, eingefroren.
+#
+# ⚠ Warum kein Stichtagsdatum, sondern eine Liste. Ein Stichtag („alles vor dem 20.08.
+# ist Altbestand") verschluckt jeden weiteren alten Fall, der noch gar nicht gefunden
+# ist — und er waechst stillschweigend mit jedem Tag, an dem niemand hinsieht. Eine
+# namentliche Liste kann das nicht:
+#
+#   **Ein Altbestand, der als Warnung dasteht, waechst. Einer, der als Zahl dasteht,
+#   kann nur sinken.** (`L-2026-08-17`, dieselbe Bauform wie `ALTBESTAND_TLINKS_AUFRUFE`)
+#
+# ⚠ Die Datei ist append-only: dieser Eintrag ist NICHT reparierbar und wird auch nicht
+# repariert. Er bleibt als Beleg stehen und wird bei jedem Lauf mit seiner Zahl gemeldet
+# — was er nicht mehr tut, ist den Preflight dauerhaft rot faerben (SWR-109/110/112).
+# ⚠ Dass er weiterhin GEFUNDEN wird, haelt eine eigene Zusicherung fest; ein Zaehler auf
+# 0 ist sonst von einer kaputten Pruefung nicht zu unterscheiden (`L-2026-08-17ai`).
+ALTBESTAND_UHRENSTREIT = {("2026-08-17T1541-cowork-s16", "ende")}
+
 
 class SprintLaeuft(RuntimeError):
     """`beginne()` verweigert: ein Sprint ohne `ende` schreibt noch (SWR-136).
@@ -312,6 +329,99 @@ def laufender(root):
         return None
     letzter = bestand[-1]
     return None if letzter.get("ende") else letzter
+
+
+def uhrenprobe(zeilen):
+    """SWR-159 (platform/T-0026): Registerzeiten, die in der ZUKUNFT ihres Commits liegen.
+
+    ⚠⚠ **Diese Funktion ruft KEIN git auf, und der erste Entwurf tat es.** Sie bekommt
+    ihr Material als `zeilen` — je Eintrag `(commit, commitzeit, jsonzeile)` — und hat
+    deshalb keinen Zugriff auf die Platte. Der Grund ist gemessen und älter als dieses
+    Ticket: nach SWR-134/136 hinterlässt auf diesem Mount schon ein **lesender**
+    Git-Aufruf eine `index.lock`, die nicht mehr gelöscht werden kann. *Eine Prüfung, die
+    Uneinigkeit zwischen zwei Läufen erkennen soll und dabei selbst Sperren erzeugt, wäre
+    ihr eigener Schadensfall.* Gefunden hat das nicht der Entwurf, sondern die
+    Zusicherung `test_die_messung_ruft_KEIN_git_auf`, die genau dafür seit Sprint 16 im
+    Bestand steht. Das Material holt `uebergang_historie.zugefuegte_zeilen()`, das
+    Zusammensetzen der Preflight — die Zeitregel bleibt hier, weil `_wanduhr()` hier
+    wohnt und zwei Zeitrechnungen über denselben Sachverhalt B033 wären.
+
+    ⚠ **Die Messung, die dieser Pruefung vorausging, hat die Vermutung im Ticket
+    umgedreht.** Das Ticket verdaechtigte den *Start* von Sprint 17 (16:49, vor dem
+    *Ende* von Sprint 16 um 17:10). Gemessen ueber alle 31 Registerereignisse der
+    Historie — Registerzeit gegen die Commit-Zeit des Commits, der die Zeile brachte:
+
+        alle sechs regulaeren `ende`-Ereignisse:  +0,6 bis +1,1 Minuten
+        `ende` von Sprint 17 (nachgetragen):      +21,3 Minuten (dokumentiert)
+        `ende` von Sprint 16:                     **-37,4 Minuten**
+
+    Der Commit `911e57a` vom 2026-08-17 **16:32:36** traegt die Zeile
+    `"ende": "2026-08-17 17:10"`. **Kein Prozess kann 38 Minuten vor seiner eigenen Uhr
+    liegen** — die Zeile und der Commit, der sie mitnimmt, kommen aus zwei Uhren.
+
+    ⚠ Nicht Sprint 17 ist der falsche Wert, sondern das ENDE von Sprint 16. Der `start`
+    von Sprint 17 (16:49) faellt sauber zwischen die Commits 16:40:58 und 17:34:16.
+
+    ### Welcher der drei Faelle des Tickets vorlag
+
+    * **nachtraeglich geschrieben** — ausgeschlossen. Ein Nachtrag liefert einen
+      **positiven** Abstand; genau so sieht der belegte Nachtrag von Sprint 17 aus
+      (+21,3). Hier ist er negativ.
+    * **Zeitzone/Sommerzeit** — ausgeschlossen an der Groesse. Zonenversaetze sind
+      Vielfache von 15 Minuten, eine Sommerzeitumstellung ist genau 60. **37,4 ist
+      keines von beidem.**
+    * **zwei Laeufe, zwei Uhren** — bleibt uebrig und wird unabhaengig gestuetzt: fuer
+      den 2026-08-17 sind Nebenlaeufigkeiten **zweimal** aktenkundig
+      (`SESSION-BEFUND-2026-08-17-1105/1339-nebenlaeufigkeit.md`).
+
+    ⚠ **Was NICHT entschieden werden kann und deshalb auch nicht behauptet wird:**
+    *welche* der beiden Uhren richtig ging. Die einzigen zwei Zeugen sind die beiden
+    streitenden Uhren; ein dritter existiert im Bestand nicht (gesucht: Run-Registry,
+    Telemetrie, Zeitstempel in Dateiinhalten des Fensters — nichts).
+
+    ### Warum das Register deshalb NICHT auf Offset umgestellt wird
+
+    Beide Commits des Fensters tragen `+02:00`. Ein mitgeschriebener Offset haette
+    diesen Fall **nicht** gefunden — der Streit lag im Minutenzeiger. Ein Formatwechsel
+    an einer append-only-Datei mit 30 Zeilen Altbestand, der die einzige belegte
+    Stoerung nicht erkennt, ist Aufwand ohne Ertrag (B038).
+
+    ### Die Zusicherung, die stattdessen traegt
+
+    > **Eine Registerzeile kann nicht spaeter entstanden sein als der Commit, der sie
+    > mitnimmt.** Was geschrieben wird, ist vor dem Committen da.
+
+    Einseitig und ohne Schwelle: ueber alle 31 Ereignisse der Historie erzeugt sie
+    **genau einen** Treffer und **keinen** Fehlalarm — obwohl die `start`-Abstaende
+    zwischen +0,9 und +81,3 Minuten streuen, weil ein Start frueh geschrieben und spaet
+    committet wird. ⚠ Die Minutengenauigkeit des Registers kann die Pruefung nicht
+    faelschlich ausloesen: Abschneiden macht den Wert **frueher**, nie spaeter.
+
+    Rueckgabe: Liste von Treffern, aeltester zuerst. Leere Liste = geprueft und sauber.
+    ⚠ `None` heisst **nicht pruefbar** und nie „sauber" — es wird durchgereicht, wenn das
+    Material selbst nicht zu beschaffen war (kein Git, kein Register).
+    """
+    if zeilen is None:
+        return None
+    treffer = []
+    for commit, commitzeit, jsonzeile in zeilen:
+        czeit = _wanduhr(commitzeit)
+        if czeit is None:
+            continue
+        try:
+            e = json.loads(str(jsonzeile).strip())
+        except Exception:
+            continue
+        for feld in ("start", "ende", "beobachtet"):
+            rzeit = _wanduhr(e.get(feld))
+            if rzeit is not None and rzeit > czeit:
+                treffer.append({"kennung": e.get("kennung"), "feld": feld,
+                                "registerzeit": e[feld], "commit": str(commit)[:7],
+                                "commitzeit": czeit.strftime("%Y-%m-%d %H:%M:%S"),
+                                "minuten": round((rzeit - czeit).total_seconds() / 60, 1),
+                                "altbestand": (e.get("kennung"), feld)
+                                in ALTBESTAND_UHRENSTREIT})
+    return treffer
 
 
 def nicht_beendete(root, stichtag=STICHTAG_ENDE_SPRINT):
