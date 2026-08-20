@@ -270,6 +270,23 @@ class Api(BaseHTTPRequestHandler):
                         return self._json(200, teams.ollama_modelle(wurzel, projekt))
                     if pfad == "/api/team/digest-vorschau":  # SWR-090 (pm/T-0025)
                         return self._json(200, teams.digest_vorschau(wurzel, projekt))
+                    # SWR-160 (projects/p11/T-0013): der INHALT eines Widgets.
+                    #
+                    # ⚠⚠ Die Route steht INNERHALB des `/api/team`-Zweigs und damit hinter
+                    # dem PIN-Leser — nicht daneben mit eigener Pruefung. Ein zweites Gate
+                    # neben dem vorhandenen waere B033 an der empfindlichsten Stelle: zwei
+                    # Zugriffsregeln, die auseinanderlaufen koennen, ohne dass etwas rot
+                    # wird. Ein Test haelt ueber den Syntaxbaum fest, dass
+                    # `widgets.widget_inhalt` NUR hier aufgerufen wird.
+                    if pfad == "/api/team/widget-inhalt":
+                        q = parse_qs(teile.query)
+                        name = (q.get("name") or [projekt])[0]
+                        takt = (q.get("takt") or [""])[0]
+                        inhalt = widgets.widget_inhalt(wurzel, name, takt)
+                        if inhalt is None:
+                            return self._json(404, {"fehler": f"Team '{name}' bietet kein "
+                                                              f"Widget an (kein widget.yaml)."})
+                        return self._json(200, inhalt)
                 except teams.TeamFehler as e:
                     return self._json(e.code, {"fehler": str(e)})
             if pfad == "/architektur.svg":  # SWR-045 (P3): generiertes Architekturbild

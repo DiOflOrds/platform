@@ -159,6 +159,74 @@ def reaktionspunkte(text):
     return punkte
 
 
+def reaktionspunkte_text(text):
+    """SWR-160: die Punkte unter „Braucht Blick oder Reaktion" im **Wortlaut**.
+
+    ⚠ **Das ist der sensible Zwilling von `reaktionspunkte`.** Dort wird gezählt, hier
+    wird zitiert — dieselbe Rubrik, zwei völlig verschiedene Auskünfte:
+
+    > **Die ANZAHL offener Punkte ist eine Kennzahl. Ihr WORTLAUT sind Betreffzeilen,
+    > Absender und Links.** Deshalb steht die Zahl in der ungeschützten Kachel und der
+    > Wortlaut hinter dem PIN-Lesegate.
+
+    `None`, wenn die Rubrik fehlt — nie `[]`. Eine leere Liste hiesse „nichts zu tun",
+    und das ist eine andere Aussage als „nicht erhoben" (SWR-108/135).
+
+    ⚠ Ausgeschnitten wird an **derselben** Stelle wie in `reaktionspunkte`: dieselbe
+    Rubrik, dieselbe Abbruchbedingung, dasselbe Zeilenmuster. Zwei Auswahlregeln über
+    dieselbe Rubrik wären B033, und dann zählte die Kachel andere Punkte, als der Leser
+    hinter dem Gate zu sehen bekäme.
+    """
+    if not text or RUBRIK_REAKTION not in text:
+        return None
+    zeilen = text.splitlines()
+    start = next(i for i, z in enumerate(zeilen) if RUBRIK_REAKTION in z)
+    punkte = []
+    for z in zeilen[start + 1:]:
+        if z.lstrip().startswith("#"):
+            break
+        if _ZAHLPUNKT.match(z):
+            punkte.append(z.strip())
+    return punkte
+
+
+def widget_inhalt(root, projekt, takt=""):
+    """SWR-160: der INHALT eines Widgets — nur hinter dem PIN-Lesegate aufzurufen.
+
+    ⚠⚠ **Diese Funktion darf von keiner ungeschützten Route erreichbar sein.** Der
+    Aufrufer ist `server.py` innerhalb des `\/api\/team`-Zweigs, und ein Test hält das
+    über den Syntaxbaum fest — *ein Gate, das erst in der Anzeige greift, ist keines*
+    (DoD 3 von `projects/p11/T-0013`).
+
+    Ohne `takt`: der jüngste Digest überhaupt. Mit `takt`: der jüngste dieses Takts.
+    Gibt es keinen, ist `punkte` `None` **mit Grund** und nicht `[]` — dieselbe
+    Unterscheidung, die die Kachel führt.
+
+    ⚠ Gelesen wird über `teams.digest_liste`/`teams.digest_inhalt` und nicht über einen
+    eigenen Verzeichnis-Scan (SWR-092): ein zweiter Erhebungsweg hinter einem Gate wäre
+    der gefährlichste von allen, weil er die Regeln des ersten nicht erbt.
+    """
+    zusage = widget_zusage(root, projekt)
+    if zusage is None:
+        return None
+    liste = teams.digest_liste(root, projekt)
+    eintrag = None
+    for e in liste:
+        if not takt or takt_aus_dateiname(e["name"]) == takt:
+            eintrag = e
+            break
+    if eintrag is None:
+        return {"id": zusage["id"], "projekt": projekt, "takt": takt, "datum": None,
+                "punkte": None, "grund": "noch keiner erstellt"}
+    inhalt = teams.digest_inhalt(root, projekt, eintrag["name"])["inhalt"]
+    punkte = reaktionspunkte_text(inhalt)
+    return {"id": zusage["id"], "projekt": projekt,
+            "takt": takt or takt_aus_dateiname(eintrag["name"]),
+            "datum": eintrag["datum"], "punkte": punkte,
+            "grund": "" if punkte is not None else
+                     f"Rubrik '{RUBRIK_REAKTION}' fehlt in diesem Digest"}
+
+
 def _mailzahl(titel):
     """`… (89 Mail(s))` → `89`; ohne Angabe `None` — **nicht** `0` (B038)."""
     m = _MAILZAHL.search(titel or "")
@@ -223,6 +291,19 @@ def post_widget(root, projekt):
     return {"id": zusage["id"], "projekt": projekt, "titel": zusage["titel"],
             "auftrag": zusage["auftrag"], "ziel": zusage["ziel"],
             "eintraege": eintraege,
+            # SWR-160 (projects/p11/T-0013): die Kachel sagt, DASS es einen Inhalt gibt
+            # und WO er liegt — sie liefert ihn nicht.
+            #
+            # ⚠⚠ Kein vierter Zustand. `inhalt_gesperrt` ist ein eigener Schluessel neben
+            # `eintraege` und faerbt keinen der drei Werte ein: eine Sperre ist kein
+            # Datenzustand, sondern eine Zugriffsregel, und die beiden in EIN Vokabular zu
+            # werfen hiesse „keine Daten" und „nicht fuer dich" zu verwechseln.
+            #
+            # ⚠ Und die Kachel VERSCHWINDET nicht. Eine Kachel, die ohne PIN weg ist,
+            # verraet nichts und behauptet dabei, es gaebe hier nichts — dieselbe
+            # Verwechslung wie „keine Daten" gegen „0" (SWR-108/135), eine Etage weiter.
+            "inhalt_gesperrt": True,
+            "inhalt_route": "/api/team/widget-inhalt",
             # Digests ohne Taktangabe im Namen: gezählt und **genannt**, nicht verschwiegen
             # und nicht einem Takt zugeschlagen (SWR-114).
             "digests_ohne_takt": ohne_takt}
