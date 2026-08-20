@@ -11,3 +11,4 @@
 
 | ID | Datum | Entscheider | Entscheidung | Optionen | Begründung | Betroffene Artefakte |
 |---|---|---|---|---|---|---|
+| D000 | 2026-08-20 22:21 | Mensch (E. John, via Inbox) | **A** | lt. T-0035 | — | T-0035 |
