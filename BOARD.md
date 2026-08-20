@@ -12,7 +12,7 @@ Stand: 2026-08-20 · Tickets: 23 · davon wiederkehrend: 1
 | [T-0022](tickets/T-0022.md) | Der Entscheidungsweg setzte eine Datei voraus, die ein anderer Weg anlegt (SWR-152) | problem | einmalig | dev | Team | hoch | 0 | — |
 | [T-0020](tickets/T-0020.md) | Die Matrix schrumpft still: kein Vergleich mit dem Bestand beim Schreiben | problem | einmalig | cm | Team | mittel | 0 | T-0019 |
 
-## in_progress (1)
+## in_review (1)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
