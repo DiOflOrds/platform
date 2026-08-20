@@ -267,6 +267,46 @@ def plandrift(root):
     return None if sicht is None else sicht.get("plan_drift", [])
 
 
+def liegengeblieben_in_arbeit(root):
+    """SWR-155 (pm/T-0069, Brief pm/N-0043 Punkt 4): Aufgaben, die auf `in_progress`
+    stehen, **ohne dass ein Sprint läuft** — also angefangen und liegengeblieben.
+
+    Der Auftraggeber hat es so formuliert: *„Wenn Sprint vorbei ist, muss ein anderer
+    Status drin stehen."*
+
+    ⚠⚠ **Warum diese Prüfung erst seit heute etwas findet.** Bis Sprint 20 wurde
+    `in_progress` **kurz vor dem Fertigmelden** gesetzt, nicht beim Anfangen — gemessen
+    über die Historie: Median-Aufenthalt **22 Sekunden**, und **159 von 300**
+    geschlossenen Aufgaben hatten ihn nie. Eine Prüfung auf einen Zustand, der 22
+    Sekunden existiert, ist immer grün und prüft nichts. Erst Stufe 1 von `pm/T-0069`
+    (Status beim **Anfangen** setzen) macht sie scharf. Die Reihenfolge der beiden
+    Stufen ist deshalb keine Bequemlichkeit.
+
+    ⚠ **Nie still.** Läuft gerade ein Sprint, ist `in_progress` der **richtige**
+    Zustand — dann wird die Zahl trotzdem genannt, nur nicht als Befund gewertet. Ein
+    Ergebnis zu unterdrücken, weil es gerade unverdächtig ist, macht eine gelaufene
+    Prüfung von einer nicht gelaufenen ununterscheidbar (SWR-114, SWR-117, SWR-154).
+
+    ⚠ **Melden, nicht aufräumen.** Ein Skript, das den Status zurückstellt, macht das
+    Liegenbleiben unsichtbar; der andere Status entsteht durch eine Entscheidung des PM
+    (fertig / mit Grund verschoben / blockiert). Dieselbe Kehrseite hält
+    `platform/T-0022` Frage 3 offen.
+
+    Rückgabe: `(liste, sprint_laeuft)`; `None` heißt „konnte nicht prüfen".
+    """
+    sicht = sprintsicht(root)
+    if sicht is None:
+        return None
+    # Kein zweiter Erhebungsweg: dieselbe Liste, aus der die Sprintsicht `offen_gesamt`
+    # zählt (B033) — die Zahl hier und die Zahl dort können nicht auseinanderlaufen.
+    treffer = [o for o in sicht.get("offene", []) if o.get("status") == "in_progress"]
+    try:
+        laeuft = sprint_register.laufender(root) is not None
+    except Exception:
+        laeuft = False
+    return treffer, laeuft
+
+
 def sprintvergangen(root):
     """SWR-122 (platform/T-0011): offene Tickets, deren geplanter Sprint VORBEI ist.
 
@@ -666,6 +706,26 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         befunde += 1
     else:
         print("[org] Offen auf vergangenem Sprint: 0.")
+    # SWR-155 (pm/T-0069, Brief pm/N-0043 Punkt 4): angefangen und liegengeblieben.
+    liegen = liegengeblieben_in_arbeit(root)
+    if liegen is None:
+        print("[org] In Arbeit liegengeblieben: nicht prüfbar (Sprintsicht nicht ladbar).")
+    else:
+        offen_in_arbeit, sprint_laeuft = liegen
+        if sprint_laeuft:
+            # ⚠ Nicht schweigen, nur nicht werten: waehrend eines Sprints ist
+            # `in_progress` der richtige Zustand.
+            print(f"[org] In Arbeit (ein Sprint läuft, kein Befund): "
+                  f"{len(offen_in_arbeit)}.")
+        elif offen_in_arbeit:
+            print(f"[org] BEFUND: {len(offen_in_arbeit)} Aufgabe(n) stehen auf "
+                  f"`in_progress`, obwohl kein Sprint läuft — angefangen und "
+                  f"liegengeblieben:")
+            for o in offen_in_arbeit:
+                print(f"    {o['ref']}: {o.get('titel', '')}")
+            befunde += 1
+        else:
+            print("[org] In Arbeit liegengeblieben: 0.")
     # SWR-118 (pm/T-0048): unzulässige Statusübergänge in der COMMITTETEN Historie.
     #
     # Die Übergangsprüfung in `board.py` hält die Arbeitskopie gegen HEAD und ist damit
