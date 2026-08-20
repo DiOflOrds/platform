@@ -79,12 +79,29 @@ STICHTAG = "2026-08-17 07:10"
 #:    sonst gar nicht ändern — er liegt in der Vergangenheit. Ändert er sich doch, ist
 #:    ein `rebase`/`filter-branch` gelaufen, und genau das verbietet
 #:    L-2026-08-17g Regel 4.
-ALTBESTAND_ERWARTET = 52
+#: ⚠⚠ **52 → 56 in Sprint 23, und der Grund ist keine neue Historie, sondern ein blinder
+#: Fleck der Prüfung selbst.** `status_wechsel` filterte auf `tickets/` **relativ zur
+#: Repo-Wurzel**. Im Sammel-Repo `projects` (pm/D003, ab P10) liegen die Tickets eine Ebene
+#: tiefer (`p11/tickets/`) — der Filter traf dort **nichts**, und **66 Statuswechsel von
+#: p10/p11/p12 sind seit SWR-118 (Sprint 9) nie geprüft worden**. Darin verborgen: vier
+#: Altfälle und ein neuer.
+#:
+#:     **Die Prüfung war grün, weil sie ein Drittel des Bestands gar nicht angesehen hat.
+#:     Eine Prüfung, die auf einem Bestand grün ist, in dem der geprüfte Zustand nicht
+#:     vorkommt, prüft nichts — hier fehlte nicht der Zustand, sondern der Bestand.**
+#:
+#: ⚠ Die Zahl wird **erhöht und nicht der Stichtag verschoben**: die vier Altfälle liegen
+#: nachweislich vor dem 2026-08-17 07:10 und sind keine frischen Verstöße. Ihr fünfter
+#: Nachbar liegt **danach** und bleibt deshalb ein Befund (SWR-162).
+ALTBESTAND_ERWARTET = 56
 
 _SHA = re.compile(r"^\x00([0-9a-f]{7,40}) (\d+)$")
 _ZIEL = re.compile(r"^\+\+\+ b/(.+)$")
 _STATUS_ALT = re.compile(r"^-status:\s*(\S+)")
 _STATUS_NEU = re.compile(r"^\+status:\s*(\S+)")
+#: SWR-162: eine Ticketdatei, gleich wie tief sie liegt. `tickets/T-0001.md` ebenso wie
+#: `p11/tickets/T-0013.md`.
+_IST_TICKET = re.compile(r"(^|/)tickets/[^/]+$")
 
 
 #: Woran erkannt wird, dass die geprüfte Wurzel **dieser** Bestand ist.
@@ -159,9 +176,28 @@ def status_wechsel(repo):
     """
     if not os.path.isdir(os.path.join(repo, ".git")):
         return []
+    # SWR-162: Pfadfilter mit **Tiefenzusicherung**, dazu ein Filter am Dateinamen.
+    #
+    # ⚠⚠ Bis Sprint 23 stand hier `-- tickets/`, und das ist **relativ zur Repo-Wurzel**.
+    # Im Sammel-Repo `projects` (pm/D003, ab P10) liegen die Tickets eine Ebene tiefer;
+    # der Filter traf dort nichts, und p10/p11/p12 sind seit SWR-118 **nie** geprüft
+    # worden — 66 Statuswechsel, darunter fünf unzulässige.
+    #
+    # ⚠ `*/tickets/` wäre die naheliegende Reparatur und die falsche: ohne `:(glob)`
+    # behandelt git Pfadangaben als Präfixe, und die nächste Verschachtelungsebene wäre
+    # wieder unsichtbar. `:(glob)**/tickets/*` sagt ausdrücklich „in jeder Tiefe".
+    #
+    # ⚠⚠ Der erste Entwurf liess den Filter GANZ weg und behauptete im Kommentar, das
+    # koste „rund 2 s". Das war **geschätzt und danebengelegt**; nachgemessen kostet der
+    # Verzicht je Repo 0,4–2,9 s MEHR (`platform` 7,68 s statt 4,75 s). Der Filter ist
+    # also nicht nur richtiger, sondern schneller — und die Behauptung im Kommentar war
+    # genau die Bauart, gegen die `platform/T-0027` aufgemacht wurde.
+    #
+    # ⚠ Zusätzlich wird am Dateinamen gefiltert: ein Pfadmuster ist eine Vorauswahl, die
+    # Zusicherung über den Gegenstand steht in `_IST_TICKET`.
     out = subprocess.run(
-        ["git", "-C", repo, "log", "--reverse", "-U0", "--format=%x00%H %ct", "--",
-         "tickets/"],
+        ["git", "-C", repo, "log", "--reverse", "-U0", "--format=%x00%H %ct",
+         "--", ":(glob)**/tickets/*"],
         capture_output=True, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0 or not out.stdout:
         return []
@@ -181,7 +217,7 @@ def status_wechsel(repo):
             continue
         t = _STATUS_NEU.match(zeile)
         if t and datei and sha:
-            if alt and alt != t.group(1):
+            if alt and alt != t.group(1) and _IST_TICKET.search(datei):
                 wechsel.append((sha, zeit, datei, alt, t.group(1)))
             alt = None
     return wechsel
@@ -234,6 +270,26 @@ def pruefe_repo(repo, name=None, stichtag=None):
     return neue, alt_liste
 
 
+def _repo_wurzel(basis, root):
+    """SWR-162: das Git-Repo, zu dem `basis` gehört — auch wenn es weiter oben liegt.
+
+    Ein Projekt im Sammel-Repo (`projects/p11`, pm/D003) hat kein eigenes `.git`; seine
+    Historie steht im Sammel-Repo. Wer nur `basis/.git` prüft, überspringt es **ganz**.
+
+    Gesucht wird nach oben bis `root` einschliesslich; darüber hinaus nicht — sonst fände
+    die Prüfung das Repo, in dem der Bestand zufällig liegt, und behauptete Zuständigkeit
+    für fremde Historie.
+    """
+    pfad = os.path.abspath(basis)
+    grenze = os.path.abspath(root)
+    while True:
+        if os.path.isdir(os.path.join(pfad, ".git")):
+            return pfad
+        if pfad == grenze or os.path.dirname(pfad) == pfad:
+            return None
+        pfad = os.path.dirname(pfad)
+
+
 def pruefe_alle(root, stichtag=None):
     """Über alle entdeckten Projekt-Repos.
 
@@ -246,13 +302,26 @@ def pruefe_alle(root, stichtag=None):
     gesehen = set()
     for name, basis in board.projekt_pfade(root):
         # Projekte im Sammel-Repo teilen sich dessen .git — dann zaehlt das Sammel-Repo.
-        wurzel = basis if os.path.isdir(os.path.join(basis, ".git")) else None
-        if wurzel is None:
-            continue
-        if wurzel in gesehen:
+        #
+        # ⚠⚠ SWR-162: **genau das stand hier als Kommentar und tat der Code NICHT.** Er
+        # setzte `wurzel = None`, sobald `basis/.git` fehlte, und übersprang den Eintrag —
+        # also jedes Projekt im Sammel-Repo `projects` (p10, p11, p12). Zusammen mit dem
+        # Pfadfilter `tickets/` in `status_wechsel` war das Sammel-Repo damit auf **zwei**
+        # Wegen unsichtbar, und beide sahen für sich harmlos aus.
+        #
+        #     **Ein Kommentar, der beschreibt, was der Code tun soll, ist keine
+        #     Zusicherung. Hier hat er drei Sprints lang das Gegenteil dessen behauptet,
+        #     was danebenstand — und niemand hat die beiden verglichen.**
+        wurzel = _repo_wurzel(basis, root)
+        if wurzel is None or wurzel in gesehen:
             continue
         gesehen.add(wurzel)
-        a, b = pruefe_repo(wurzel, name, stichtag)
+        # ⚠ Der Name des REPOS, nicht des ersten darin gefundenen Projekts. Sonst hiesse
+        # ein Befund aus `projects` „p10/p11/tickets/T-0009.md" — eine Referenz, die es
+        # nirgends gibt und die beim Nachschlagen ins Leere führt (B038: eine Meldung
+        # muss ihren Gegenstand AUFFINDBAR nennen).
+        a, b = pruefe_repo(wurzel, os.path.basename(wurzel) if os.path.abspath(wurzel)
+                           != os.path.abspath(basis) else name, stichtag)
         neue += a
         altbestand += b
     register = []
