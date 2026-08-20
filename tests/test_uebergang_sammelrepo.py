@@ -131,7 +131,7 @@ class BestandNachDerReparaturTest(unittest.TestCase):
         """
         if not os.path.exists(os.path.join(WURZEL, uh.BESTANDSMARKE)):
             self.skipTest("nicht dieser Bestand")
-        _neue, alt, register = uh.pruefe_alle(WURZEL)
+        _neue, _weiter, alt, register = uh.pruefe_alle(WURZEL)  # SWR-166: vier Werte
         self.assertEqual(len(alt), uh.ALTBESTAND_ERWARTET)
         self.assertEqual(register, [])
 

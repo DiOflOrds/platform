@@ -243,18 +243,57 @@ class PreflightAusgabeTest(unittest.TestCase):
                          "Start von Sprint 22: 56 Min = 0.93x Takt (60 Min) — BEFUND",
                          text)
 
-    def test_der_ausfall_wird_ein_befund_mit_zahl_und_zeitraum(self):
-        text = self._ausgabe({"letztes_ende": "2026-08-17 22:18", "letzter_nr": 20,
+    def _ausfall(self):
+        return self._ausgabe({"letztes_ende": "2026-08-17 22:18", "letzter_nr": 20,
                               "bezug": "Start von Sprint 21",
                               "bezug_zeit": "2026-08-20 10:30", "minuten": 3612,
                               "takt_min": 60, "takte": 2, "vielfaches": 60.2,
                               "befund": True, "hinweis": "seit 22:18 keine Session",
                               "unberechenbar": "", "ueberlappung": False,
                               "ohne_ende": []})
-        self.assertIn("BEFUND", text)
+
+    def test_der_ausfall_wird_gemeldet_mit_zahl_und_zeitraum(self):
+        """⚠ **Diese Zusicherung ist GESCHÄRFT, nicht gelöscht** (SWR-166, Sprint 25).
+
+        Sie hielt bis Sprint 24 fest, dass der Ausfall das Wort `BEFUND` trägt. Das Wort
+        war nie der Gegenstand — der Gegenstand ist, dass der Ausfall **mit Zahl und
+        Zeitraum genannt** wird, statt wie in Sprint 21 gar nicht vorzukommen. Genau das
+        stand dem Auftraggeber im Brief `team-mail/N-0004` zu.
+
+        Seit SWR-166 heißt die Marke `FORTGESCHRIEBEN`: eine bereits vergangene Pause ist
+        von keinem Aufrufer zu verkürzen, und sie hat als blockierender Befund 83
+        Push-Läufe gestoppt. Gemessen wird deshalb weiter der **Inhalt**, und die Marke
+        ausdrücklich mit.
+        """
+        text = self._ausfall()
+        self.assertIn("FORTGESCHRIEBEN", text)
         self.assertIn("3612 Min", text)
         self.assertIn("60.2x Takt", text)
         self.assertIn("2026-08-17 22:18", text)
+        self.assertIn("seit 22:18 keine Session", text)
+
+    def test_der_ausfall_blockiert_nicht_und_bleibt_trotzdem_gezaehlt(self):
+        """⚠⚠ Die zweite Hälfte des Paares (`L-2026-08-20by`): dass er nicht mehr
+        blockiert, darf nicht heißen, dass er verschwindet.
+
+        Der Ausfall taucht in der Schlusszeile als **fortgeschriebener** Befund auf —
+        eine Zahl, die niemand mehr übersieht — und **nicht** unter den blockierenden.
+        Ohne diese Hälfte wäre die Änderung von SWR-166 ein stilles Wegräumen.
+        """
+        text = self._ausfall()
+        schluss = [z for z in text.splitlines() if z.startswith("PREFLIGHT:")][0]
+        self.assertRegex(schluss, r"\((?!0 )\d+ fortgeschrieben\)",
+                         "die Pause zählt nicht als fortgeschrieben: %s" % schluss)
+        # Gegenprobe: dieselbe Zeile ohne Ausfall trägt die Pause NICHT im Zähler.
+        ohne = self._ausgabe({"letztes_ende": "2026-08-20 11:16", "letzter_nr": 21,
+                              "bezug": "Start von Sprint 22",
+                              "bezug_zeit": "2026-08-20 12:12", "minuten": 56,
+                              "takt_min": 60, "takte": 2, "vielfaches": 0.93,
+                              "befund": False, "hinweis": "", "unberechenbar": "",
+                              "ueberlappung": False, "ohne_ende": []})
+        schluss_ohne = [z for z in ohne.splitlines()
+                        if z.startswith("PREFLIGHT:")][0]
+        self.assertIn("(0 fortgeschrieben)", schluss_ohne)
 
     def test_nicht_pruefbar_sagt_es_und_behauptet_keine_null(self):
         text = self._ausgabe(None)

@@ -11,16 +11,11 @@ Stand: 2026-08-20 · Tickets: 30 · davon wiederkehrend: 1
 | [T-0027](tickets/T-0027.md) | Der Abschlussbericht hat für seine EIGENEN Kennzahlen keine Prüfung — fünfmal in sechs Sprints eine fortgeschriebene statt einer gemessenen Zahl | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0030](tickets/T-0030.md) | Kommentare an Aufgaben — Verlauf im Ticket-Rumpf wie im Team-Chat, ein Schreibweg, kein zweiter Speicher | change-request | einmalig | dev | Team | hoch | 25 | — |
 
-## in_review (1)
+## done (27)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0029](tickets/T-0029.md) | Der Preflight blockiert auf Befunde, die niemand mehr beheben kann — 83 abgebrochene Push-Läufe in drei Tagen und 12 Ticks, die nie liefen | problem | einmalig | cm | Team | kritisch | 25 | — |
-
-## done (26)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
 | [T-0002](tickets/T-0002.md) | Problem (N-0006): CI-Lauf 'tests' schlug nach dem pm/T-0024-Push fehl — lokal nicht reproduzierbar | problem | einmalig | prob | Team | hoch | 0 | — |
 | [T-0003](tickets/T-0003.md) | CR: CI-Status nach dem Push selbst prüfen — ohne Zugangsdaten (ersetzt den Blick auf die Actions-Seite) | change-request | einmalig | cm | Team | hoch | 0 | — |
 | [T-0004](tickets/T-0004.md) | CR: Ein rotes CI-Ergebnis soll den fehlgeschlagenen Schritt nennen — sonst ist ROT kein Befund, sondern eine Farbe | change-request | einmalig | cm | Team | hoch | 0 | — |

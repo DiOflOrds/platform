@@ -264,4 +264,18 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    # ⚠ platform/T-0009: Wer ein `__main__` hat, kann Befunde drucken — und darf daran
+    # nicht sterben. Auf einer cp1252-Konsole reicht ein „ä" in einem Rollennamen, und
+    # der Lauf endet im UnicodeEncodeError statt in der Meldung.
+    #
+    # ⚠⚠ Diese Zeilen fehlten in der ersten Fassung dieses Skripts (Orga-Rework,
+    # 2026-08-20). Gefunden hat das nicht der Autor, sondern
+    # `test_konsole.test_jeder_einstiegspunkt_sichert_seine_ausgabe` — eine Regel über
+    # den GESAMTEN Produktionscode, die jeden neuen Einstiegspunkt automatisch erfasst.
+    # Vierter Lauf in Folge, in dem eine ältere Zusicherung einen frischen Entwurf
+    # verwirft (`L-2026-08-20cf`).
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import konsole
+    konsole.sichere_ausgabe()  # platform/T-0009: am Melden nicht sterben
     sys.exit(main())
