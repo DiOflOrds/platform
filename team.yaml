@@ -1,6 +1,7 @@
 # Team-Steckbrief (Quelle der Wahrheit: process/teams/registry.yaml)
-name: "ASPICE-Team"
-typ: aspice
+# T-0041 (Projektmodell): typ `plattform` — `aspice` bleibt lesend toleriert.
+name: "Plattform-Projekt (ASPICE)"
+typ: plattform
 profil: "entwicklung"
 datenklasse: intern
 rollen: [PL, RM, ARCH, DEV, TEST, QM, CM, PROB, CHG, COACH]

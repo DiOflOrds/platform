@@ -116,8 +116,12 @@ def modell_der_besetzung(root, rolle, einheit):
 
     Rangfolge (gleichlautend im Code und im Docstring von ollama_executor):
     ``OLLAMA_MODEL`` > Besetzungsregister > guardrails > ``llama3.1:8b``.
+
+    Projektmodell (Konzept 04): gelesen wird die EFFEKTIVE Besetzung (Core-Team-Expansion
+    + explizite Einträge, organigramm.effektive_besetzungen) — Core-Instanzen tragen kein
+    Modell, explizite Abweichungen gewinnen.
     """
-    besetzungen = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {}) or {}
+    besetzungen = organigramm.effektive_besetzungen(root)
     rolle_ob = (rolle or "").upper()
     for b in besetzungen.values():
         b = b or {}
@@ -140,7 +144,7 @@ def modellabweichungen(root):
     ⚠ Diese Prüfung **meldet** und heilt nicht: welcher der beiden Werte der richtige ist,
     ist eine Frage an den, der das Register pflegt, und keine an ein Werkzeug.
     """
-    besetzungen = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {}) or {}
+    besetzungen = organigramm.effektive_besetzungen(root)  # Projektmodell: inkl. Core
     default = _guardrails_ollama_modell(root)
     abweichungen, grundmenge = [], 0
     for instanz, b in sorted(besetzungen.items()):
@@ -180,8 +184,12 @@ def besetzung_mit_motor(root, rolle, einheit, motor):
     ⚠ Deshalb prüft diese Funktion den **Motor** und nicht das Modell: ein fehlendes Modell
     ist ein Konfigurationsloch, eine fehlende Besetzung ist eine Zuständigkeitsverletzung.
     Sie ist auch dann richtig beantwortet, wenn irgendwann jedes Register ein Modell trägt.
+
+    Projektmodell (Konzept 04): geprüft wird die EFFEKTIVE Besetzung — `DEV@team-mail`
+    existiert jetzt implizit über das Core Team, aber mit `motor: cowork`; für einen
+    ollama-Tick bleibt der Befund damit korrekt „keine Besetzung mit diesem Motor".
     """
-    besetzungen = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {}) or {}
+    besetzungen = organigramm.effektive_besetzungen(root)
     rolle_ob = (rolle or "").upper()
     for instanz, b in sorted(besetzungen.items()):
         b = b or {}
@@ -201,22 +209,27 @@ def besetzungen_mit_motor(root, motor):
     ⚠ Ohne sie wäre eine Prüfung, die das Register gar nicht liest, von einer, die keine
     Besetzung findet, nicht zu unterscheiden (SWR-128/165).
     """
-    besetzungen = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {}) or {}
+    besetzungen = organigramm.effektive_besetzungen(root)  # Projektmodell: inkl. Core
     return sorted(i for i, b in besetzungen.items() if ((b or {}).get("motor") or "") == motor)
 
 
 def katalog(root):
     """Auswahllisten fürs Formular: Rollen (Bauplan-Registry), Motoren, Takte, Stati."""
     rollen = _lade_yaml(os.path.join(root, "process", "roles", "registry.yaml")).get("roles", {})
+    core = _lade_yaml(_pfad_besetzungen(root)).get("core_team", {}) or {}
     return {"rollen": sorted(rollen),
             "rollen_namen": {k: (v or {}).get("name", k) for k, v in rollen.items()},
             "motoren": MOTOREN, "takte": TAKTE, "stati": STATI,
+            "core_team": core.get("rollen") or [],
+            "hinweis_core": ("Core-Rollen sind in jedem aktiven Projekt implizit besetzt "
+                             "(Konzept 04, Kap. 3.1) — Abweichungen per Speichern, nicht per Anlegen."),
             "hinweis_f20": "Höchstens eine Besetzung je Rolle und Einheit (pm/D012)."}
 
 
 def detail(root, instanz):
-    """Alles zu einer Instanz: Besetzung + die drei Dokument-Ebenen (Konzept Kap. 2.1)."""
-    besetzungen = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {})
+    """Alles zu einer Instanz: Besetzung + die drei Dokument-Ebenen (Konzept 03 Kap. 2.1).
+    Projektmodell (Konzept 04): auch implizite Core-Team-Instanzen sind Detail-fähig."""
+    besetzungen = organigramm.effektive_besetzungen(root)
     b = besetzungen.get(instanz)
     if not b:
         raise OrgFehler(404, f"Besetzung unbekannt: {instanz}")
@@ -315,7 +328,12 @@ def _schreib_und_verbuche(root, zeilen, meldung, verbuchen):
 
 
 def setzen(root, instanz, felder, verbuchen=True):
-    """Felder einer bestehenden Besetzung ändern (motor/modell/takt/status/hinweis)."""
+    """Felder einer Besetzung ändern (motor/modell/takt/status/hinweis).
+
+    Projektmodell (Konzept 04): Ist die Instanz nur implizit über das Core Team besetzt,
+    wird sie hier MATERIALISIERT — die Änderung entsteht als expliziter Abweichungs-Block
+    (Core-Defaults + Felder). Der core_team-Block selbst wird nie angefasst.
+    """
     _pruefe_felder(felder)
     text = _lies_text(_pfad_besetzungen(root))
     if text is None:
@@ -323,7 +341,25 @@ def setzen(root, instanz, felder, verbuchen=True):
     zeilen = text.split("\n")
     start, ende = _block_grenzen(zeilen, instanz)
     if start is None:
-        raise OrgFehler(404, f"Besetzung unbekannt: {instanz}")
+        eff = organigramm.effektive_besetzungen(root)
+        basis = eff.get(instanz)
+        if not basis or basis.get("quelle") != "core":
+            raise OrgFehler(404, f"Besetzung unbekannt: {instanz}")
+        werte = {k: basis.get(k, "") for k in FELDER_ERLAUBT}
+        werte.update({k: str(v) for k, v in felder.items() if k in FELDER_ERLAUBT})
+        while zeilen and zeilen[-1] == "":
+            zeilen.pop()
+        zeilen += [f"  {instanz}:", f"    rolle: {basis['rolle']}",
+                   f"    einheit: {basis['einheit']}"]
+        for feld in FELDER_ERLAUBT:
+            if werte.get(feld):
+                zeilen.append(f"    {feld}: {werte[feld]}")
+        if not werte.get("hinweis"):
+            zeilen.append("    hinweis: Abweichung vom Core-Team-Default (materialisiert via HMI)")
+        _schreib_und_verbuche(root, zeilen,
+                              f"Besetzung {instanz} als Core-Abweichung materialisiert "
+                              f"({HERKUNFT}, Konzept 04 Kap. 3.1)", verbuchen)
+        return {"ok": True, "instanz": instanz, "materialisiert": True}
     versatz = 0
     for feld in FELDER_ERLAUBT:
         if feld in felder:
@@ -342,9 +378,14 @@ def anlegen(root, instanz, felder, verbuchen=True):
     _pruefe_felder(felder)
     if "motor" not in felder:
         raise OrgFehler(400, "Feld motor ist Pflicht beim Anlegen.")
-    bestehend = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {})
-    if instanz in bestehend:
+    explizit = _lade_yaml(_pfad_besetzungen(root)).get("besetzungen", {})
+    if instanz in explizit:
         raise OrgFehler(409, f"{instanz} existiert bereits.")
+    bestehend = organigramm.effektive_besetzungen(root)  # Projektmodell: inkl. Core
+    if instanz in bestehend:
+        raise OrgFehler(409, f"{instanz} ist bereits implizit über das Core Team besetzt "
+                             f"(Konzept 04, Kap. 3.1) — zum Abweichen die Instanz anklicken "
+                             f"und speichern (setzen), nicht neu anlegen.")
     for name, b in bestehend.items():
         if b.get("rolle") == rolle and b.get("einheit") == einheit:
             raise OrgFehler(409, f"F20 (pm/D012): {rolle} ist in {einheit} bereits besetzt "
@@ -367,13 +408,23 @@ def anlegen(root, instanz, felder, verbuchen=True):
 
 
 def entfernen(root, instanz, verbuchen=True):
-    """Besetzung entfernen (Block löschen). Die Rolle als Bauplan bleibt unberührt."""
+    """Explizite Besetzung entfernen (Block löschen). Die Rolle als Bauplan bleibt unberührt.
+
+    ⚠ Implizite Core-Team-Instanzen sind NICHT entfernbar — sie stehen in keiner Zeile,
+    die man löschen könnte (Konzept 04, Kap. 3.1). Wer eine Core-Rolle in einem Projekt
+    stilllegen will, setzt `status: pausiert` (materialisiert die Abweichung).
+    """
     text = _lies_text(_pfad_besetzungen(root))
     if text is None:
         raise OrgFehler(404, "besetzungen.yaml fehlt.")
     zeilen = text.split("\n")
     start, ende = _block_grenzen(zeilen, instanz)
     if start is None:
+        eff = organigramm.effektive_besetzungen(root)
+        if (eff.get(instanz) or {}).get("quelle") == "core":
+            raise OrgFehler(400, f"{instanz} ist implizit über das Core Team besetzt und "
+                                 f"nicht entfernbar — zum Stilllegen status: pausiert "
+                                 f"setzen (Konzept 04, Kap. 3.1).")
         raise OrgFehler(404, f"Besetzung unbekannt: {instanz}")
     del zeilen[start:ende]
     _schreib_und_verbuche(root, zeilen,

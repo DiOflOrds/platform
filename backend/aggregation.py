@@ -199,9 +199,14 @@ def einstufung(root, projekt, pfad=None, tag_text=None):
     namen = _tagnamen(tag_text)
     status = sb["status"] or ("abgeschlossen" if (f"{projekt}-v1.0" in namen or
                               (projekt == "p0" and "genesis-v1.0" in namen)) else "aktiv")
-    if sb["typ"] in ("aspice", "pm"):
+    # T-0041 (Projektmodell, Konzept 04 Kap. 7): `plattform` ist das neue Literal für
+    # das Plattform-Projekt; `aspice` bleibt lesend toleriert (Alt-team.yaml, Alt-Tests)
+    # — eine Ausbaustufe lang, Schreiben nur noch neu. Kein Register von Sonderfällen:
+    # genau eine Zuordnungszeile.
+    typ = "aspice" if sb["typ"] == "plattform" else sb["typ"]
+    if typ in ("aspice", "pm"):
         gruppe = "festes-team"
-    elif sb["typ"] == "projekt":
+    elif typ == "projekt":
         gruppe = "projekt-team"
     else:
         gruppe = "abgeschlossen" if status == "abgeschlossen" else "aktiv"

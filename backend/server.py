@@ -16,8 +16,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend import (aggregation, briefkasten, inbox, mailer, organisation,  # noqa: E402
-                     pool, session, sprint, teams, tickets, widgets)
+from backend import (aggregation, aktivitaeten, briefkasten, inbox,  # noqa: E402
+                     kommunikation, mailer, organisation, pool, session, sprint,
+                     teams, tickets, widgets, workflows, workproducts)
 
 
 def schreibschutz_pruefen(client_ip, pin_header):
@@ -261,6 +262,45 @@ class Api(BaseHTTPRequestHandler):
                     return self._json(200, organisation.katalog(wurzel))
                 except organisation.OrgFehler as e:
                     return self._json(e.code, {"fehler": str(e)})
+            if pfad == "/api/organisation/aktivitaeten":  # SWR-186 (platform/T-0043)
+                q = parse_qs(teile.query)
+                try:
+                    return self._json(200, aktivitaeten.fuer_rolle(
+                        wurzel, (q.get("rolle") or [""])[0],
+                        einheit=(q.get("einheit") or [""])[0] or None))
+                except ValueError as e:
+                    return self._json(404, {"fehler": str(e)})
+            if pfad == "/api/organisation/workflows":  # SWR-187 (platform/T-0044)
+                q = parse_qs(teile.query)
+                rolle = (q.get("rolle") or [""])[0]
+                einheit = (q.get("einheit") or [""])[0]
+                try:
+                    if rolle:
+                        return self._json(200, workflows.fuer_rolle(wurzel, rolle))
+                    return self._json(200, workflows.einheit(wurzel, einheit)
+                                      if einheit else workflows.alle(wurzel))
+                except ValueError as e:
+                    return self._json(404, {"fehler": str(e)})
+            if pfad == "/api/organisation/workproducts":  # SWR-181/182 (platform/T-0039)
+                einheit = (parse_qs(teile.query).get("einheit") or [""])[0]
+                try:
+                    return self._json(200, workproducts.einheit(wurzel, einheit)
+                                      if einheit else workproducts.alle(wurzel))
+                except ValueError as e:
+                    return self._json(404, {"fehler": str(e)})
+            if pfad == "/api/organisation/kommunikation":  # SWR-183/184 (platform/T-0040)
+                # SWR-184: DIESELBE Gate-Funktion wie SWR-053 — kein zweites Gate (B033).
+                # Blockiert sie, faellt die Sicht nicht aus: sensible Einheiten werden
+                # zurueckgehalten UND benannt (pin_ok=False), der Rest bleibt lesbar.
+                pin_ok = schreibschutz_pruefen(self.client_address[0],
+                                               self.headers.get("X-MC-PIN")) is None
+                q = parse_qs(teile.query)
+                try:
+                    return self._json(200, kommunikation.zeitleiste(
+                        wurzel, pin_ok, einheit=(q.get("einheit") or [""])[0] or None,
+                        limit=(q.get("limit") or ["100"])[0]))
+                except ValueError as e:
+                    return self._json(404, {"fehler": str(e)})
             if pfad == "/api/sprint":  # SWR-103 (pm/T-0016, pm/D006): Sprint-Workflow
                 return self._json(200, sprint.plan(wurzel))
             if pfad == "/api/briefkasten":  # SWR-050 (P4): Konversation lesen

@@ -337,11 +337,18 @@ class EchterBestandTest(unittest.TestCase):
 
     Fehlversuch von Sprint 26, in dem `MAIL-RED@mail` aus dem Team-Kürzel **gebildet**
     statt aus dem Register **gelesen** war (die Instanz heißt `MAIL-RED@team-mail`).
+
+    ⚠⚠ **Sprint 28: `PROB@aspice` → `PROB@platform`.** Der Projektmodell-Rework hat den
+    Instanzschlüssel im Register nachgezogen (HEAD trug den Schlüssel `@aspice` bei
+    `einheit: platform` — zwei Namen für eine Sache) und diese Klasse nicht gefahren. Die
+    Literale hier sind **weiterhin abgelesen und absichtlich nicht abgeleitet**: sie sind
+    die einzige Stelle, an der eine Umbenennung im Register überhaupt auffällt. Die
+    strukturelle Hälfte steht als SWR-189 in `test_modellaufloesung`.
     """
 
     def test_die_beiden_schnelltakt_besetzungen_stehen_im_register(self):
         self.assertEqual(organisation.besetzungen_mit_motor(_WURZEL, "ollama"),
-                         ["MAIL-RED@team-mail", "PROB@aspice"])
+                         ["MAIL-RED@team-mail", "PROB@platform"])
 
     def test_genau_die_rollen_die_der_tick_gezogen_hat_sind_nicht_ollama_besetzt(self):
         """⚠⚠ Die beiden Instanzen aus dem Lauf vom 20.08. um 21:30, namentlich."""
@@ -353,7 +360,7 @@ class EchterBestandTest(unittest.TestCase):
     def test_und_die_richtigen_beiden_werden_gefunden(self):
         self.assertEqual(
             organisation.besetzung_mit_motor(_WURZEL, "PROB", "platform", "ollama"),
-            "PROB@aspice")
+            "PROB@platform")
         self.assertEqual(
             organisation.besetzung_mit_motor(_WURZEL, "MAIL-RED", "team-mail", "ollama"),
             "MAIL-RED@team-mail")

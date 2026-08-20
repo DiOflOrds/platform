@@ -17,6 +17,7 @@ Cowork-Sandbox dauerhaft rot — und würde damit genau das Wegsehen trainieren,
 SWR-166 gebaut worden ist.
 """
 import os
+import re
 import sys
 import tempfile
 import textwrap
@@ -29,6 +30,37 @@ from backend import organisation  # noqa: E402
 from gateway.executors import ollama_executor  # noqa: E402
 
 _WURZEL = os.path.dirname(_PLATFORM)
+
+_KOPF = re.compile(r"^  ([A-Za-z0-9_-]+@[A-Za-z0-9_.-]+):\s*$")
+
+
+def _besetzungsbloecke(pfad):
+    """[(schluessel, [zeilen]), …] aus besetzungen.yaml — ohne YAML-Abhängigkeit.
+
+    ⚠ Bewusst am Rohtext: der Schlüssel ist hier der Prüfgegenstand, und ein Parser, der
+    ihn normalisiert, würde die Frage beantworten, statt sie zu stellen.
+    """
+    bloecke, aktuell = [], None
+    with open(pfad, encoding="utf-8") as f:
+        for zeile in f:
+            treffer = _KOPF.match(zeile.rstrip("\n"))
+            if treffer:
+                aktuell = (treffer.group(1), [])
+                bloecke.append(aktuell)
+            elif aktuell is not None:
+                if zeile.strip() and not zeile.startswith("    "):
+                    aktuell = None
+                else:
+                    aktuell[1].append(zeile)
+    return bloecke
+
+
+def _feld(zeilen, name):
+    for zeile in zeilen:
+        treffer = re.match(rf"^    {name}:\s*(\S+)", zeile)
+        if treffer:
+            return treffer.group(1)
+    return None
 
 
 def _baue_wurzel(besetzungen_yaml, guardrails_modell="llama3.1:8b"):
@@ -167,7 +199,7 @@ class ModellAbweichungTest(unittest.TestCase):
     def test_am_echten_bestand_stehen_die_beiden_schnelltakt_besetzungen(self):
         """⚠ Der Nachweis am echten Bestand, nicht an einer gebauten Wurzel: die Prüfung
 
-        ist an ihrem ersten Tag **nicht leer** (erwartet 2: `PROB@aspice`,
+        ist an ihrem ersten Tag **nicht leer** (erwartet 2: `PROB@platform`,
         `MAIL-RED@team-mail`), und das ist ihre eigene Gegenprobe gegen die leere
         Grundmenge aus SWR-128.
 
@@ -176,15 +208,57 @@ class ModellAbweichungTest(unittest.TestCase):
         Register gelesen — und ist rot geworden. Die Instanz heißt `MAIL-RED@team-mail`,
         weil `einheit` der Discovery-Name ist. *Der Test hat den Entwurf widerlegt, der ihn
         schrieb.*
+
+        ⚠⚠ **Sprint 28: dasselbe Literal ist ein zweites Mal rot geworden — und diesmal
+        hatte es recht.** Der Projektmodell-Rework hat den Instanzschlüssel
+        `PROB@aspice` → `PROB@platform` umbenannt (HEAD war intern widersprüchlich:
+        Schlüssel `@aspice`, Feld `einheit: platform`) und diesen Test nicht gefahren. Der
+        Rework-Bericht meldete *„78-Tests-Batch grün"* — eine **Auswahl**, und die Auswahl
+        hat genau den Test verfehlt, der den echten Bestand liest.
+        > *Ein Literal, das eine Registry zitiert, ist kein Testfehler, sondern der
+        > einzige Ort, an dem eine Umbenennung überhaupt auffällt. Es ist hier
+        > absichtlich stehengeblieben und absichtlich nicht aus dem Register abgeleitet —
+        > abgeleitet wäre es tautologisch und immer grün.*
+        Die strukturelle Hälfte steht in
+        `test_instanzschluessel_ist_rolle_at_einheit` (SWR-189).
         """
         if not os.path.isfile(os.path.join(_WURZEL, "process", "roles", "besetzungen.yaml")):
             self.skipTest("echter Bestand hier nicht erreichbar")
         abw, grundmenge, default = organisation.modellabweichungen(_WURZEL)
         self.assertGreaterEqual(grundmenge, 1, "Grundmenge leer — die Prüfung läse nichts")
         self.assertEqual(default, "llama3.1:8b")
-        self.assertEqual(sorted(i for i, _ in abw), ["MAIL-RED@team-mail", "PROB@aspice"])
+        self.assertEqual(sorted(i for i, _ in abw), ["MAIL-RED@team-mail", "PROB@platform"])
         for _, modell in abw:
             self.assertEqual(modell, "gemma3:27b")
+
+    def test_instanzschluessel_ist_rolle_at_einheit(self):
+        """SWR-189: der Schlüssel einer Besetzung MUSS `<rolle>@<einheit>` sein.
+
+        ⚠ Anlass (Sprint 28): im HEAD von Sprint 27 stand `PROB@aspice:` mit
+        `einheit: platform`. Beides war jahrelang lesbar, keine Prüfung hat widersprochen —
+        der Schlüssel ist die zitierte Identität (`pm/D010`, Berichte, `--rolle`), das Feld
+        ist die aufgelöste. **Zwei Namen für eine Sache, und nur einer wurde gepflegt.**
+
+        ⚠ Diese Zusicherung ersetzt das Literal oben NICHT, sie ergänzt es: sie fängt den
+        *Widerspruch*, das Literal fängt die *Umbenennung*. Eine Prüfung, die beides aus
+        derselben Quelle liest, fängt keines von beiden.
+        """
+        pfad = os.path.join(_WURZEL, "process", "roles", "besetzungen.yaml")
+        if not os.path.isfile(pfad):
+            self.skipTest("echter Bestand hier nicht erreichbar")
+        abweichend = []
+        for schluessel, block in _besetzungsbloecke(pfad):
+            rolle = _feld(block, "rolle")
+            einheit = _feld(block, "einheit")
+            if rolle and einheit and f"{rolle}@{einheit}" != schluessel:
+                abweichend.append((schluessel, f"{rolle}@{einheit}"))
+        self.assertGreaterEqual(
+            len(_besetzungsbloecke(pfad)), 1,
+            "Grundmenge leer — die Prüfung läse nichts (SWR-128)")
+        self.assertEqual(
+            abweichend, [],
+            "Instanzschlüssel widerspricht rolle@einheit: "
+            + ", ".join(f"{k} sollte {s} heißen" for k, s in abweichend))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,28 @@
+# Workflows Plattform-Projekt (SWR-187). Ein Takt-Ticket, ein Workflow — Abdeckung 1/1.
+
+workflows:
+  - id: WF-PLATFORM-PFLEGE
+    name: Werkzeug- und Plattformpflege (Dauerauftrag)
+    takt: je-session
+    geplant_von: pl
+    ticket: T-0001
+    arch_review: "2026-08-21 (platform/T-0044 — Bestandsablauf; Architektur-Aenderungen laufen weiter ueber ADRs)"
+    cm_verankert: "Outputs im CM-Plan (docs/cm-plan.md): Tools/Skripte, Tests, docs/historie.md"
+    schritte:
+      - rolle: script
+        werkzeug: preflight.py
+        aktion: Locks/Status/Board pruefen — kein Lauf auf kaputtem Stand
+        input: Arbeitskopien aller Repos
+        output: Preflight-Befund (Exit 0 oder benannte Befunde)
+      - rolle: dev
+        aktion: CRs/Befunde umsetzen (Skript vor LLM; nur eigenes Ticket-Delta)
+        input: offene Tickets/CRs + Preflight-Befund
+        output: Code + Tests (platform/, via git_schreiben.py)
+      - rolle: test
+        aktion: Zusicherungen laufen lassen (Unit, JS, Matrix)
+        input: Code + Tests
+        output: gruene Suite + trace-Matrix (p0/verification/reports/swr-test-matrix.md)
+      - rolle: cm
+        aktion: verbuchen, Board regenerieren, Chronikzeile
+        input: gepruefte Lieferung
+        output: Commits + BOARD.md + docs/historie.md

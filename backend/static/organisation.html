@@ -48,6 +48,10 @@
   .rolle { border:1px solid var(--rand); border-radius:.5rem; background:#fff; padding:.25rem .55rem; font-size:.8rem; cursor:pointer; }
   .rolle:hover, .rolle.gewaehlt { border-color:var(--akzent); box-shadow:0 0 0 2px #2f81f733; }
   .rolle.unbesetzt { border-style:dashed; color:var(--grau); }
+  /* Projektmodell (Konzept 04): implizite Core-Team-Instanzen — vorhanden, aber ohne
+     eigenen Registry-Eintrag; Speichern erzeugt eine Abweichung (Materialisierung). */
+  .rolle.core { background:#f0f4f8; }
+  .rolle.core b { color:var(--grau); }
   .formzeile { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.35rem 0; }
   .formzeile label { font-size:.82rem; color:var(--grau); min-width:4.5rem; }
   .formzeile select, .formzeile input { font-size:.85rem; padding:.2rem .35rem; border:1px solid var(--rand); border-radius:.35rem; }
@@ -59,6 +63,19 @@
   details.doku pre { margin:0; padding:.6rem; border-top:1px solid var(--rand); white-space:pre-wrap;
                      font-size:.8rem; max-height:24rem; overflow:auto; background:var(--fond); }
   .meldung { font-size:.85rem; margin:.4rem 0; } .meldung.ok { color:var(--ok); } .meldung.rot { color:var(--rot); }
+  /* Workflows (SWR-187): Schrittkette Input -> Rolle/Werkzeug -> Output */
+  .wfkette { display:flex; gap:0; flex-wrap:wrap; align-items:stretch; margin:.4rem 0; }
+  .wfschritt { border:1px solid var(--rand); border-radius:.5rem; background:#fff; padding:.4rem .6rem;
+               font-size:.78rem; max-width:15rem; min-width:10rem; }
+  .wfschritt .io { color:var(--grau); }
+  .wfschritt .io b { color:#1f2328; }
+  .wfschritt .wprolle { display:inline-block; border-radius:.6rem; padding:0 .45rem; color:#fff;
+                        background:var(--akzent); font-size:.72rem; margin-bottom:.15rem; }
+  .wfschritt .wprolle.script { background:#57606a; }
+  .wfpfeil { align-self:center; padding:0 .35rem; color:var(--grau); font-size:1.1rem; }
+  .wfgov { font-size:.78rem; color:var(--grau); margin:.2rem 0 .5rem; }
+  .wfgov .fehlt { color:var(--warn); font-weight:600; }
+  .wp-ok { color:var(--ok); } .wp-frei { color:var(--grau); }
   .motor { display:inline-block; border-radius:.6rem; padding:0 .4rem; font-size:.72rem; color:#fff; background:var(--grau); }
   .motor.cowork { background:var(--akzent); } .motor.ollama { background:#8250df; }
   .motor.api { background:var(--warn); color:#1f2328; } .motor.mensch { background:var(--ok); } .motor.script { background:#57606a; }
@@ -86,11 +103,17 @@
   <button id="tabOrg" class="aktiv">Organisation</button>
   <button id="tabLive">Live</button>
   <button id="tabPlan">Planung</button>
+  <button id="tabWp">Work Products</button>
+  <button id="tabWf">Workflows</button>
+  <button id="tabKomm">Kommunikation</button>
 </nav>
 <main>
   <section id="ansOrg"><p class="hinweis">Organigramm lädt …</p></section>
   <section id="ansLive" hidden><p class="hinweis">Live-Daten laden …</p></section>
   <section id="ansPlan" hidden><p class="hinweis">Plan lädt …</p></section>
+  <section id="ansWp" hidden><p class="hinweis">Work Products laden …</p></section>
+  <section id="ansWf" hidden><p class="hinweis">Workflows laden …</p></section>
+  <section id="ansKomm" hidden><p class="hinweis">Kommunikation lädt …</p></section>
 </main>
 <script>
 "use strict";
@@ -110,7 +133,7 @@ function hole(url) {
   });
 }
 function tab(name) {
-  ["Org", "Live", "Plan"].forEach(function (t) {
+  ["Org", "Live", "Plan", "Wp", "Wf", "Komm"].forEach(function (t) {
     document.getElementById("tab" + t).className = (t === name) ? "aktiv" : "";
     document.getElementById("ans" + t).hidden = (t !== name);
   });
@@ -118,6 +141,9 @@ function tab(name) {
 document.getElementById("tabOrg").onclick = function () { tab("Org"); };
 document.getElementById("tabLive").onclick = function () { tab("Live"); zeigeLive(); };
 document.getElementById("tabPlan").onclick = function () { tab("Plan"); zeigePlan(); };
+document.getElementById("tabWp").onclick = function () { tab("Wp"); zeigeWp(); };
+document.getElementById("tabWf").onclick = function () { tab("Wf"); zeigeWf(); };
+document.getElementById("tabKomm").onclick = function () { tab("Komm"); zeigeKomm(); };
 
 /* ---------- Organisation ---------- */
 function motorChip(r) {
@@ -170,15 +196,18 @@ function waehleEinheit(name, knoten) {
   if (x.beschreibung) { h.push('<p class="hinweis">' + esc(x.beschreibung) + "</p>"); }
   h.push('<div class="rollen">');
   x.rollen.forEach(function (r) {
-    h.push('<span class="rolle' + (r.status === "unbesetzt" ? " unbesetzt" : "") +
+    var klasse = "rolle" + (r.status === "unbesetzt" ? " unbesetzt" : "") +
+      (r.quelle === "core" ? " core" : "");
+    h.push('<span class="' + klasse +
       '" data-instanz="' + esc(r.instanz) + '" data-rolle="' + esc(r.rolle) +
       '" data-quelle="' + esc(r.quelle) + '" title="' +
-      esc(r.name + (r.hinweis ? " — " + r.hinweis : "") + " — anklicken für Detail/Konfiguration") +
+      esc(r.name + (r.quelle === "core" ? " — Core Team (implizit)" : "") +
+          (r.hinweis ? " — " + r.hinweis : "") + " — anklicken für Detail/Konfiguration") +
       '"><b>' + esc(r.instanz) + "</b> " + motorChip(r) +
       (r.takt ? ' <small>' + esc(r.takt) + "</small>" : "") + "</span>");
   });
   h.push('</div><div class="formzeile"><button class="knopf" id="neuBesetzung">+ Besetzung anlegen</button>' +
-    '<span class="hinweis">Rolle anklicken: Detail ansehen und konfigurieren (Motor, Modell, Takt, Status).</span></div>');
+    '<span class="hinweis">Rolle anklicken: Detail/Konfiguration. Grau hinterlegt = Core Team (implizit, Konzept 04) — Speichern erzeugt eine Abweichung.</span></div>');
   h.push("<p class=\"hinweis\">Bauplan: process/roles/&lt;rolle&gt;.md · projektspezifisch: roles/&lt;rolle&gt;.md im Repo · Historie: docs/historie.md · Organigramm versioniert: ORGANIGRAMM.md</p></div>");
   h.push('<div id="rolleDetail"></div>');
   document.getElementById("orgDetail").innerHTML = h.join("");
@@ -189,10 +218,11 @@ function waehleEinheit(name, knoten) {
         c.className = c.className.replace(" gewaehlt", "");
       });
       chip.className += " gewaehlt";
-      if (chip.getAttribute("data-quelle") === "besetzung") {
-        zeigeRolle(chip.getAttribute("data-instanz"));
-      } else {  // unbesetzt laut Team-Registry -> direkt Anlege-Formular mit Rolle vorbelegt
+      if (chip.getAttribute("data-quelle") === "registry") {
+        // unbesetzt laut Registry -> direkt Anlege-Formular mit Rolle vorbelegt
         formularAnlegen(name, chip.getAttribute("data-rolle"));
+      } else {  // explizit ODER implizit (Core Team) -> Detail; Speichern materialisiert
+        zeigeRolle(chip.getAttribute("data-instanz"));
       }
     };
   });
@@ -255,9 +285,13 @@ function zeigeRolle(instanz) {
       '<label>Status</label>' + auswahl("fStatus", k.stati, b.status || "aktiv", false) + "</div>");
     h.push('<div class="formzeile"><label>Hinweis</label><input id="fHinweis" value="' +
       esc(b.hinweis || "") + '" size="60"></div>');
-    h.push('<div class="formzeile"><button class="knopf primaer" id="fSpeichern">Speichern</button>' +
-      '<button class="knopf gefahr" id="fEntfernen">Besetzung entfernen</button>' +
-      '<span class="hinweis">' + esc(d.hinweis_governance) + "</span></div>");
+    var istCore = (b.quelle === "core");
+    h.push('<div class="formzeile"><button class="knopf primaer" id="fSpeichern">' +
+      (istCore ? "Speichern (erzeugt Abweichung vom Core-Default)" : "Speichern") + "</button>" +
+      (istCore ? '' : '<button class="knopf gefahr" id="fEntfernen">Besetzung entfernen</button>') +
+      '<span class="hinweis">' + (istCore ?
+        "Core Team (implizit, Konzept 04): nicht entfernbar — zum Stilllegen Status auf pausiert setzen. " : "") +
+      esc(d.hinweis_governance) + "</span></div>");
     h.push('<div id="fMeldung"></div>');
     h.push(doku("Rollenkarte (Bauplan, allgemein)", d.bauplan, d.bauplan_pfad));
     h.push(doku("Projektspezifischer Teil", d.projektteil, d.projektteil_pfad));
@@ -266,8 +300,10 @@ function zeigeRolle(instanz) {
       h.push('<p class="hinweis">Wissensbasis (process/knowledge/' + esc(b.rolle.toLowerCase()) +
         "/): " + esc(d.wissensbasis.join(", ")) + "</p>");
     }
+    h.push('<div id="fAktivitaeten"><p class="hinweis">Aktivitäten und Workflows laden …</p></div>');
     h.push("</div>");
     document.getElementById("rolleDetail").innerHTML = h.join("");
+    ladeAktivitaeten(b.rolle, b.einheit);
     document.getElementById("fSpeichern").onclick = function () {
       post("/api/organisation/besetzung", { aktion: "setzen", instanz: instanz, felder: {
         motor: document.getElementById("fMotor").value,
@@ -278,16 +314,78 @@ function zeigeRolle(instanz) {
       } }).then(function () { nachSchreiben("rolleDetail", instanz + " gespeichert — Registry und Organigramme sind nachgezogen."); })
         .catch(function (f) { document.getElementById("fMeldung").innerHTML = '<p class="meldung rot">' + esc(f.message) + "</p>"; });
     };
-    document.getElementById("fEntfernen").onclick = function () {
-      if (!window.confirm(instanz + " wirklich entfernen? Die Rolle als Bauplan bleibt bestehen.")) { return; }
-      post("/api/organisation/besetzung", { aktion: "entfernen", instanz: instanz })
-        .then(function () { nachSchreiben("rolleDetail", instanz + " entfernt."); })
-        .catch(function (f) { document.getElementById("fMeldung").innerHTML = '<p class="meldung rot">' + esc(f.message) + "</p>"; });
-    };
+    var fEntf = document.getElementById("fEntfernen");
+    if (fEntf) {
+      fEntf.onclick = function () {
+        if (!window.confirm(instanz + " wirklich entfernen? Die Rolle als Bauplan bleibt bestehen.")) { return; }
+        post("/api/organisation/besetzung", { aktion: "entfernen", instanz: instanz })
+          .then(function () { nachSchreiben("rolleDetail", instanz + " entfernt."); })
+          .catch(function (f) { document.getElementById("fMeldung").innerHTML = '<p class="meldung rot">' + esc(f.message) + "</p>"; });
+      };
+    }
   }).catch(function (f) {
     document.getElementById("rolleDetail").innerHTML = '<p class="meldung rot">' + esc(f.message) + "</p>";
   });
 }
+function ladeAktivitaeten(rolle, einheit) {
+  // SWR-186 + SWR-187: Aktivitäten der Instanz (diese Einheit) + Workflows der Rolle
+  Promise.all([
+    hole("/api/organisation/aktivitaeten?rolle=" + encodeURIComponent(rolle) +
+         "&einheit=" + encodeURIComponent(einheit)),
+    hole("/api/organisation/aktivitaeten?rolle=" + encodeURIComponent(rolle)),
+    hole("/api/organisation/workflows?rolle=" + encodeURIComponent(rolle))
+  ]).then(function (r) {
+    var hier = r[0], ueberall = r[1], wf = r[2];
+    var h = ["<h3 style='margin-top:.8rem'>Aktivitäten (SWR-186)</h3>",
+      '<p class="hinweis">In ' + esc(einheit) + ": " + hier.zaehler.erledigt + " erledigt · " +
+      hier.zaehler.offen + " offen · " + hier.zaehler.reviews + " Reviews · " +
+      hier.zaehler.laeufe + " Läufe — organisationsweit: " + ueberall.zaehler.erledigt +
+      " / " + ueberall.zaehler.offen + " / " + ueberall.zaehler.reviews + " / " +
+      ueberall.zaehler.laeufe + ". " + esc(hier.hinweis_v1) + "</p>"];
+    function tabelle(titel, liste, leer) {
+      h.push("<h4 style='margin:.5rem 0 .2rem'>" + titel + "</h4>");
+      if (!liste.length) { h.push('<p class="hinweis">' + leer + "</p>"); return; }
+      h.push("<table><tr><th>Ticket</th><th>Titel</th><th>Status</th><th>Takt</th><th>geändert</th></tr>");
+      liste.slice(0, 10).forEach(function (t) {
+        h.push("<tr><td>" + esc(t.einheit + "/" + t.id) + "</td><td>" + esc(t.titel) + "</td><td>" +
+          esc(t.status) + "</td><td>" + esc(t.takt || "—") + "</td><td>" + esc(t.geaendert) + "</td></tr>");
+      });
+      h.push("</table>");
+      if (liste.length > 10) { h.push('<p class="hinweis">… und ' + (liste.length - 10) + " weitere</p>"); }
+    }
+    tabelle("Offen / in Arbeit", hier.offen, "nichts offen");
+    tabelle("Erledigt (jüngste)", hier.erledigt, "noch nichts erledigt");
+    tabelle("Reviews (als Prüfer)", hier.reviews, "keine Review-Zuweisungen");
+    h.push("<h4 style='margin:.5rem 0 .2rem'>Läufe (Run-Registry: Skript/LLM)</h4>");
+    if (!hier.laeufe.length) {
+      h.push('<p class="hinweis">keine registrierten Läufe dieser Rolle in ' + esc(einheit) + "</p>");
+    } else {
+      h.push("<table><tr><th>Zeit</th><th>Ticket</th><th>Provider</th><th>Status</th><th>Artefakte</th><th>Kosten</th></tr>");
+      hier.laeufe.forEach(function (l) {
+        h.push("<tr><td>" + esc((l.zeit || "?").slice(0, 16).replace("T", " ")) + "</td><td>" +
+          esc(l.ticket) + "</td><td>" + esc(l.provider) + "</td><td>" + esc(l.status) + "</td><td>" +
+          l.artefakte + "</td><td>" + esc(String(l.kosten_eur || 0)) + " €</td></tr>");
+      });
+      h.push("</table>");
+    }
+    h.push("<h3 style='margin-top:.8rem'>Workflows dieser Rolle (SWR-187)</h3>");
+    if (!wf.workflows.length) {
+      h.push('<p class="hinweis">Die Rolle ist in keinem definierten Workflow beteiligt.</p>');
+    } else {
+      wf.workflows.forEach(function (w) {
+        h.push("<h4 style='margin:.4rem 0 .1rem'>" + esc(w.einheit) + ": " + esc(w.name) +
+          " <small class='hinweis'>(" + esc(w.id) + ")</small></h4>");
+        h.push(wfGov(w));
+        h.push(wfKette(w));
+      });
+    }
+    document.getElementById("fAktivitaeten").innerHTML = h.join("");
+  }).catch(function (f) {
+    document.getElementById("fAktivitaeten").innerHTML =
+      '<p class="hinweis">Aktivitäten nicht erreichbar (' + esc(f.message) + ")</p>";
+  });
+}
+
 function formularAnlegen(einheit, rolleVorbelegt) {
   hole("/api/organisation/katalog").then(function (k) {
     var rollen = k.rollen.slice();
@@ -454,6 +552,137 @@ function zeigePlan() {
   });
 }
 
+/* ---------- Work Products (SWR-181/182, platform/T-0039) ---------- */
+function zeigeWp() {
+  hole("/api/organisation/workproducts").then(function (d) {
+    var h = ["<h2>Work Products — je Einheit, Quelle: docs/cm-plan.md (eine Quelle, SWR-181)</h2>",
+      '<p class="hinweis">Beide Lücken-Richtungen sind Befunde: deklariert-aber-fehlt und vorhanden-aber-undeklariert. Einheiten ohne CM-Plan zeigen „keine Daten" — das ist eine Aufgabe (Setup-Nachzieh), kein leerer Erfolg.</p>'];
+    d.einheiten.forEach(function (e) {
+      h.push('<div class="karte"><h3>' + esc(e.einheit) + "</h3>");
+      if (!e.cm_plan) {
+        h.push('<p class="meldung rot">' + esc(e.hinweis) + "</p></div>");
+        return;
+      }
+      h.push("<table><tr><th>Work Product</th><th>Pfad</th><th>Eigentümer</th><th>vorhanden</th><th>Stand</th><th>Prüfstatus</th></tr>");
+      e.work_products.forEach(function (w) {
+        h.push("<tr><td>" + esc(w.name) + "</td><td>" + esc(w.pfad) + "</td><td>" +
+          esc(w.eigentuemer || "—") + "</td><td>" + (w.vorhanden ? "✓" : '<b style="color:var(--rot)">fehlt</b>') +
+          "</td><td>" + esc(w.stand) + "</td><td>" + esc(w.pruefstatus || "—") + "</td></tr>");
+      });
+      h.push("</table>");
+      if (e.undeklariert.length) {
+        h.push('<p class="hinweis">⚠ Vorhanden, aber im CM-Plan nicht deklariert: ' +
+          esc(e.undeklariert.join(", ")) + "</p>");
+      }
+      h.push("</div>");
+    });
+    document.getElementById("ansWp").innerHTML = h.join("");
+  }).catch(function (f) {
+    document.getElementById("ansWp").innerHTML =
+      '<p class="hinweis">Work Products nicht erreichbar (' + esc(f.message) + ") — läuft der Server?</p>";
+  });
+}
+
+/* ---------- Workflows (SWR-187, platform/T-0044) ---------- */
+function wfKette(wf) {
+  var h = ['<div class="wfkette">'];
+  wf.schritte.forEach(function (s, i) {
+    if (i > 0) { h.push('<span class="wfpfeil">→</span>'); }
+    var wp = s.output_ist_wp ? ' <span class="wp-ok" title="Output ist Work Product (CM-Plan)">WP✓</span>'
+                             : ' <span class="wp-frei" title="Output ohne CM-Plan-Referenz (gemeldet, SWR-187)">frei</span>';
+    h.push('<div class="wfschritt"><span class="wprolle' + (s.rolle === "script" ? " script" : "") + '">' +
+      esc(s.rolle.toUpperCase()) + (s.werkzeug ? " · " + esc(s.werkzeug) : "") + "</span><br>" +
+      "<b>" + esc(s.aktion) + "</b><br>" +
+      '<span class="io">IN: <b>' + esc(s.input) + "</b><br>OUT: <b>" + esc(s.output) + "</b>" + wp + "</span></div>");
+  });
+  h.push("</div>");
+  return h.join("");
+}
+function wfGov(wf) {
+  var arch = wf.arch_review ? esc(wf.arch_review) : '<span class="fehlt">offen</span>';
+  var cm = wf.cm_verankert ? esc(wf.cm_verankert) : '<span class="fehlt">offen</span>';
+  return '<div class="wfgov">geplant von <b>' + esc(wf.geplant_von.toUpperCase()) + "</b> · Takt " +
+    esc(wf.takt) + " · trägt Ticket " + esc(wf.ticket || "—") + " · ARCH-Review: " + arch +
+    " · CM-Verankerung: " + cm + "</div>";
+}
+function zeigeWf() {
+  hole("/api/organisation/workflows").then(function (d) {
+    var h = ["<h2>Workflows — je Schritt Input → Rolle/Werkzeug → Output (SWR-187)</h2>",
+      '<p class="hinweis">Quelle: docs/workflows.yaml je Einheit (geplant von PL oder der Rolle selbst; ARCH reviewt, CM verankert Outputs als Work Products). Jedes wiederkehrende Takt-Ticket braucht einen tragenden Workflow — unabgedeckte werden gemeldet.</p>'];
+    d.einheiten.forEach(function (e) {
+      if (!e.datei && !e.unabgedeckte_takte.length) { return; }  // ohne Takte + ohne Datei: nichts zu sagen
+      h.push('<div class="karte"><h3>' + esc(e.einheit) + "</h3>");
+      if (!e.datei) {
+        h.push('<p class="meldung rot">' + esc(e.hinweis) + "</p>");
+      }
+      e.workflows.forEach(function (wf) {
+        h.push("<h4 style='margin:.5rem 0 .1rem'>" + esc(wf.name) + " <small class='hinweis'>(" + esc(wf.id) + ")</small></h4>");
+        h.push(wfGov(wf));
+        h.push(wfKette(wf));
+        if (wf.befunde.length) {
+          h.push('<p class="meldung rot">⚠ ' + esc(wf.befunde.join(" · ")) + "</p>");
+        }
+      });
+      if (e.unabgedeckte_takte.length) {
+        h.push('<p class="meldung rot">⚠ Takt-Tickets ohne tragenden Workflow: ' +
+          e.unabgedeckte_takte.map(function (t) { return esc(t.id + " (" + t.titel + ")"); }).join(", ") + "</p>");
+      }
+      h.push("</div>");
+    });
+    document.getElementById("ansWf").innerHTML = h.join("");
+  }).catch(function (f) {
+    document.getElementById("ansWf").innerHTML =
+      '<p class="hinweis">Workflows nicht erreichbar (' + esc(f.message) + ") — läuft der Server?</p>";
+  });
+}
+
+/* ---------- Kommunikation (SWR-183/184, platform/T-0040) ---------- */
+var KOMM_EINHEIT = "";
+function zeigeKomm() {
+  var kopf = { };
+  if (PIN) { kopf["X-MC-PIN"] = PIN; }
+  var url = "/api/organisation/kommunikation" +
+    (KOMM_EINHEIT ? "?einheit=" + encodeURIComponent(KOMM_EINHEIT) : "");
+  fetch(url, { cache: "no-store", headers: kopf }).then(function (r) { return r.json(); })
+    .then(function (d) {
+      var h = ["<h2>Kommunikation — Briefe und Decision Requests, neueste zuerst</h2>",
+        '<p class="hinweis">' + esc(d.hinweis_v1) + " Zeigt " + d.eintraege.length + " von " +
+        d.gesamt + " Einträgen (Limit " + d.limit + "). Aktualisiert sich alle 60 s.</p>",
+        '<div class="formzeile"><label>Einheit</label><select id="kommFilter"><option value="">alle</option></select></div>'];
+      if (d.gesperrt.length) {
+        h.push('<p class="meldung rot">🔒 Hinter dem PIN-Lesegate zurückgehalten (SWR-184): ' +
+          esc(d.gesperrt.join(", ")) + ' — <button class="knopf" id="kommPin">PIN eingeben</button></p>');
+      }
+      h.push("<table><tr><th>Zeit</th><th>Einheit</th><th>Art</th><th>Von</th><th>Inhalt</th><th>Status</th></tr>");
+      d.eintraege.forEach(function (e) {
+        h.push("<tr><td>" + esc((e.zeit || "?").replace("T", " ").slice(0, 16)) + "</td><td>" +
+          esc(e.einheit) + "</td><td>" + esc(e.art) + (e.id ? " " + esc(e.id) : "") + "</td><td>" +
+          esc(e.von || "—") + "</td><td>" + esc(e.titel) + "</td><td>" + esc(e.status || "—") + "</td></tr>");
+      });
+      if (!d.eintraege.length) { h.push('<tr><td colspan="6">keine Einträge</td></tr>'); }
+      h.push("</table>");
+      document.getElementById("ansKomm").innerHTML = h.join("");
+      var filter = document.getElementById("kommFilter");
+      (ORG ? ORG.einheiten : []).forEach(function (x) {
+        var o = document.createElement("option");
+        o.value = x.einheit; o.textContent = x.einheit;
+        if (x.einheit === KOMM_EINHEIT) { o.selected = true; }
+        filter.appendChild(o);
+      });
+      filter.onchange = function () { KOMM_EINHEIT = filter.value; zeigeKomm(); };
+      var pinKnopf = document.getElementById("kommPin");
+      if (pinKnopf) {
+        pinKnopf.onclick = function () {
+          PIN = window.prompt("PIN (Lesegate für sensible Einheiten, SWR-184):") || "";
+          if (PIN) { zeigeKomm(); }
+        };
+      }
+    }).catch(function (f) {
+      document.getElementById("ansKomm").innerHTML =
+        '<p class="hinweis">Kommunikation nicht erreichbar (' + esc(f.message) + ") — läuft der Server?</p>";
+    });
+}
+
 /* ---------- Start + Auto-Aktualisierung ---------- */
 hole("/organigramm.json").then(function (o) {
   ORG = o;
@@ -468,6 +697,8 @@ hole("/organigramm.json").then(function (o) {
 setInterval(function () {
   if (!document.getElementById("ansLive").hidden) { zeigeLive(); }
   if (!document.getElementById("ansPlan").hidden) { zeigePlan(); }
+  if (!document.getElementById("ansWp").hidden) { zeigeWp(); }
+  if (!document.getElementById("ansKomm").hidden) { zeigeKomm(); }
 }, 60000);
 </script>
 </body>

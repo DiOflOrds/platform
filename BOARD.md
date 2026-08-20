@@ -1,6 +1,6 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-20 · Tickets: 36 · davon wiederkehrend: 1
+Stand: 2026-08-21 · Tickets: 44 · davon wiederkehrend: 1
 
 
 ## open (4)
@@ -12,7 +12,7 @@ Stand: 2026-08-20 · Tickets: 36 · davon wiederkehrend: 1
 | [T-0034](tickets/T-0034.md) | Gelernt ohne Vertreter: eine Lehre, deren Gegenmaßnahme nie ein Ticket und nie eine Prüfung geworden ist, hat vierzehn Tage lang null Wirkung gehabt | problem | einmalig | coach | Team | hoch | 27 | — |
 | [T-0036](tickets/T-0036.md) | Entscheidungs-IDs sind je Repo vergeben und werden global zitiert — D000 gibt es 17-mal, D005 dreimal in EINER Datei | problem | einmalig | cm | Team | mittel | 27 | — |
 
-## done (32)
+## done (40)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -20,6 +20,7 @@ Stand: 2026-08-20 · Tickets: 36 · davon wiederkehrend: 1
 | [T-0031](tickets/T-0031.md) | Der Tick meldet „abgeschlossen“, wenn das Gateway `status=fehler` liefert — und er kehrt beim zweiten Lauf desselben Tickets nicht auf den Basis-Branch zurück | problem | einmalig | dev | Team | kritisch | 26 | — |
 | [T-0032](tickets/T-0032.md) | Der Guardrails-Default `llama3.1:8b` stoppt jeden Ollama-Tick — das Besetzungsregister trägt seit dem 06.08. `gemma3:27b`, und die Lehre dazu ist vierzehn Tage alt | problem | einmalig | dev | Team | kritisch | 26 | — |
 | [T-0033](tickets/T-0033.md) | SWR-169 greift zur Laufzeit nicht: der Schnelltakt startet die EINHEIT, D010 hat die BESETZUNG entschieden — der Rollenname geht auf dem Weg verloren | problem | einmalig | dev | Team | kritisch | 27 | — |
+| [T-0044](tickets/T-0044.md) | Auftraggeber-Auftrag: Workflow-Modell — workflows.yaml je Einheit, Schrittkette Input/Rolle+Werkzeug/Output, Sicht + Rollen-Beteiligung, Takt-Abdeckungspflicht (SWR-187/188) | change-request | einmalig | rm | Team | kritisch | 0 | — |
 | [T-0002](tickets/T-0002.md) | Problem (N-0006): CI-Lauf 'tests' schlug nach dem pm/T-0024-Push fehl — lokal nicht reproduzierbar | problem | einmalig | prob | Team | hoch | 0 | — |
 | [T-0003](tickets/T-0003.md) | CR: CI-Status nach dem Push selbst prüfen — ohne Zugangsdaten (ersetzt den Blick auf die Actions-Seite) | change-request | einmalig | cm | Team | hoch | 0 | — |
 | [T-0004](tickets/T-0004.md) | CR: Ein rotes CI-Ergebnis soll den fehlgeschlagenen Schritt nennen — sonst ist ROT kein Befund, sondern eine Farbe | change-request | einmalig | cm | Team | hoch | 0 | — |
@@ -43,8 +44,15 @@ Stand: 2026-08-20 · Tickets: 36 · davon wiederkehrend: 1
 | [T-0027](tickets/T-0027.md) | Der Abschlussbericht hat für seine EIGENEN Kennzahlen keine Prüfung — fünfmal in sechs Sprints eine fortgeschriebene statt einer gemessenen Zahl | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0028](tickets/T-0028.md) | Orga-Rework: Rollen-Detail und Besetzungs-Konfiguration im HMI (organisation.py, /api/organisation/*, organisation.html v2) | change-request | einmalig | dev | Team | hoch | 24 | — |
 | [T-0035](tickets/T-0035.md) | Der Schnelltakt hat nichts zu tun: 0 von 14 offenen Tickets tragen eine ollama-besetzte Rolle — bleibt er an, wird er umgestellt, oder wird er abgeschaltet? | decision-request | einmalig | pl | Team | hoch | 27 | — |
+| [T-0037](tickets/T-0037.md) | Projektmodell (pm/T-0073): effektive_besetzungen-Resolver, Core-Team-Expansion in SWR-169/170/171-Wegen, projekt_setup.py, HMI-Core-Kennzeichnung | change-request | einmalig | dev | Team | hoch | 27 | — |
+| [T-0038](tickets/T-0038.md) | Setup-Nachzieh (Projektmodell, pm/T-0073): Initial-Artefakte für das Plattform-Projekt — verweisen, wo Bestand existiert, anlegen, wo nicht | task | einmalig | pl | Team | hoch | 0 | — |
+| [T-0039](tickets/T-0039.md) | Folge-CR (Konzept 04 Kap. 6): Work-Product-Sicht je Projekt im HMI — CM-Plan-getrieben, live (Requirements-first: erst SWRs) | change-request | einmalig | rm | Team | hoch | 0 | — |
+| [T-0043](tickets/T-0043.md) | Auftraggeber-Auftrag: Organisationsseite aus Mission Control verlinken (SWR-185) + Rollen-Aktivitäten-Sicht (SWR-186) | change-request | einmalig | rm | Team | hoch | 0 | — |
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0015](tickets/T-0015.md) | SWR-123 räumt Git-Locks per unlink — auf dem Cowork-Mount ist das verboten, rename gelingt | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0016](tickets/T-0016.md) | Die Drei-Zustände-Regel des Widget-Vertrags steht in der Cockpit-Ansicht dreimal inline | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0020](tickets/T-0020.md) | Die Matrix schrumpft still: kein Vergleich mit dem Bestand beim Schreiben | problem | einmalig | cm | Team | mittel | 0 | T-0019 |
 | [T-0026](tickets/T-0026.md) | Eine von sieben Pausen im Sprintregister ist NEGATIV — die Zeitstempel stammen aus der Uhr des jeweils schreibenden Laufs | problem | einmalig | cm | Team | mittel | 0 | — |
+| [T-0040](tickets/T-0040.md) | Folge-CR (Konzept 04 Kap. 6): projektübergreifende Kommunikations-Sicht — alle Briefe/Kommentare/DRs chronologisch, filterbar, live | change-request | einmalig | rm | Team | mittel | 0 | — |
+| [T-0042](tickets/T-0042.md) | SWR-Nachtrag (aus T-0028/T-0037 'Ehrliche Grenzen'): Organisations-Endpunkte, Besetzungs-Resolver, Materialisierung, projekt_setup als Anforderungen | task | einmalig | rm | Team | mittel | 0 | — |
+| [T-0041](tickets/T-0041.md) | Folge-CR (Konzept 04 Kap. 7): typ-Literale semantisch nachziehen — aspice→plattform, teams→projekte (Backend + Tests, ein Zug) | change-request | einmalig | chg | Team | niedrig | 0 | — |

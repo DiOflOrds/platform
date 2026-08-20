@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Tests organigramm.py (Orga-Rework Kap. 8): Sammeln, Ziele, --check-Gate."""
+"""Tests organigramm.py (SWR-178 Resolver-Umfeld, Orga-Rework Kap. 8): Sammeln,
+Ziele, --check-Gate."""
 import io
 import os
 import shutil

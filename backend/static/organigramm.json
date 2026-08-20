@@ -42,11 +42,55 @@
    "rollen": [
     {
      "hinweis": "",
+     "instanz": "ARCH@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Architekt",
+     "quelle": "core",
+     "rolle": "ARCH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CHG@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Change-Manager",
+     "quelle": "core",
+     "rolle": "CHG",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CM@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Konfigurationsmanager",
+     "quelle": "core",
+     "rolle": "CM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "COACH@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prozess-Coach",
+     "quelle": "core",
+     "rolle": "COACH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
      "instanz": "DEV@p11",
      "modell": "",
      "motor": "cowork",
      "name": "Entwickler",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "DEV",
      "status": "aktiv",
      "takt": "sprint"
@@ -57,8 +101,41 @@
      "modell": "",
      "motor": "cowork",
      "name": "Projektleiter",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PROB@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Problemmanager",
+     "quelle": "core",
+     "rolle": "PROB",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "QM@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Qualitätsmanager",
+     "quelle": "core",
+     "rolle": "QM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "RM@p11",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Requirements-Manager",
+     "quelle": "core",
+     "rolle": "RM",
      "status": "aktiv",
      "takt": "sprint"
     },
@@ -68,7 +145,7 @@
      "modell": "",
      "motor": "cowork",
      "name": "Verifikationsingenieur",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "TEST",
      "status": "aktiv",
      "takt": "sprint"
@@ -84,31 +161,8 @@
    "datenklasse": "intern",
    "einheit": "p12",
    "profil": "entwicklung",
-   "rollen": [
-    {
-     "hinweis": "",
-     "instanz": "DEV@p12",
-     "modell": "",
-     "motor": "cowork",
-     "name": "Entwickler",
-     "quelle": "besetzung",
-     "rolle": "DEV",
-     "status": "aktiv",
-     "takt": "sprint"
-    },
-    {
-     "hinweis": "",
-     "instanz": "PL@p12",
-     "modell": "",
-     "motor": "cowork",
-     "name": "Projektleiter",
-     "quelle": "besetzung",
-     "rolle": "PL",
-     "status": "aktiv",
-     "takt": "sprint"
-    }
-   ],
-   "status": "aktiv",
+   "rollen": [],
+   "status": "abgeschlossen",
    "team": null,
    "typ": "projekt"
   },
@@ -184,13 +238,124 @@
    "datenklasse": "intern",
    "einheit": "p9",
    "profil": "entwicklung",
-   "rollen": [],
+   "rollen": [
+    {
+     "hinweis": "",
+     "instanz": "ARCH@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Architekt",
+     "quelle": "core",
+     "rolle": "ARCH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CHG@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Change-Manager",
+     "quelle": "core",
+     "rolle": "CHG",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CM@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Konfigurationsmanager",
+     "quelle": "core",
+     "rolle": "CM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "COACH@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prozess-Coach",
+     "quelle": "core",
+     "rolle": "COACH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "DEV@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Entwickler",
+     "quelle": "core",
+     "rolle": "DEV",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PL@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "core",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PROB@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Problemmanager",
+     "quelle": "core",
+     "rolle": "PROB",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "QM@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Qualitätsmanager",
+     "quelle": "core",
+     "rolle": "QM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "RM@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Requirements-Manager",
+     "quelle": "core",
+     "rolle": "RM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "TEST@p9",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Verifikationsingenieur",
+     "quelle": "core",
+     "rolle": "TEST",
+     "status": "aktiv",
+     "takt": "sprint"
+    }
+   ],
    "status": "aktiv",
    "team": null,
    "typ": "projekt"
   },
   {
-   "anzeigename": "ASPICE-Team",
+   "anzeigename": "Plattform-Projekt (ASPICE)",
    "beschreibung": "ASPICE-Team: entwickelt, pflegt und maintained alle Tools/Skripte und Mission Control - fuer Genesis, sich selbst, PM und alle Projekte (festes Team)",
    "datenklasse": "intern",
    "einheit": "platform",
@@ -198,73 +363,73 @@
    "rollen": [
     {
      "hinweis": "",
-     "instanz": "ARCH@aspice",
+     "instanz": "ARCH@platform",
      "modell": "",
      "motor": "cowork",
      "name": "Architekt",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "ARCH",
      "status": "aktiv",
      "takt": "sprint"
     },
     {
      "hinweis": "",
-     "instanz": "CHG@aspice",
+     "instanz": "CHG@platform",
      "modell": "",
      "motor": "cowork",
      "name": "Change-Manager",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "CHG",
      "status": "aktiv",
      "takt": "sprint"
     },
     {
-     "hinweis": "Nimmt REL wahr (Stufe 1, registry.yaml)",
-     "instanz": "CM@aspice",
+     "hinweis": "",
+     "instanz": "CM@platform",
      "modell": "",
      "motor": "cowork",
      "name": "Konfigurationsmanager",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "CM",
      "status": "aktiv",
      "takt": "sprint"
     },
     {
      "hinweis": "",
-     "instanz": "COACH@aspice",
+     "instanz": "COACH@platform",
      "modell": "",
      "motor": "cowork",
      "name": "Prozess-Coach",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "COACH",
      "status": "aktiv",
      "takt": "sprint"
     },
     {
      "hinweis": "",
-     "instanz": "DEV@aspice",
+     "instanz": "DEV@platform",
      "modell": "",
      "motor": "cowork",
      "name": "Entwickler",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "DEV",
      "status": "aktiv",
      "takt": "sprint"
     },
     {
      "hinweis": "",
-     "instanz": "PL@aspice",
+     "instanz": "PL@platform",
      "modell": "",
      "motor": "cowork",
      "name": "Projektleiter",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "PL",
      "status": "aktiv",
      "takt": "sprint"
     },
     {
      "hinweis": "Klassifikation/Trend lokal; Ursachenanalyse per Kette auf Claude",
-     "instanz": "PROB@aspice",
+     "instanz": "PROB@platform",
      "modell": "gemma3:27b",
      "motor": "ollama",
      "name": "Problemmanager",
@@ -275,33 +440,33 @@
     },
     {
      "hinweis": "",
-     "instanz": "QM@aspice",
+     "instanz": "QM@platform",
      "modell": "",
      "motor": "cowork",
      "name": "Qualitätsmanager",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "QM",
      "status": "aktiv",
      "takt": "sprint"
     },
     {
      "hinweis": "",
-     "instanz": "RM@aspice",
+     "instanz": "RM@platform",
      "modell": "",
      "motor": "cowork",
      "name": "Requirements-Manager",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "RM",
      "status": "aktiv",
      "takt": "sprint"
     },
     {
      "hinweis": "",
-     "instanz": "TEST@aspice",
+     "instanz": "TEST@platform",
      "modell": "",
      "motor": "cowork",
      "name": "Verifikationsingenieur",
-     "quelle": "besetzung",
+     "quelle": "core",
      "rolle": "TEST",
      "status": "aktiv",
      "takt": "sprint"
@@ -309,7 +474,7 @@
    ],
    "status": "aktiv",
    "team": "aspice",
-   "typ": "aspice"
+   "typ": "plattform"
   },
   {
    "anzeigename": "Projektmanagement-Team",
@@ -319,7 +484,7 @@
    "profil": "wiederkehrend",
    "rollen": [
     {
-     "hinweis": "LeLe-Register über alle Teams; kuratiert Wissensbasen (Lernzyklus)",
+     "hinweis": "LeLe-Register über alle Projekte; kuratiert Wissensbasen (Lernzyklus)",
      "instanz": "COACH@pm",
      "modell": "",
      "motor": "cowork",
@@ -357,20 +522,130 @@
    "typ": "pm"
   },
   {
-   "anzeigename": "promt-team (Prompt- und Kontext-Optimierung)",
+   "anzeigename": "P15 Prompt (Prompt- und Kontext-Optimierung)",
    "beschreibung": "Prompt- und Kontext-Optimierer (Meta-Rolle): misst und verbessert Systemprompts, Wissensschichten und Tool-Beschreibungen der KI-Rollen — Zielgroesse Aufgabenqualitaet pro Token",
    "datenklasse": "sensibel",
    "einheit": "promt-team",
    "profil": "wiederkehrend",
    "rollen": [
     {
-     "hinweis": "Liest Transkripte (sensibel) — lokal; Vorschläge bleiben Vorschläge",
+     "hinweis": "",
+     "instanz": "ARCH@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Architekt",
+     "quelle": "core",
+     "rolle": "ARCH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CHG@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Change-Manager",
+     "quelle": "core",
+     "rolle": "CHG",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CM@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Konfigurationsmanager",
+     "quelle": "core",
+     "rolle": "CM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "COACH@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prozess-Coach",
+     "quelle": "core",
+     "rolle": "COACH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "DEV@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Entwickler",
+     "quelle": "core",
+     "rolle": "DEV",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PL@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "core",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PROB@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Problemmanager",
+     "quelle": "core",
+     "rolle": "PROB",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "P15 Prompt — liest Transkripte (sensibel), Vorschläge bleiben Vorschläge",
      "instanz": "PROMPT-OPT@promt-team",
      "modell": "",
      "motor": "cowork",
      "name": "Prompt- und Kontext-Optimierer",
      "quelle": "besetzung",
      "rolle": "PROMPT-OPT",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "QM@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Qualitätsmanager",
+     "quelle": "core",
+     "rolle": "QM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "RM@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Requirements-Manager",
+     "quelle": "core",
+     "rolle": "RM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "TEST@promt-team",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Verifikationsingenieur",
+     "quelle": "core",
+     "rolle": "TEST",
      "status": "aktiv",
      "takt": "sprint"
     }
@@ -380,7 +655,7 @@
    "typ": "projekt"
   },
   {
-   "anzeigename": "team-dashboard (Ergebnis-Darstellung)",
+   "anzeigename": "P14 Dashboard (Ergebnis-Darstellung)",
    "beschreibung": "Dashboard-Team: pflegt Widget-Katalog und Widget-Vertrag der Organisation (fachlicher Auftraggeber von P11)",
    "datenklasse": "intern",
    "einheit": "team-dashboard",
@@ -388,12 +663,122 @@
    "rollen": [
     {
      "hinweis": "",
+     "instanz": "ARCH@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Architekt",
+     "quelle": "core",
+     "rolle": "ARCH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CHG@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Change-Manager",
+     "quelle": "core",
+     "rolle": "CHG",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CM@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Konfigurationsmanager",
+     "quelle": "core",
+     "rolle": "CM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "COACH@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prozess-Coach",
+     "quelle": "core",
+     "rolle": "COACH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "P14 Dashboard — fachlicher Auftraggeber der Ergebnis-Darstellung",
      "instanz": "DASH-RED@team-dashboard",
      "modell": "",
      "motor": "cowork",
      "name": "Dashboard-Redakteur",
      "quelle": "besetzung",
      "rolle": "DASH-RED",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "DEV@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Entwickler",
+     "quelle": "core",
+     "rolle": "DEV",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PL@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "core",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PROB@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Problemmanager",
+     "quelle": "core",
+     "rolle": "PROB",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "QM@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Qualitätsmanager",
+     "quelle": "core",
+     "rolle": "QM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "RM@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Requirements-Manager",
+     "quelle": "core",
+     "rolle": "RM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "TEST@team-dashboard",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Verifikationsingenieur",
+     "quelle": "core",
+     "rolle": "TEST",
      "status": "aktiv",
      "takt": "sprint"
     }
@@ -403,14 +788,69 @@
    "typ": "projekt"
   },
   {
-   "anzeigename": "team-mail (Mail-Zusammenfassung)",
+   "anzeigename": "P13 Mail (Mail-Zusammenfassung)",
    "beschreibung": "Mail-Team: fasst dimitri.john83@gmail.com per lokalem Ollama zusammen (Pilot, sensibel/lokal)",
    "datenklasse": "sensibel",
    "einheit": "team-mail",
    "profil": "wiederkehrend",
    "rollen": [
     {
-     "hinweis": "Datenklasse sensibel — lokal, nie API/Cloud",
+     "hinweis": "",
+     "instanz": "ARCH@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Architekt",
+     "quelle": "core",
+     "rolle": "ARCH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CHG@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Change-Manager",
+     "quelle": "core",
+     "rolle": "CHG",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CM@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Konfigurationsmanager",
+     "quelle": "core",
+     "rolle": "CM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "COACH@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prozess-Coach",
+     "quelle": "core",
+     "rolle": "COACH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "DEV@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Entwickler",
+     "quelle": "core",
+     "rolle": "DEV",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "P13 Mail — Datenklasse sensibel, lokal, nie API/Cloud",
      "instanz": "MAIL-RED@team-mail",
      "modell": "gemma3:27b",
      "motor": "ollama",
@@ -419,6 +859,61 @@
      "rolle": "MAIL-RED",
      "status": "aktiv",
      "takt": "schnell"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PL@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "core",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PROB@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Problemmanager",
+     "quelle": "core",
+     "rolle": "PROB",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "QM@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Qualitätsmanager",
+     "quelle": "core",
+     "rolle": "QM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "RM@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Requirements-Manager",
+     "quelle": "core",
+     "rolle": "RM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "TEST@team-mail",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Verifikationsingenieur",
+     "quelle": "core",
+     "rolle": "TEST",
+     "status": "aktiv",
+     "takt": "sprint"
     }
    ],
    "status": "aktiv",

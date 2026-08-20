@@ -82,12 +82,55 @@ def entdecke_einheiten(root):
     return einheiten
 
 
+def effektive_besetzungen(root):
+    """Projektmodell (Konzept 04, Kap. 3.1): Core-Team-Expansion + explizite Einträge.
+
+    Der EINZIGE Resolver für „wer besetzt was": jedes aktive Projekt (Projekt-Registry
+    typ aspice|projekt bzw. Discovery-Projekt mit Steckbrief-Status aktiv) bekommt
+    implizit alle Core-Rollen aus dem `core_team`-Block; explizite Einträge in
+    `besetzungen:` überschreiben die Expansion (gleicher Instanz-Schlüssel). Das PM-Team
+    (typ pm) ist kein Projekt und bekommt kein Core Team — seine Besetzung steht explizit.
+
+    Liefert {instanz: besetzung} mit Zusatzfeld `quelle`: 'core' | 'besetzung'.
+    tick.py (SWR-171), organisation.py (SWR-169/170, HMI) und die Organigramme
+    nutzen ausschließlich diese Funktion — eine zweite Auflösung wäre die B033-Falle.
+    """
+    proc = os.path.join(root, "process")
+    daten = _lies_yaml(os.path.join(proc, "roles", "besetzungen.yaml")) or {}
+    explizit = daten.get("besetzungen", {}) or {}
+    core = daten.get("core_team", {}) or {}
+    teams = (_lies_yaml(os.path.join(proc, "teams", "registry.yaml")) or {}).get("teams", {})
+    team_je_repo = {}
+    for kuerzel, t in teams.items():
+        team_je_repo[(t or {}).get("repo", kuerzel)] = t or {}
+    ergebnis = {}
+    for einheit, pfad in entdecke_einheiten(root).items():
+        team = team_je_repo.get(einheit)
+        if team is not None and team.get("typ") == "pm":
+            continue  # PM-Team ist kein Projekt (Konzept 04, Kap. 2)
+        _besch, status, _name = _steckbrief(pfad)
+        status = (team or {}).get("status") or status or ""
+        if status != "aktiv":
+            continue
+        for rolle in core.get("rollen") or []:
+            ergebnis["%s@%s" % (rolle, einheit)] = {
+                "rolle": rolle, "einheit": einheit,
+                "motor": core.get("motor", "cowork"), "modell": "",
+                "takt": core.get("takt", "sprint"),
+                "status": core.get("status", "aktiv"), "hinweis": "", "quelle": "core"}
+    for instanz, b in explizit.items():
+        eintrag = dict(b or {})
+        eintrag["quelle"] = "besetzung"
+        ergebnis[instanz] = eintrag
+    return ergebnis
+
+
 def sammle(root):
     """Registries + Steckbriefe -> ein Datenmodell (deterministisch sortiert)."""
     proc = os.path.join(root, "process")
     teams = (_lies_yaml(os.path.join(proc, "teams", "registry.yaml")) or {}).get("teams", {})
     rollen = (_lies_yaml(os.path.join(proc, "roles", "registry.yaml")) or {}).get("roles", {})
-    besetzungen = (_lies_yaml(os.path.join(proc, "roles", "besetzungen.yaml")) or {}).get("besetzungen", {})
+    besetzungen = effektive_besetzungen(root)  # Projektmodell: inkl. implizitem Core Team
     einheiten_pfade = entdecke_einheiten(root)
 
     # Team-Zuordnung: repo -> Team-Eintrag (teams-Registry nennt das Haupt-Repo)
@@ -132,7 +175,7 @@ def sammle(root):
                 "takt": b.get("takt", ""),
                 "status": b.get("status", ""),
                 "hinweis": b.get("hinweis", ""),
-                "quelle": "besetzung",
+                "quelle": b.get("quelle", "besetzung"),
             })
         # Rollen laut Team-Registry ohne Besetzung -> sichtbar als unbesetzt
         for rolle in (team or {}).get("rollen") or []:
@@ -173,7 +216,16 @@ def mermaid_einheit(e, gesamt=False):
     kopf = e["anzeigename"] if e["anzeigename"] != e["einheit"] else e["einheit"]
     z.append('  %s["%s<br/>%s · %s"]' % (kid, kopf, e["profil"] or e["typ"], e["status"]))
     z.append("  PM --> %s" % kid)
-    for r in e["rollen"]:
+    # Projektmodell (Konzept 04): Core-Rollen im Default als EIN Knoten — zehn identische
+    # Kästen je Projekt sagen weniger als einer; Abweichungen und spezifische Rollen einzeln.
+    kern = [r for r in e["rollen"] if r["quelle"] == "core"]
+    rest = [r for r in e["rollen"] if r["quelle"] != "core"]
+    if kern:
+        z.append('  %s_CORE["Core Team<br/>%d Rollen · %s · %s"]' % (
+            kid, len(kern), MOTOR_ZEICHEN.get(kern[0]["motor"], kern[0]["motor"]),
+            kern[0]["takt"]))
+        z.append("  %s --> %s_CORE" % (kid, kid))
+    for r in rest:
         rid = _knoten_id(r["instanz"])
         z.append('  %s["%s"]' % (rid, _mermaid_rolle(r)))
         z.append("  %s --> %s" % (kid, rid))
@@ -193,13 +245,16 @@ def md_einheit(e):
     if e["beschreibung"]:
         kopf += "**Auftrag:** %s\n\n" % e["beschreibung"]
     kopf += mermaid_einheit(e) + "\n\n## Beteiligte\n\n"
-    kopf += "| Instanz | Rolle | Motor | Takt | Status | Hinweis |\n|---|---|---|---|---|---|\n"
+    kopf += ("| Instanz | Rolle | Motor | Takt | Status | Quelle | Hinweis |\n"
+             "|---|---|---|---|---|---|---|\n")
+    quelle_text = {"core": "Core Team (implizit)", "besetzung": "explizit", "registry": "Registry"}
     for r in e["rollen"]:
         motor = MOTOR_ZEICHEN.get(r["motor"], r["motor"]) or "—"
         if r.get("modell"):
             motor += " (%s)" % r["modell"]
-        kopf += "| %s | %s | %s | %s | %s | %s |\n" % (
-            r["instanz"], r["name"], motor, r["takt"] or "—", r["status"], r["hinweis"] or "—")
+        kopf += "| %s | %s | %s | %s | %s | %s | %s |\n" % (
+            r["instanz"], r["name"], motor, r["takt"] or "—", r["status"],
+            quelle_text.get(r["quelle"], r["quelle"]), r["hinweis"] or "—")
     kopf += ("\nRollen-Bauplan: `process/roles/<rolle>.md` · projektspezifischer Teil: "
              "`roles/<rolle>.md` in diesem Repo · Historie: `docs/historie.md`\n")
     return kopf
