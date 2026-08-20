@@ -39,8 +39,30 @@ def _lies_yaml(pfad):
 
 
 def _steckbrief(pfad):
+    """SWR-175: dazu `name` — der Anzeigename einer Einheit, die kein Team ist.
+
+    ⚠ Der Anlass ist eine Frage des Auftraggebers und keine Aufräumidee: *„kann dieses
+    Projekt geschlossen werden? warum gibts das noch?"* (`p9/N-0001`). Gemessen wurde
+    daraufhin: `p9` hat **7 von 7** Tickets `done` und trotzdem **78 Commits in sieben
+    Tagen** — weil in seinem Requirements-Ordner die Anforderungen der ganzen Plattform
+    liegen.
+
+    > **Keine Prüfung dieses Hauses fragt, ob der Name über einem Ordner noch stimmt.
+    > Gefunden hat es der Auftraggeber.**
+
+    Er hat mit **A** entschieden (`p9/D003`, 2026-08-20 22:25) — nichts zieht um — und dazu
+    angewiesen: *„Nennen P9 in Org-Cockpit um."* Bisher konnte nur ein **Team** einen
+    Anzeigenamen tragen (`teams/registry.yaml`, Feld `name`); Projekte fielen auf ihren
+    Ordnernamen zurück. Diese Zeile gibt dem Steckbrief dieselbe Möglichkeit.
+
+    ⚠ **Der Ordner wird NICHT umbenannt.** `p9` bleibt die Discovery-Kennung, unter der
+    Tickets, Commits und Querverweise stehen; geändert wird, was ein Mensch liest. Ein
+    Ordnername ist eine Identität, ein Anzeigename eine Beschriftung — das ist genau der
+    Unterschied, den `Option A` gewählt hat.
+    """
     daten = _lies_yaml(os.path.join(pfad, "steckbrief.yaml"))
-    return daten.get("beschreibung", ""), daten.get("status", "")
+    return (daten.get("beschreibung", ""), daten.get("status", ""),
+            str(daten.get("name", "") or "").strip())
 
 
 def entdecke_einheiten(root):
@@ -76,14 +98,17 @@ def sammle(root):
     einheiten = []
     for name in sorted(einheiten_pfade):
         pfad = einheiten_pfade[name]
-        beschreibung, status = _steckbrief(pfad)
+        beschreibung, status, steckbrief_name = _steckbrief(pfad)
         team = team_je_repo.get(name)
         typ = (team or {}).get("typ") or "projekt"
         eintrag = {
             "einheit": name,
             "typ": typ,
             "team": (team or {}).get("kuerzel"),
-            "anzeigename": (team or {}).get("name") or name,
+            # SWR-175: Rangfolge Team-Registry > Steckbrief > Ordnername. Das Team
+            # gewinnt, weil es die Quelle der Wahrheit fuer Teams ist (Kopfkommentar
+            # der Registry); der Steckbrief traegt die Einheiten, die kein Team sind.
+            "anzeigename": (team or {}).get("name") or steckbrief_name or name,
             "profil": (team or {}).get("profil") or ("entwicklung" if name.startswith("p") else ""),
             "status": (team or {}).get("status") or status or "ohne Status",
             "datenklasse": (team or {}).get("datenklasse") or "intern",

@@ -235,4 +235,12 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    # platform/T-0009: am Melden nicht sterben. ⚠ Diese Zeile fehlte im ersten Entwurf und
+    # ist von `test_konsole.RegelUeberDenGesamtenProduktionscode` rot gemacht worden — zum
+    # SECHSTEN Lauf in Folge hat eine ältere Zusicherung den frischen Entwurf verworfen,
+    # und in Sprint 25 traf es dieselbe Regel und ebenfalls ein neues Skript
+    # (`scripts/organigramm.py`). Ein Werkzeug, das Kennzahlen mit Umlauten und ⚠ ausgibt,
+    # ist genau der Fall, für den sie geschrieben wurde.
+    import konsole
+    konsole.sichere_ausgabe()
     sys.exit(main())
