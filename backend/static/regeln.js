@@ -309,11 +309,18 @@ var Regeln = (function () {
 
   var KEINE_DATEN = "keine Daten";
 
-  //: Beschriftung je Kachelfeld. Kurz, weil eine Kompaktkachel schmal ist — und an
-  //: EINER Stelle, weil zwei Beschriftungslisten zwei Namen fuer dasselbe Feld sind.
-  var FELD_TITEL = { aufgaben_offen: "offen", briefe_offen: "Briefe",
-                     unterminiert: "ohne Termin", tickets_gesamt: "Tickets",
-                     letzte_baseline: "Baseline", team: "Digest" };
+  // ⚠ `FELD_TITEL`, `kachelFelder` und `dashboardGruppen` sind in Sprint 28 entfernt
+  // worden (p11/T-0016, VIERTE Beruehrung — gebaut UND geschnitten). Sie hatten seit
+  // SWR-148 keinen Aufrufer; gemessen, nicht vermutet: der einzige Verweis auf
+  // `kachelFelder`/`dashboardGruppen` war ihr eigener Export.
+  //
+  // ⚠⚠ `feldText` ist AUSDRUECKLICH GEBLIEBEN, und das ist die Antwort auf Frage 1 des
+  // Tickets (*„ist feldText tot oder ist es die Vorlage?"*). Gemessen: sein einziger
+  // CODE-Aufrufer war das tote `kachelFelder` — aber drei LEBENDE Funktionen zitieren
+  // ihn als ihre Vertragsregel (Zeilen 505/512/519/539 der alten Fassung), und er traegt
+  // eigene Zusicherungen fuer das zustand-Vokabular aus SWR-135/SWR-146.
+  // > *Er ist beides: totes Aufrufziel und lebende Vorlage. Wer nur die Aufrufer zaehlt,
+  // > loescht den zitierten Originaltext einer Regel, auf die drei Funktionen zeigen.*
 
   /** Was zeigt die Kachel fuer dieses Feld? — die Regel aus dem Widget-Vertrag.
    *
@@ -355,49 +362,6 @@ var Regeln = (function () {
     return String(w);
   }
 
-  /** Die Felder einer Kompaktkachel als `[{name, titel, text, zustand}]`, in Reihenfolge.
-   *
-   * Die Reihenfolge kommt aus dem **Backend** (`KACHEL_FELDER`) und wird hier nicht
-   * wiederholt: `Object.keys` folgt der Einfuegereihenfolge, und eine zweite Liste im
-   * Frontend waere eine zweite Aussage darueber, was eine Kachel zeigt (B033).
-   */
-  function kachelFelder(kachel) {
-    var felder = (kachel || {}).felder || {};
-    return Object.keys(felder).map(function (name) {
-      return { name: name, titel: FELD_TITEL[name] || name,
-               text: feldText(felder[name]), zustand: felder[name].zustand };
-    });
-  }
-
-  /** Dashboard-Kacheln nach Gruppe: `[{gruppe, titel, kacheln}]` in fester Reihenfolge.
-   *
-   * ⚠ **Feste Reihenfolge und nicht alphabetisch**: „Feste Teams" vor „Projekt-Teams" vor
-   * „Aktive Projekte" vor „Abgeschlossen" ist die Ordnung, die das Cockpit seit SWR-067
-   * benutzt. Eine zweite Ordnung derselben Gruppen waere fuer den Leser eine zweite
-   * Organisation.
-   *
-   * ⚠ **Leere Gruppen fallen weg, unbekannte nicht.** Eine Kachel mit einer Gruppe, die
-   * hier nicht steht, landet in `sonstige` statt zu verschwinden (SWR-096) — sonst
-   * verliert ein neuer Gruppenname stillschweigend Projekte, und niemand merkt es.
-   */
-  function dashboardGruppen(kacheln) {
-    var ordnung = [["festes-team", "Feste Teams"], ["projekt-team", "Projekt-Teams"],
-                   ["aktiv", "Aktive Projekte"], ["abgeschlossen", "Abgeschlossen"]];
-    var bekannt = {}, nach = {};
-    ordnung.forEach(function (g) { bekannt[g[0]] = true; nach[g[0]] = []; });
-    nach.sonstige = [];
-    (kacheln || []).forEach(function (k) {
-      var g = (k && k.gruppe) || "";
-      (bekannt[g] ? nach[g] : nach.sonstige).push(k);
-    });
-    var raus = ordnung.filter(function (g) { return nach[g[0]].length; })
-      .map(function (g) { return { gruppe: g[0], titel: g[1], kacheln: nach[g[0]] }; });
-    if (nach.sonstige.length) {
-      raus.push({ gruppe: "sonstige", titel: "Ohne bekannte Gruppe",
-                  kacheln: nach.sonstige });
-    }
-    return raus;
-  }
 
   // SWR-138 (pm/T-0052): die zwei Abschnitte von "Fuer dich". Die Titel und die
   // Leertexte stehen HIER und nicht in `app.js`, weil ADR-008 genau diese Sorte
@@ -720,13 +684,13 @@ var Regeln = (function () {
 
   return { widgetZeile: widgetZeile, widgetVollstaendig: widgetVollstaendig,
            widgetMaengel: widgetMaengel, TOUCH_MIN_PX: TOUCH_MIN_PX,
-           feldText: feldText, kachelFelder: kachelFelder,
+           feldText: feldText,
            terminierKnopf: terminierKnopf,
            cockpitFeldText: cockpitFeldText, COCKPIT_TEXTE: COCKPIT_TEXTE,
            fuerDichAbschnitte: fuerDichAbschnitte,
            FUER_DICH_LEER_ENTSCHEIDUNGEN: FUER_DICH_LEER_ENTSCHEIDUNGEN,
            FUER_DICH_LEER_HANDLUNGEN: FUER_DICH_LEER_HANDLUNGEN,
-           dashboardGruppen: dashboardGruppen, KEINE_DATEN: KEINE_DATEN,
+           KEINE_DATEN: KEINE_DATEN,
            istGruppeOffen: istGruppeOffen,
            urheber: urheber, beitragKopf: beitragKopf, istWiederOffen: istWiederOffen,
            verlauf: verlauf, sortiereBriefe: sortiereBriefe,

@@ -302,58 +302,34 @@ test("team ist ein Objekt und wird nicht als [object Object] gezeigt", () => {
                      R.KEINE_DATEN);
 });
 
-test("kachelFelder folgt der Reihenfolge des Backends und erfindet keine Felder", () => {
-  const kachel = { felder: { aufgaben_offen: { wert: 3, zustand: "wert" },
-                             briefe_offen: { wert: 0, zustand: "echte_null" },
-                             team: { wert: null, zustand: "nicht_geliefert" } } };
-  const f = R.kachelFelder(kachel);
-  assert.deepStrictEqual(f.map(x => x.name), ["aufgaben_offen", "briefe_offen", "team"]);
-  assert.deepStrictEqual(f.map(x => x.text), ["3", "0", R.KEINE_DATEN]);
-  // Jedes Feld traegt eine Beschriftung — `name` als Rueckfall, nie leer.
-  f.forEach(x => assert.ok(x.titel && x.titel.length));
+// ------------------------------------------- p11/T-0016 (Sprint 28, VIERTE Beruehrung)
+//
+// ⚠⚠ Der Rueckbau ist AUSGEFUEHRT: `kachelFelder`, `dashboardGruppen` und `FELD_TITEL`
+// sind weg. Ihre Zusicherungen sind nicht geloescht, sondern UMGEDREHT — dieselbe
+// Bauform wie bei `kompaktKachel` (SWR-148) und beim Backend-Rueckbau (SWR-135):
+//
+//   > **Eine Pruefung, die nur die Abwesenheit misst, ist nach einem Kahlschlag ebenfalls
+//   > gruen. Neben „was weg sein muss" gehoert deshalb „was dableiben muss".**
+//
+// ⚠ Und das Paar traegt hier die eigentliche Entscheidung des Tickets: `feldText` und
+// `KEINE_DATEN` sind GEBLIEBEN. Sein einziger Code-Aufrufer war das tote `kachelFelder`,
+// aber drei lebende Funktionen zitieren ihn als ihre Vertragsregel (SWR-135/SWR-146) und
+// er traegt eigene Zusicherungen fuer das zustand-Vokabular.
+//   > *Wer nur Aufrufer zaehlt, loescht den zitierten Originaltext einer lebenden Regel.*
+
+test("p11/T-0016: die drei Bausteine des Kachel-Frontends sind WEG", () => {
+  assert.strictEqual(R.kachelFelder, undefined);
+  assert.strictEqual(R.dashboardGruppen, undefined);
+  assert.strictEqual(R.FELD_TITEL, undefined);
 });
 
-test("kachelFelder ohne Felder liefert eine leere Liste, keinen Fehler", () => {
-  assert.deepStrictEqual(R.kachelFelder({}), []);
-  assert.deepStrictEqual(R.kachelFelder(null), []);
-});
-
-test("dashboardGruppen haelt die Cockpit-Reihenfolge, nicht die alphabetische", () => {
-  // "Feste Teams" vor "Projekt-Teams" vor "Aktive Projekte" — die Ordnung aus SWR-067.
-  // Alphabetisch waere es "abgeschlossen, aktiv, festes-team, projekt-team".
-  const g = R.dashboardGruppen([
-    { projekt: "a", gruppe: "aktiv" }, { projekt: "b", gruppe: "festes-team" },
-    { projekt: "c", gruppe: "abgeschlossen" }, { projekt: "d", gruppe: "projekt-team" },
-  ]);
-  assert.deepStrictEqual(g.map(x => x.gruppe),
-    ["festes-team", "projekt-team", "aktiv", "abgeschlossen"]);
-});
-
-test("leere Gruppen fallen weg", () => {
-  const g = R.dashboardGruppen([{ projekt: "a", gruppe: "aktiv" }]);
-  assert.deepStrictEqual(g.map(x => x.gruppe), ["aktiv"]);
-});
-
-test("⚠ GEGENPROBE: eine UNBEKANNTE Gruppe verschwindet nicht (SWR-096)", () => {
-  // Ohne diesen Fall verliert ein neuer Gruppenname stillschweigend Projekte — und
-  // niemand merkt es, weil die Summe nirgends gegen die Kachelzahl gehalten wird.
-  const g = R.dashboardGruppen([
-    { projekt: "a", gruppe: "aktiv" }, { projekt: "x", gruppe: "brandneu" },
-    { projekt: "y", gruppe: "" },
-  ]);
-  const flach = g.reduce((s, x) => s.concat(x.kacheln.map(k => k.projekt)), []);
-  assert.strictEqual(flach.length, 3);
-  assert.ok(flach.includes("x") && flach.includes("y"));
-  assert.strictEqual(g[g.length - 1].gruppe, "sonstige");
-});
-
-test("jede Kachel erscheint in genau EINER Gruppe", () => {
-  const kacheln = [{ projekt: "a", gruppe: "aktiv" }, { projekt: "b", gruppe: "aktiv" },
-                   { projekt: "c", gruppe: "festes-team" }];
-  const flach = R.dashboardGruppen(kacheln)
-    .reduce((s, x) => s.concat(x.kacheln.map(k => k.projekt)), []);
-  assert.strictEqual(flach.length, 3);
-  assert.strictEqual(new Set(flach).size, 3);
+test("⚠ GEGENPROBE zum Rueckbau: feldText und KEINE_DATEN sind GEBLIEBEN", () => {
+  // Ohne diese Haelfte waere ein Kahlschlag ueber die ganze Datei ebenfalls gruen.
+  assert.strictEqual(typeof R.feldText, "function");
+  assert.strictEqual(R.KEINE_DATEN, "keine Daten");
+  // Die Vertragsregel selbst, an der die drei lebenden Funktionen haengen:
+  assert.strictEqual(R.feldText({ wert: 0, zustand: "echte_null" }), "0");
+  assert.strictEqual(R.feldText({ wert: null, zustand: "nicht_geliefert" }), R.KEINE_DATEN);
 });
 
 // --------------------------------------------------------------- SWR-138 (pm/T-0052)
