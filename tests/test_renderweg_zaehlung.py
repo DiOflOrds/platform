@@ -241,6 +241,48 @@ class RohtextAnsichtTest(unittest.TestCase):
     #: Namen — und damit niemand ihn nebenbei erledigt, ohne dass es auffällt.
     ROHTEXT_ANSICHTEN = 4
 
+    #: ⚠⚠ **`p12/T-0011`, Sprint 25: die Zahl allein war zu wenig.** Der Zähler darüber
+    #: sagt *wie viele* und nicht *welche*. Wer eine der vier auf den Block-Renderer
+    #: umstellt und dabei anderswo eine neue Rohtext-Ansicht anlegt, hält die Zahl bei 4
+    #: und die Prüfung bleibt grün — der Folgepunkt wäre halb erledigt und halb neu
+    #: entstanden, und beides unsichtbar.
+    #:
+    #:     **Eine Prüfung, die nur die Anzahl misst, kann einen Tausch nicht von
+    #:     Stillstand unterscheiden. Neben jedes „es sind vier" gehört „und es sind
+    #:     DIESE vier" (`L-2026-08-20by`).**
+    #:
+    #: Erkannt am **Argument** der Aufrufstelle, nicht an der Zeilennummer: Zeilen
+    #: verschieben sich bei jeder Änderung, der Gegenstand nicht.
+    ROHTEXT_STELLEN = {
+        "Ticket-Body": r"preMitLinks\(t\.body",
+        "DR-Body": r"preMitLinks\(dr\.body",
+        "Dokumentenansicht (dateiKarten)": r"preMitLinks\(d\.text, projekt\)",
+        "Requirements-Ansicht": r"preMitLinks\(d\.text, d\.projekt",
+    }
+
+    def test_es_sind_DIESE_vier_ansichten_und_nicht_irgendwelche(self):
+        """⚠⚠ Die zweite Hälfte des Paares zum Zähler darüber (`p12/T-0011`).
+
+        Der Folgepunkt aus dem G4-Antrag von `p12` ist seit dem 17.08. **fünfmal**
+        angefasst worden. Was ihn all diese Male blockierte, war der Bau; was gefehlt
+        hat, war etwas Kleineres und Fälligeres: **eine Prüfung, die den Gegenstand des
+        Folgepunkts nennt statt seine Größe.**
+
+        Damit ist die Frage des Tickets *„welche Ansicht hat welchen Darstellungsgrad?"*
+        an einer Stelle beantwortet, die rot wird, wenn sich die Antwort ändert — und
+        nicht in einem Satz, den niemand liest (`L-2026-08-17ag`). Verifiziert:
+        SWR-097, SWR-098.
+        """
+        code = _ohne_kommentare(_quelltext())
+        for name, muster in self.ROHTEXT_STELLEN.items():
+            self.assertRegex(code, muster,
+                             f"die Rohtext-Ansicht {name!r} ist nicht mehr an ihrer "
+                             f"Stelle — entweder umgestellt (dann gehört das in einen "
+                             f"Beschluss, nicht in einen Diff) oder verschoben")
+        self.assertEqual(len(self.ROHTEXT_STELLEN), self.ROHTEXT_ANSICHTEN,
+                         "die benannte Liste und der Zähler widersprechen sich — zwei "
+                         "Quellen für dieselbe Auskunft (B033)")
+
     def test_der_folgepunkt_hat_eine_groesse(self):
         """⚠ `preMitLinks` ist **kein** zweiter Renderweg: es erzeugt aus Markdown-Blöcken
         kein DOM, sondern zeigt Rohtext und lässt die **Inline**-Regeln vom einen

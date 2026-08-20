@@ -661,8 +661,23 @@ def parkplatz_stand(root):
 
 
 def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
-    """Alle Checks ausführen. Rückgabe: Anzahl Befunde (0 = startklar)."""
+    """Alle Checks ausführen. Rückgabe: Anzahl **blockierender** Befunde (0 = startklar).
+
+    ⚠⚠ **SWR-166 (`platform/T-0029`): zwei Zählungen statt einer.** Ein Befund ist
+    *blockierend*, wenn der Aufrufer jetzt etwas dagegen tun kann — nicht committete
+    Dateien, ungebuchte Statusstände, fehlende Pflichtartefakte, rote Tests, ein
+    Statussprung dieses Laufs. Ein Befund ist *fortgeschrieben*, wenn er eine Tatsache
+    nennt, die vor Beginn des laufenden Sprints festgeschrieben wurde: ein Statussprung
+    aus einem abgeschlossenen Sprint (Historie wird nicht umgeschrieben), eine bereits
+    vergangene Pause.
+
+    Fortgeschriebene Befunde erscheinen **unverändert im Wortlaut, namentlich und mit
+    Commit** und werden in der Schlusszeile gezählt. Sie setzen nur den Rückgabewert
+    nicht. Der Grund ist gemessen: 83 abgebrochene Push-Läufe in drei Tagen und 12 Ticks,
+    die nie liefen, weil eine unbehebbare Tatsache dauerhaft Exit 1 erzwang.
+    """
     befunde = raeume_locks(root, keep_locks)
+    fortgeschrieben = 0
     if nur_locks:
         print(f"PREFLIGHT: {'STARTKLAR' if befunde == 0 else str(befunde) + ' Befund(e)'} "
               "(nur Lock-Räumung)")
@@ -775,9 +790,17 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
                 f"{pause['minuten']} Min = {pause['vielfaches']}x Takt "
                 f"({pause['takt_min']} Min)")
         if pause["befund"]:
-            print(f"{satz} — BEFUND: mehr als {pause['takte']} Takte. "
+            # SWR-166 (platform/T-0029): FORTGESCHRIEBEN und nicht blockierend. Die
+            # Zeile bleibt Wort für Wort stehen — sie ist die Antwort auf den Brief
+            # `team-mail/N-0004` und hat ihren Zweck, sobald sie berichtet wird
+            # (SWR-125). ⚠ Blockieren kann sie nichts: eine bereits vergangene Pause
+            # ist von keinem Aufrufer zu verkürzen, und der Auto-Push-Wächter, den sie
+            # 83-mal gestoppt hat, ist genau der, dessen Aufgabe das Arbeiten IN dieser
+            # Pause ist. Ein Wächter, der stillsteht, weil es still war, meldet seine
+            # eigene Untätigkeit als Grund für sie.
+            print(f"{satz} — FORTGESCHRIEBEN: mehr als {pause['takte']} Takte. "
                   f"{pause['hinweis']}.")
-            befunde += 1
+            fortgeschrieben += 1
         else:
             print(f"{satz}.")
         if pause["ohne_ende"]:
@@ -991,20 +1014,33 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
     if uebergaenge is None:
         print("[org] Statusübergänge (Historie): nicht prüfbar (Modul nicht ladbar).")
     else:
-        neue, altbestand, register = uebergaenge
+        neue, weiter, altbestand, register = uebergaenge
         print(f"[org] Altbestand unzulässiger Statusübergänge (vor dem Stichtag, "
               f"bewusst nicht geglättet): {len(altbestand)}.")
         for z in register:
             print(f"[org] BEFUND: {z}")
             befunde += 1
+        # SWR-166 (platform/T-0029): Fälle aus ABGESCHLOSSENEN Sprints. Sie stehen
+        # namentlich und mit Commit da — nichts wird geglättet, nichts zusammengefasst
+        # (SWR-110: nennen, nicht zählen). Sie setzen nur den Exit-Code nicht mehr.
+        # Die Zeile erscheint AUCH bei 0 (SWR-114/117/155).
+        if weiter:
+            print(f"[org] FORTGESCHRIEBEN: {len(weiter)} unzulässige(r) "
+                  f"Statusübergang/-übergänge aus abgeschlossenen Sprints — gemeldet, in "
+                  f"deren Berichten benannt, nicht reparierbar (Kap. 16), blockiert nicht:")
+            for z in weiter:
+                print(f"    {z}")
+            fortgeschrieben += len(weiter)
+        else:
+            print("[org] Fortgeschriebene unzulässige Statusübergänge: 0.")
         if neue:
             print(f"[org] BEFUND: {len(neue)} unzulässige(r) Statusübergang/-übergänge "
-                  f"seit dem Stichtag:")
+                  f"im LAUFENDEN Sprint:")
             for z in neue:
                 print(f"    {z}")
             befunde += 1
         else:
-            print("[org] Unzulässige Statusübergänge seit dem Stichtag: 0.")
+            print("[org] Unzulässige Statusübergänge im laufenden Sprint: 0.")
     # SWR-051 (P4): Session-Routine "Briefkasten zuerst" — offene Briefe anzeigen (informativ)
     for name, pfad in projekte:
         verz = os.path.join(pfad, "management", "briefkasten")
@@ -1038,7 +1074,11 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
     # unlink-Recht neue index.lock hinterlassen. Ohne dieses Aufräumen meldet Preflight
     # STARTKLAR und der nächste Commit der Session scheitert trotzdem.
     befunde += raeume_locks(root, keep_locks, still=True)
-    print(f"PREFLIGHT: {'STARTKLAR' if befunde == 0 else str(befunde) + ' Befund(e)'}")
+    # SWR-166: BEIDE Zahlen, immer — auch wenn eine 0 ist. Eine Schlusszeile, die nur
+    # das Blockierende nennt, macht aus "gemeldet, blockiert nicht" auf dem Weg nach
+    # draußen ein "nicht gemeldet" (SWR-114/117/155).
+    print(f"PREFLIGHT: {'STARTKLAR' if befunde == 0 else str(befunde) + ' Befund(e)'} "
+          f"({fortgeschrieben} fortgeschrieben)")
     return befunde
 
 

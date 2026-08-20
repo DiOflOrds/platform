@@ -260,17 +260,78 @@ def _rollen(repo):
     return rollen
 
 
-def pruefe_repo(repo, name=None, stichtag=None):
-    """(neue_befunde, altbestand) für ein Repo.
+def laufgrenze(root):
+    """SWR-166: der Zeitpunkt, ab dem ein Verstoß **diesem** Lauf gehört — oder `None`.
 
-    `neue` sind Verstöße **ab** dem Stichtag — sie blockieren. `altbestand` liegt davor
-    und wird gemeldet, ohne zu blockieren: nicht geglättet, aber auch kein Dauerbefund,
-    der das Wegsehen trainiert.
+    ⚠⚠ **Der Anlass ist gemessen und er hat drei Tage Betrieb gekostet** (`platform/T-0029`,
+    Brief `team-mail/N-0004`): der Auto-Push-Wächter hat seit dem 17.08. 11:32 **83-mal
+    hintereinander** abgebrochen und der Ollama-Schnelltakt des Auftraggebers **12 Ticks**
+    nie zu Ende gebracht — beide, weil `preflight` Exit 1 zurückgibt, solange irgendein
+    Befund dasteht. Unter den Befunden standen vier Statusübergänge aus **abgeschlossenen**
+    Sprints. Sie sind gemeldet, sie stehen in den Berichten, und sie sind nicht
+    reparierbar: Historie wird hier nicht umgeschrieben (Kap. 16, `L-2026-08-17g` Regel 4).
+
+    > **Ein Wächter, der auf eine Tatsache blockiert, die niemand mehr ändern kann, ist
+    > kein Wächter mehr, sondern ein Schalter, den jemand umgelegt und niemand bemerkt
+    > hat.**
+
+    ⚠ Die Regel dagegen steht seit Sprint 9 **in diesem Modul** und wird zweimal
+    angewandt — auf den Altbestand vor dem Stichtag und (in `preflight`) auf die
+    Uhrenprobe. An der dritten Stelle ist sie nicht angewandt worden. Der Stichtag wird
+    dafür **nicht** verschoben (`ALTBESTAND_ERWARTET` verhindert das aus gutem Grund) und
+    es entsteht **kein** Register von Einzelfällen (Begründung im Modulkopf). Es kommt
+    eine **zweite Grenze** dazu, aus derselben Zahl gebildet wie die erste: `zeit`.
+
+    Die Grenze ist der **Beginn des laufenden Sprints**; läuft keiner, das **Ende** des
+    letzten. Damit gilt: was dieser Lauf committet, blockiert ihn; was ein
+    abgeschlossener Lauf committet und in seinem Bericht gemeldet hat, ist fortgeschrieben.
+
+    ⚠ `None` heißt „Grenze unbekannt" und führt bei den Aufrufern dazu, dass **alles ab
+    dem Stichtag blockiert** — also das bisherige Verhalten. Bei Unklarheit wird in die
+    Richtung entschieden, in die dieses Haus immer entscheidet: nichts durchlassen
+    (`SWR-163`, `git_prozess_aktiv`).
+
+    ⚠⚠ Diese Funktion ruft **kein git** auf — die Auflage aus `SWR-159`/`SWR-134`, die den
+    ersten Entwurf der Uhrenprobe verworfen hat. `sprint_register.lies` liest allein die
+    JSONL-Datei.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import sprint_register as _sr
+        bestand = _sr.lies(root)
+        if not bestand:
+            return None
+        letzter = bestand[-1]
+        wert = letzter.get("start") if not letzter.get("ende") else letzter.get("ende")
+        if not wert:
+            return None
+        stempel = _sr._wanduhr(wert)
+        return stempel.timestamp() if stempel is not None else None
+    except Exception:
+        return None
+
+
+def pruefe_repo(repo, name=None, stichtag=None, lauf=None):
+    """(laufend, fortgeschrieben, altbestand) für ein Repo.
+
+    Drei Töpfe statt zwei, und der mittlere ist neu (`SWR-166`, `platform/T-0029`):
+
+    * `laufend` — Verstöße ab `lauf`. **Sie blockieren.** Das ist der Fehler, den der
+      gerade laufende Sprint selbst gemacht hat; ihn durchzulassen hieße, die Prüfung
+      abzuschaffen.
+    * `fortgeschrieben` — ab dem Stichtag, aber vor `lauf`. **Gemeldet, blockiert nicht.**
+      Ein abgeschlossener Sprint hat den Fall in seinem Bericht benannt; die Historie ist
+      geschrieben und niemand kann sie mehr ändern.
+    * `altbestand` — vor dem Stichtag. Unverändert wie seit Sprint 9.
+
+    ⚠ Ohne `lauf` (`None`) bleibt es bei **zwei** Töpfen mit dem alten Verhalten: alles ab
+    dem Stichtag ist `laufend` und blockiert. Der mittlere Topf ist dann leer — nicht,
+    weil nichts gefunden wurde, sondern weil die Grenze fehlt.
     """
     name = name or os.path.basename(os.path.abspath(repo))
     grenze = _stichtag_stempel() if stichtag is None else stichtag
     rollen = _rollen(repo)
-    neue, alt_liste = [], []
+    laufende, fortgeschrieben, alt_liste = [], [], []
     for sha, zeit, datei, alt, neu in status_wechsel(repo):
         if rollen.get(datei) == "mensch":
             continue  # Gates: Übergänge frei (pm/T-0048 Punkt 3, unverändert)
@@ -279,8 +340,13 @@ def pruefe_repo(repo, name=None, stichtag=None):
         if neu in board.UEBERGAENGE.get(alt, []):
             continue
         text = "%s/%s: %s -> %s (Commit %s)" % (name, datei, alt, neu, sha[:7])
-        (neue if zeit >= grenze else alt_liste).append(text)
-    return neue, alt_liste
+        if zeit < grenze:
+            alt_liste.append(text)
+        elif lauf is not None and zeit < lauf:
+            fortgeschrieben.append(text)
+        else:
+            laufende.append(text)
+    return laufende, fortgeschrieben, alt_liste
 
 
 def _repo_wurzel(basis, root):
@@ -303,15 +369,22 @@ def _repo_wurzel(basis, root):
         pfad = os.path.dirname(pfad)
 
 
-def pruefe_alle(root, stichtag=None):
+def pruefe_alle(root, stichtag=None, lauf=None):
     """Über alle entdeckten Projekt-Repos.
 
-    Rückgabe `(neue, altbestand, register)`. `register` trägt den Befund über den
-    **Altbestand selbst**: weicht seine Größe von `ALTBESTAND_ERWARTET` ab, ist
-    entweder der Stichtag verschoben oder die Historie umgeschrieben worden — beides
-    Dinge, die nicht still passieren dürfen.
+    Rückgabe `(laufend, fortgeschrieben, altbestand, register)` — **vier** Werte seit
+    `SWR-166`; der zweite ist neu. `register` trägt den Befund über den **Altbestand
+    selbst**: weicht seine Größe von `ALTBESTAND_ERWARTET` ab, ist entweder der Stichtag
+    verschoben oder die Historie umgeschrieben worden — beides Dinge, die nicht still
+    passieren dürfen.
+
+    ⚠ `lauf` wird aus dem Sprintregister geholt, wenn er nicht mitgegeben wird
+    (`laufgrenze`). Kommt dabei `None` heraus, gilt das alte Verhalten: alles ab dem
+    Stichtag blockiert.
     """
-    neue, altbestand = [], []
+    neue, fortgeschrieben, altbestand = [], [], []
+    if lauf is None and stichtag is None:
+        lauf = laufgrenze(root)
     gesehen = set()
     for name, basis in board.projekt_pfade(root):
         # Projekte im Sammel-Repo teilen sich dessen .git — dann zaehlt das Sammel-Repo.
@@ -333,9 +406,10 @@ def pruefe_alle(root, stichtag=None):
         # ein Befund aus `projects` „p10/p11/tickets/T-0009.md" — eine Referenz, die es
         # nirgends gibt und die beim Nachschlagen ins Leere führt (B038: eine Meldung
         # muss ihren Gegenstand AUFFINDBAR nennen).
-        a, b = pruefe_repo(wurzel, os.path.basename(wurzel) if os.path.abspath(wurzel)
-                           != os.path.abspath(basis) else name, stichtag)
+        a, f, b = pruefe_repo(wurzel, os.path.basename(wurzel) if os.path.abspath(wurzel)
+                              != os.path.abspath(basis) else name, stichtag, lauf)
         neue += a
+        fortgeschrieben += f
         altbestand += b
     register = []
     if stichtag is None and _ist_dieser_bestand(root) \
@@ -344,14 +418,14 @@ def pruefe_alle(root, stichtag=None):
             "Altbestand hat %d Eintraege, erwartet sind %d — entweder ist der Stichtag "
             "(%s) verschoben oder die Historie wurde umgeschrieben."
             % (len(altbestand), ALTBESTAND_ERWARTET, STICHTAG))
-    return neue, altbestand, register
+    return neue, fortgeschrieben, altbestand, register
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--repos", default=".")
     args = p.parse_args()
-    neue, altbestand, register = pruefe_alle(args.repos)
+    neue, fortgeschrieben, altbestand, register = pruefe_alle(args.repos)
     # Der Altbestand wird IMMER gemeldet, auch wenn er nicht blockiert — sonst waere
     # er nach einem Lauf aus dem Blick, und „nicht geglaettet" hiesse nur „nicht
     # aufgeraeumt" statt „weiter sichtbar" (pm/T-0048 Punkt 2).
@@ -359,13 +433,23 @@ def main():
           "geglaettet): %d." % (STICHTAG, len(altbestand)))
     for z in register:
         print("[org] BEFUND: " + z)
+    # SWR-166: fortgeschriebene Faelle werden NAMENTLICH gemeldet und blockieren nicht.
+    # Sie zu zaehlen statt zu nennen waere SWR-110 rueckwaerts.
+    if fortgeschrieben:
+        print("[org] FORTGESCHRIEBEN: %d unzulaessige(r) Statusuebergang/-uebergaenge aus "
+              "abgeschlossenen Sprints (gemeldet, nicht reparierbar, blockiert nicht):"
+              % len(fortgeschrieben))
+        for z in fortgeschrieben:
+            print("    " + z)
+    else:
+        print("[org] Fortgeschriebene unzulaessige Statusuebergaenge: 0.")
     if neue:
-        print("[org] BEFUND: %d unzulaessige(r) Statusuebergang/-uebergaenge seit dem "
-              "Stichtag" % len(neue))
+        print("[org] BEFUND: %d unzulaessige(r) Statusuebergang/-uebergaenge im LAUFENDEN "
+              "Sprint" % len(neue))
         for z in neue:
             print("    " + z)
     else:
-        print("[org] Unzulaessige Statusuebergaenge seit dem Stichtag: 0.")
+        print("[org] Unzulaessige Statusuebergaenge im laufenden Sprint: 0.")
     return 1 if (neue or register) else 0
 
 

@@ -249,6 +249,40 @@ class TestPreflightGesamt(unittest.TestCase):
             befunde = preflight.preflight(d, skip_tests=True)
             self.assertEqual(befunde, 4)
 
+    def test_schlusszeile_nennt_beide_zahlen_auch_bei_null(self):
+        """SWR-166 (platform/T-0029): die Schlusszeile trägt **zwei** Zahlen — immer.
+
+        ⚠ Der Sinn der Trennung ist, dass ein fortgeschriebener Befund weiter GEMELDET
+        wird und nur nicht mehr blockiert. Eine Schlusszeile, die davon nichts sagt,
+        macht daraus auf dem Weg nach draußen wieder ein „nicht gemeldet" — genau der
+        Fehler, den SWR-114/117/155 dreimal kosten musste. Die Zahl steht deshalb auch
+        dann da, wenn sie 0 ist: eine stille Prüfung ist von einer nicht gelaufenen
+        nicht zu unterscheiden.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            puffer = io.StringIO()
+            with contextlib.redirect_stdout(puffer):
+                preflight.preflight(d, skip_tests=True)
+            schluss = [z for z in puffer.getvalue().splitlines()
+                       if z.startswith("PREFLIGHT:")]
+            self.assertEqual(len(schluss), 1, "genau eine Schlusszeile")
+            self.assertIn("fortgeschrieben", schluss[0])
+            self.assertIn("(0 fortgeschrieben)", schluss[0])
+
+    def test_nur_locks_nennt_die_zweite_zahl_nicht(self):
+        """⚠ Die Gegenprobe: `--nur-locks` prüft nichts, was fortgeschrieben sein
+        könnte, und behauptet deshalb auch keine Zahl darüber. Eine „0" an dieser
+        Stelle wäre die Gleichsetzung von *nicht gemessen* und *als 0 gemessen* —
+        derselbe Fehler, den SWR-164 für den Parkplatz ausdrücklich vermeidet."""
+        with tempfile.TemporaryDirectory() as d:
+            puffer = io.StringIO()
+            with contextlib.redirect_stdout(puffer):
+                preflight.preflight(d, skip_tests=True, nur_locks=True)
+            schluss = [z for z in puffer.getvalue().splitlines()
+                       if z.startswith("PREFLIGHT:")][0]
+            self.assertIn("nur Lock-Räumung", schluss)
+            self.assertNotIn("fortgeschrieben", schluss)
+
 
 class TestReposImRoot(unittest.TestCase):
     """T-0050: Preflight kennt auch Produkt-Repos im Root."""
