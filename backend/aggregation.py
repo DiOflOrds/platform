@@ -856,11 +856,17 @@ def dr_entschieden_nicht_verbucht(root):
     return treffer
 
 
-#: SWR-165: der Rumpfmarker, den `inbox.entscheide` als **zweiten** von drei
-#: Schreibvorgängen ins Ticket schreibt. Er steht hier und nicht als Literal in der
-#: Prüfung, weil `inbox` ihn schreibt und diese Funktion ihn sucht — zwei Schreibweisen
-#: desselben Markers wären eine Prüfung, die irgendwann nichts mehr findet und grün bleibt.
-DR_RUMPFMARKER = "**Entscheidung ("
+# ⚠⚠ **Hier stand im ersten Entwurf von SWR-165 eine eigene Konstante `DR_RUMPFMARKER`** —
+# und `test_dr_verbuchung.test_keine_zweite_kopie_des_markers_im_quelltext` (SWR-131,
+# Sprint 17) hat sie sofort rot gemacht. Zu Recht: der Marker liegt seit SWR-039/131 in
+# `board.ENTSCHEIDUNGSMARKER`, und eine zweite Schreibweise wäre genau die Prüfung, die
+# irgendwann nichts mehr findet und trotzdem grün bleibt.
+#
+# > **Eine Anforderung, die „der Marker steht an EINER Stelle" verlangt, und deren erster
+# > Entwurf eine zweite anlegt — gefunden nicht vom Entwurf, sondern von einer Zusicherung
+# > aus einem früheren Sprint.**
+#
+# `decision_log_ohne_marker` benutzt deshalb `board.ENTSCHEIDUNGSMARKER`.
 
 
 def decision_log_ohne_marker(root):
@@ -905,6 +911,10 @@ def decision_log_ohne_marker(root):
     Prüfung am Tag ihrer Einführung 47-fach rot zu starten und damit das Wegsehen zu
     trainieren (die Lehre der 42 Altbestands-DRs aus SWR-131).
 
+    ⚠ Der Marker kommt aus `board.ENTSCHEIDUNGSMARKER` — der **einen** Stelle, an der er
+    seit SWR-039/131 steht. Der erste Entwurf legte hier eine eigene Konstante an und wurde
+    von `test_dr_verbuchung` rot; siehe den Kommentar über dieser Funktion.
+
     Gemessen beim Bau (Sprint 24): **93** Logzeilen über alle Repos, davon **46** von der
     Inbox geschrieben, **0** ohne Marker. Die Prüfung startet grün, weil der Fall bisher
     nicht eingetreten ist — und nicht, weil sie nichts ansieht.
@@ -934,7 +944,7 @@ def decision_log_ohne_marker(root):
             except OSError:
                 treffer.append((name, spalten[0], ticket_id, "Ticketdatei fehlt"))
                 continue
-            if DR_RUMPFMARKER not in rumpf:
+            if board.ENTSCHEIDUNGSMARKER not in rumpf:
                 treffer.append((name, spalten[0], ticket_id, "kein Rumpfmarker im Ticket"))
     return treffer
 

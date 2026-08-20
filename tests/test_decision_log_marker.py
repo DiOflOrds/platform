@@ -34,6 +34,7 @@ import unittest
 _HIER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HIER, ".."))
 sys.path.insert(0, os.path.join(_HIER, "..", "scripts"))
+import board  # noqa: E402
 from backend import aggregation  # noqa: E402
 
 WURZEL = os.path.dirname(os.path.dirname(_HIER))
@@ -67,7 +68,7 @@ class MarkerTest(unittest.TestCase):
                 f"repo: p0\nreviewer: qm\ngeändert: 2026-08-20\nerstellt: 2026-08-20\n---\n\n"
                 f"Rumpf.\n")
         if marker:
-            text += f"\n{aggregation.DR_RUMPFMARKER}D010, via Inbox, 2026-08-20 10:00):** A\n"
+            text += f"\n{board.ENTSCHEIDUNGSMARKER}D010, via Inbox, 2026-08-20 10:00):** A\n"
         with open(os.path.join(self.p, "tickets", f"{tid}.md"), "w",
                   encoding="utf-8", newline="\n") as f:
             f.write(text)
@@ -108,17 +109,24 @@ class MarkerTest(unittest.TestCase):
         self.assertIn("fehlt", treffer[0][3])
 
     def test_der_marker_steht_an_EINER_stelle(self):
-        """⚠ `inbox.entscheide` schreibt den Marker, diese Pruefung sucht ihn.
+        """⚠⚠ `inbox.entscheide` schreibt den Marker, diese Pruefung sucht ihn — und der
+        erste Entwurf von SWR-165 legte dafuer eine ZWEITE Konstante in `aggregation` an.
 
-        Zwei Schreibweisen desselben Markers waeren eine Pruefung, die irgendwann nichts
-        mehr findet und trotzdem gruen bleibt — dieselbe Bauart, die SWR-131 gekostet hat.
-        Gemessen wird deshalb, dass der Text, den `inbox` schreibt, mit der Konstante
-        beginnt, gegen die hier geprueft wird.
+        Rot gemacht hat das nicht der Entwurf, sondern
+        `test_dr_verbuchung.test_keine_zweite_kopie_des_markers_im_quelltext` — eine
+        Zusicherung aus Sprint 17, die zaehlt, wie viele Dateien das Marker-Literal fuehren.
+
+        > **Eine Anforderung, die 'der Marker steht an einer Stelle' verlangt, und deren
+        > erster Entwurf eine zweite anlegt.**
+
+        Geprueft wird deshalb hier, dass der Text, den `inbox` schreibt, mit
+        `board.ENTSCHEIDUNGSMARKER` beginnt — die Zaehlung der Kopien steht drueben und
+        wird hier nicht wiederholt (das waere dieselbe Dopplung eine Ebene hoeher).
         """
         with open(os.path.join(WURZEL, "platform", "backend", "inbox.py"),
                   encoding="utf-8") as f:
             quelle = f.read()
-        self.assertIn(aggregation.DR_RUMPFMARKER, quelle,
+        self.assertIn(board.ENTSCHEIDUNGSMARKER, quelle,
                       "inbox.entscheide schreibt einen anderen Marker als die Pruefung sucht")
 
     def test_am_ECHTEN_bestand_ist_die_zahl_NULL_und_die_grundmenge_nicht_leer(self):
