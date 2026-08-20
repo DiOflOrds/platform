@@ -12,7 +12,7 @@ Stand: 2026-08-20 · Tickets: 35 · davon wiederkehrend: 1
 | [T-0034](tickets/T-0034.md) | Gelernt ohne Vertreter: eine Lehre, deren Gegenmaßnahme nie ein Ticket und nie eine Prüfung geworden ist, hat vierzehn Tage lang null Wirkung gehabt | problem | einmalig | coach | Team | hoch | 27 | — |
 | [T-0035](tickets/T-0035.md) | Der Schnelltakt hat nichts zu tun: 0 von 14 offenen Tickets tragen eine ollama-besetzte Rolle — bleibt er an, wird er umgestellt, oder wird er abgeschaltet? | decision-request | einmalig | pl | MENSCH | hoch | 27 | — |
 
-## in_progress (1)
+## in_review (1)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
