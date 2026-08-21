@@ -40,6 +40,58 @@ LEHRE_KOPF = re.compile(r"^## (L-\d{4}-\d{2}-\d{2}[a-z]*|L-\d{3})\b", re.M)
 #: Beobachtungen. Die Regel-Zeile ist die Konvention, mit der dieses Haus selbst schon
 #: unterscheidet; sie ist damit gefunden und nicht erfunden.
 REGEL_ZEILE = re.compile(r"^\*\*Regel:?\*\*", re.M)
+#: ⚠⚠ **SWR-199 (platform/T-0050, Sprint 31): die „ehrliche Untermenge" war eine
+#: SCHREIBWEISE, und die Messung hat das entschieden — nicht eine Meinung.**
+#:
+#: Anlass: drei Lehren aus Sprint 30 (`cj`, `ck`, `cl`) waren für `REGEL_ZEILE`
+#: unsichtbar, weil sie `**Regel.**` statt `**Regel:**` trugen. Die Zählung blieb stehen,
+#: **und die Prüfung blieb grün** — eine Sperrklinke, die man mit einem anders gesetzten
+#: Doppelpunkt umgeht, ist keine.
+#:
+#: Gemessen am 2026-08-21 über `process/knowledge/*/lessons.md`:
+#:
+#: | | Zahl |
+#: |---|---|
+#: | Lehren gesamt | **112** |
+#: | mit `**Regel:**` (die alte Grundmenge) | **38** |
+#: | mit **irgendeiner** Regel-Schreibweise | **111** |
+#: | `ohne_vertreter` über die alte Grundmenge (38) | **29** |
+#: | `ohne_vertreter` über *irgendeine* Regel-Schreibweise (111) | **91** |
+#: | `ohne_vertreter` über **alle** Lehren (112) | **91** |
+#:
+#: **Drei Aussagen, sauber getrennt — die erste Fassung dieses Textes hat sie
+#: zusammengezogen und wurde von der eigenen Zusicherung widerlegt:**
+#:
+#: 1. **Die Konvention „hat eine Regel" trennt praktisch nichts:** 111 von 112 Lehren
+#:    tragen eine. Als Auswahlkriterium ist sie keine Auswahl.
+#: 2. **`**Regel:**` trennt sehr wohl — aber nach Zeichensetzung, nicht nach Substanz.**
+#:    Trefferquote der Vertreter: **24 %** innerhalb der 38 „Erkannten" (9 von 38),
+#:    **15 %** unter den 73 „Übersehenen" (11 von 73). Nahezu dasselbe. Die Menge, die
+#:    einen Vertreter *braucht*, sieht auf beiden Seiten gleich aus.
+#: 3. **Zwischen „irgendeine Regel-Schreibweise" und „gar kein Filter" liegt NULL:**
+#:    beide ergeben 91. Die eine Lehre ohne Regel-Zeile hat ohnehin einen Vertreter.
+#:
+#: > **⚠⚠ Deshalb fällt der Filter, statt erweitert zu werden. Erweitern und Weglassen
+#: > sind am gemessenen Bestand dasselbe Ergebnis — und von zwei gleichwertigen Bauformen
+#: > ist die mit einem Begriff weniger die richtige.**
+#:
+#: Der Preis ist in beiden Fällen derselbe und ist der Grund, warum `T-0050` nicht
+#: nebenbei repariert wurde: `ohne_vertreter` springt von **29** auf **91** — rund
+#: hundert Dauerbefunde und damit `SWR-166` ein viertes Mal. Bezahlt wird er nicht mit
+#: einem roten Bestand, sondern mit derselben Bauform, die `SWR-195` und `SWR-197` für
+#: ihren Altbestand schon zweimal benutzt haben: die Unterscheidung wandert von der
+#: **Schreibweise** auf die **Zeit**. Der gemessene Bestand ist eine **benannte** Menge
+#: und bleibt still; rot wird eine **neue** Lehre ohne Vertreter — und ab jetzt in
+#: **jeder** Schreibweise, was der eigentliche Ertrag ist: die drei Lehren aus Sprint 30
+#: wären auch heute noch unsichtbar.
+#:
+#: ⚠ **Der Ausstieg wird eine HANDLUNG statt eines Nebeneffekts.** Bisher führte man
+#: eine Lehre als bloße Beobachtung, indem man den Doppelpunkt wegließ — unsichtbar und
+#: versehentlich. Ab jetzt wird sie ausdrücklich als `**Beobachtung:**` gekennzeichnet.
+#: Das Ticket verlangt genau diese Wahl: *„Entweder eine Zusicherung bauen — oder die
+#: Lehre bewusst als Beobachtung führen. Beides ist eine Entscheidung."*
+#: Am 2026-08-21 trägt **0** Lehre den Marker; er ist ein Ausgang, kein Schlupfloch.
+BEOBACHTUNG_ZEILE = re.compile(r"^\*\*Beobachtung:?\*\*", re.M)
 #: Dateiendungen, in denen ein Vertreter zählt. ⚠ **Ticketdateien zählen bewusst nicht.**
 #: Ein Ticket ist ein Vorsatz mit Datum; eine Zusicherung ist der Vollzug. Genau dieser
 #: Unterschied ist der Gegenstand des Tickets — ein Ticket als Vertreter zu zählen hieße,
@@ -81,8 +133,32 @@ def lehren(wurzel=None):
 
 
 def mit_regel(wurzel=None):
-    """Die Grundmenge: Lehren mit ausformulierter `**Regel:**`, sortiert."""
+    """Lehren mit ausformulierter `**Regel:**`, sortiert.
+
+    ⚠ **Ab SWR-199 nicht mehr die Grundmenge**, sondern nur noch die Auskunft, wie viele
+    Lehren diese eine Schreibweise tragen. Sie bleibt stehen, weil die Messung aus
+    `platform/T-0050` sie zitiert und weil ihr Verhältnis zu `grundmenge()` der Beleg
+    ist, dass der Filter nichts ausgewählt hat. Sie zu löschen hieße, die Zahl zu
+    verlieren, an der die Entscheidung hängt.
+    """
     return sorted(k for k, t in lehren(wurzel).items() if REGEL_ZEILE.search(t))
+
+
+def beobachtungen(wurzel=None):
+    """SWR-199: Lehren, die **ausdrücklich** als Beobachtung geführt werden, sortiert."""
+    return sorted(k for k, t in lehren(wurzel).items() if BEOBACHTUNG_ZEILE.search(t))
+
+
+def grundmenge(wurzel=None):
+    """SWR-199: **alle** Lehren außer den ausdrücklich als Beobachtung geführten.
+
+    Die Ablösung von `mit_regel` als Grundmenge. Die Begründung steht bei
+    `BEOBACHTUNG_ZEILE` — hier nur die Anwendung: der Regel-Filter entfernte am
+    gemessenen Bestand in **jeder** Schreibweise null Lehren aus der Befundmenge, also
+    ist er keine Auswahl, sondern Zeremonie.
+    """
+    aus = set(beobachtungen(wurzel))
+    return sorted(k for k in lehren(wurzel) if k not in aus)
 
 
 def _vertreter_korpus(wurzel):
@@ -108,7 +184,12 @@ def _vertreter_korpus(wurzel):
 
 
 def ohne_vertreter(wurzel=None):
-    """Lehren mit Regel, die **keine** Zusicherung zitiert. Sortiert.
+    """Lehren der Grundmenge, die **keine** Zusicherung zitiert. Sortiert.
+
+    ⚠ SWR-199: die Grundmenge ist ab Sprint 31 `grundmenge()` (alle Lehren außer den
+    ausdrücklich als Beobachtung geführten) und nicht mehr `mit_regel()`. Der Wechsel
+    ist **gemessen** und nicht gewählt: der Regel-Filter entfernte null Lehren aus dem
+    Ergebnis dieser Funktion — 91 vor wie nach dem Filter.
 
     ⚠ Erkannt daran, dass die Lehr-ID im Quelltext einer Prüfung **vorkommt**. Das ist
     eine Textkonvention, und eine Prüfung auf Text prüft den Text und nicht die Sache —
@@ -120,4 +201,4 @@ def ohne_vertreter(wurzel=None):
     """
     wurzel = _wurzel(wurzel)
     korpus = _vertreter_korpus(wurzel)
-    return [k for k in mit_regel(wurzel) if not any(k in t for t in korpus)]
+    return [k for k in grundmenge(wurzel) if not any(k in t for t in korpus)]
