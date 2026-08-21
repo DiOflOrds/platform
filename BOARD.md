@@ -3,14 +3,19 @@
 Stand: 2026-08-21 · Tickets: 51 · davon wiederkehrend: 1
 
 
-## open (4)
+## open (3)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0050](tickets/T-0050.md) | SWR-194 liest eine Schreibweise, nicht eine Konvention — 34 von 111 Lehren gezählt, 110 tragen eine Regel | problem | einmalig | coach | Team | hoch | 30 | — |
-| [T-0051](tickets/T-0051.md) | Ein gesperrtes Ticket hat KEINEN zulässigen Terminwert — zwei Prüfungen bilden eine Zange, jeder Wert erzeugt einen Befund | problem | einmalig | dev | Team | hoch | 30 | — |
 | [T-0049](tickets/T-0049.md) | Der zweite Schreibweg ins Entscheidungslog hat keine Nummernvergabe — zum zweiten Mal weitergereicht, jetzt mit eigenem Termin | change-request | einmalig | cm | Team | mittel | 30 | — |
+
+## in_progress (1)
+
+| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|---|
+| [T-0051](tickets/T-0051.md) | Ein gesperrtes Ticket hat KEINEN zulässigen Terminwert — zwei Prüfungen bilden eine Zange, jeder Wert erzeugt einen Befund | problem | einmalig | dev | Team | hoch | 30 | — |
 
 ## done (47)
 
