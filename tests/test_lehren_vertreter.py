@@ -189,11 +189,29 @@ class SperrklinkeTest(unittest.TestCase):
 
         Rot in diese Richtung ist Absicht: sonst verschwände der Ertrag lautlos, und
         niemand könnte später sagen, ob die Zahl gefallen ist oder die Prüfung kaputt.
+
+        ⚠⚠ **SWR-209 (Sprint 34): die Meldung unterscheidet jetzt zwei Fälle, die sie
+        fünf Sprints lang zusammengeworfen hat.** Eine Lehre kann die Menge verlassen,
+        weil sie einen Vertreter **bekommen** hat — oder weil ihr **Kopf im Lehrbuch
+        verschwunden** ist und sie damit gar nicht mehr zur Grundmenge gehört. Der
+        Abschluss-Commit von Sprint 32 hat 91 Lehr-Abschnitte gelöscht; diese
+        Zusicherung meldete daraufhin **71 gewonnene Vertreter**.
+
+        > **Eine Prüfung, die Schrumpfen nicht von Fortschritt unterscheiden kann,
+        > meldet beides beim Namen des angenehmeren Falls.**
         """
         ist = set(lehren.ohne_vertreter())
         weg = sorted(OHNE_VERTRETER_BASIS - ist)
-        self.assertEqual(weg, [], (
-            "Diese Lehre(n) haben einen Vertreter bekommen: " + ", ".join(weg) +
+        vorhanden = set(lehren.lehren())
+        verschwunden = [k for k in weg if k not in vorhanden]
+        gewonnen = [k for k in weg if k in vorhanden]
+        self.assertEqual(verschwunden, [], (
+            "⚠⚠ KEIN Fortschritt, sondern ein VERLUST: diese Lehre(n) haben ihren Kopf "
+            "im Lehrbuch verloren und sind deshalb aus der Grundmenge gefallen: "
+            + ", ".join(verschwunden) + ". Wiederherstellen aus der Git-Historie der "
+            "Datei (siehe lehren.VERANKERTE_LEHREN) — NICHT die Basis nachziehen."))
+        self.assertEqual(gewonnen, [], (
+            "Diese Lehre(n) haben einen Vertreter bekommen: " + ", ".join(gewonnen) +
             " — bitte OHNE_VERTRETER_BASIS nachziehen, damit der Fortschritt gebucht "
             "ist und nicht nur passiert."))
 

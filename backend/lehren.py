@@ -202,3 +202,80 @@ def ohne_vertreter(wurzel=None):
     wurzel = _wurzel(wurzel)
     korpus = _vertreter_korpus(wurzel)
     return [k for k in grundmenge(wurzel) if not any(k in t for t in korpus)]
+
+#: ⚠⚠ **Die Lehren, die dieses Haus VERANKERT hat — als benannte Menge und nicht als
+#: Zahl** (`SWR-209`, `platform/T-0061`, Sprint 34).
+#:
+#: **Der Anlass ist ein Datenverlust, den fünf Sprints lang niemand bemerkt hat.** Der
+#: Abschluss-Commit von Sprint 32 (`process@a82f207`, Betreff *„Lehren cq-cv
+#: verankert"*) hat `knowledge/cm/lessons.md` von **1931 auf 26 Zeilen** und
+#: `knowledge/pl/lessons.md` von **871 auf 26** gekürzt: **91 Lehr-Abschnitte gelöscht**,
+#: **2 hinzugefügt**. Geschrieben wurde die Datei, statt an sie anzuhängen.
+#:
+#: > **⚠⚠ Ein Commit, der „verankert" im Betreff trägt, hat 91 Lehren entfernt. Und die
+#: > Prüfung, die das hätte finden müssen, hat es als FORTSCHRITT gemeldet: „Diese
+#: > Lehre(n) haben einen Vertreter bekommen — bitte die Basis nachziehen."**
+#:
+#: Die Menge `OHNE_VERTRETER_BASIS` (Stand Sprint 31, **91** IDs) hatte die ganze Zeit
+#: recht; die 71 vermeintlich „gewonnenen Vertreter" waren **verschwundene
+#: Gegenstände**. `platform/T-0061` hat daraus in Sprint 33 gefolgert, die Lehren hätten
+#: *„nie in einem Lehrbuch gelebt"* — auch das war falsch. Sie haben dort gelebt, bis ein
+#: Commit sie überschrieb.
+#:
+#: > **Eine Prüfung, die Schrumpfen nicht von Fortschritt unterscheiden kann, meldet
+#: > beides beim Namen des angenehmeren Falls — und ein Bestand kann verschwinden,
+#: > während sein Wächter Erfolg meldet.**
+#:
+#: ⚠ Wiederhergestellt aus `process@386627d` (Sprint-32-Abschluss vor dem Verlust); die
+#: beiden danach hinzugekommenen Lehren (`cu`, `cv`) sind **angehängt** und nicht
+#: ersetzt. Das ist **kein** Umschreiben von Historie (Playbook Kap. 16), sondern die
+#: Rücknahme einer unbeabsichtigten Löschung: die Git-Historie bleibt unangetastet,
+#: wiederhergestellt wird der Arbeitsstand.
+#:
+#: ⚠ Als **Menge** geführt und nicht als Zahl (`L-2026-08-20by`): eine Zahl sagt nicht,
+#: WELCHE Lehre verschwunden ist. Neue Lehren kommen hinzu — die Menge ist eine
+#: Untergrenze und keine Obergrenze.
+VERANKERTE_LEHREN = frozenset({
+    "L-2026-08-16", "L-2026-08-16b", "L-2026-08-16c", "L-2026-08-16d",
+    "L-2026-08-16e", "L-2026-08-16f", "L-2026-08-16g", "L-2026-08-16h",
+    "L-2026-08-16i", "L-2026-08-16j", "L-2026-08-16k", "L-2026-08-16l",
+    "L-2026-08-16m", "L-2026-08-17a", "L-2026-08-17aa", "L-2026-08-17ab",
+    "L-2026-08-17ac", "L-2026-08-17ad", "L-2026-08-17ae", "L-2026-08-17af",
+    "L-2026-08-17ag", "L-2026-08-17ah", "L-2026-08-17ai", "L-2026-08-17aj",
+    "L-2026-08-17ak", "L-2026-08-17al", "L-2026-08-17am", "L-2026-08-17an",
+    "L-2026-08-17ao", "L-2026-08-17ap", "L-2026-08-17aq", "L-2026-08-17ar",
+    "L-2026-08-17as", "L-2026-08-17at", "L-2026-08-17au", "L-2026-08-17av",
+    "L-2026-08-17aw", "L-2026-08-17ax", "L-2026-08-17ay", "L-2026-08-17az",
+    "L-2026-08-17b", "L-2026-08-17ba", "L-2026-08-17bb", "L-2026-08-17bc",
+    "L-2026-08-17bd", "L-2026-08-17be", "L-2026-08-17bf", "L-2026-08-17bg",
+    "L-2026-08-17c", "L-2026-08-17d", "L-2026-08-17e", "L-2026-08-17f",
+    "L-2026-08-17g", "L-2026-08-17h", "L-2026-08-17i", "L-2026-08-17j",
+    "L-2026-08-17k", "L-2026-08-17l", "L-2026-08-17m", "L-2026-08-17n",
+    "L-2026-08-17o", "L-2026-08-17p", "L-2026-08-17q", "L-2026-08-17r",
+    "L-2026-08-17s", "L-2026-08-17t", "L-2026-08-17u", "L-2026-08-17v",
+    "L-2026-08-17w", "L-2026-08-17x", "L-2026-08-17y", "L-2026-08-17z",
+    "L-2026-08-20bh", "L-2026-08-20bi", "L-2026-08-20bj", "L-2026-08-20bk",
+    "L-2026-08-20bl", "L-2026-08-20bm", "L-2026-08-20bn", "L-2026-08-20bo",
+    "L-2026-08-20bp", "L-2026-08-20bq", "L-2026-08-20br", "L-2026-08-20bs",
+    "L-2026-08-20bt", "L-2026-08-20bu", "L-2026-08-20bv", "L-2026-08-20bw",
+    "L-2026-08-20bx", "L-2026-08-20by", "L-2026-08-20bz", "L-2026-08-20ca",
+    "L-2026-08-20cb", "L-2026-08-20cc", "L-2026-08-20cd", "L-2026-08-20ce",
+    "L-2026-08-20cf", "L-2026-08-20cg", "L-2026-08-20ch", "L-2026-08-20ci",
+    "L-2026-08-20cj", "L-2026-08-20ck", "L-2026-08-20cl", "L-2026-08-20cm",
+    "L-2026-08-20cn", "L-2026-08-20co", "L-2026-08-20cp", "L-2026-08-20cq",
+    "L-2026-08-21cj", "L-2026-08-21ck", "L-2026-08-21cl", "L-2026-08-21cm",
+    "L-2026-08-21cn", "L-2026-08-21co", "L-2026-08-21cp", "L-2026-08-21cq",
+    "L-2026-08-21cr", "L-2026-08-21cs", "L-2026-08-21ct", "L-2026-08-21cu",
+    "L-2026-08-21cv", "L-2026-08-21cw", "L-2026-08-21cx", "L-2026-08-21cy",
+    "L-2026-08-21cz", "L-2026-08-21da",
+})
+
+
+def verschwundene(wurzel=None):
+    """Verankerte Lehren, die heute **keinen Kopf mehr** in einem Lehrbuch haben. Sortiert.
+
+    ⚠ Die Antwort ist eine Liste von **Namen** und keine Differenz zweier Zahlen — genau
+    daran ist der Verlust aus Sprint 32 fünf Sprints lang vorbeigelaufen.
+    """
+    vorhanden = set(lehren(wurzel))
+    return sorted(VERANKERTE_LEHREN - vorhanden)
