@@ -294,6 +294,74 @@ def lies(pfad):
     return faelle, kaputt
 
 
+#: Untergrenze aus `promt-team/T-0008` DoD 1: eine Rolle mit Läufen braucht ≥ 20 belegte
+#: Fälle. ⚠ Die Zahl steht **hier** und nicht im Test, damit Regel und Prüfung nicht zwei
+#: Schreibweisen derselben Aussage sind (die Bauart aus SWR-131).
+MINDESTFAELLE_JE_ROLLE = 20
+
+
+def rollen_mit_laeufen(wurzel):
+    """`{rolle: anzahl}` über **alle** Run-Registries der Organisation.
+
+    ⚠⚠ **Die Grundmenge ist hier der eigentliche Gegenstand** (`SWR-128`-Familie, in
+    Sprint 26 *und* 27 *und* 28 dieselbe Stelle): `promt-team/T-0008` hat drei Sprints lang
+    auf *„einen Lauf"* gewartet und dabei an **einem Abend** gemessen, während die Frage
+    über den **Bestand** gestellt war. Diese Funktion liest deshalb jede Registry, die die
+    Discovery findet, und nicht die eine, die gerade im Ticket zitiert wird.
+
+    > *Eine Bedingung über einen Bestand, gemessen an einem Ereignis, ist grün oder rot je
+    > nachdem, wann man hinsieht.*
+    """
+    zaehler = {}
+    for repo in sorted(os.listdir(wurzel)):
+        pfad = os.path.join(wurzel, repo, "management", "runs", "run-registry.jsonl")
+        if not os.path.isfile(pfad):
+            continue
+        with open(pfad, encoding="utf-8") as f:
+            for zeile in f:
+                zeile = zeile.strip()
+                if not zeile:
+                    continue
+                try:
+                    rolle = (json.loads(zeile).get("rolle") or "").strip()
+                except ValueError:
+                    continue          # eine kaputte Zeile ist kein Lauf, aber auch kein Grund
+                if rolle:
+                    zaehler[rolle] = zaehler.get(rolle, 0) + 1
+    return zaehler
+
+
+def abdeckung(wurzel, goldset_pfad="promt-team/management/goldset.jsonl"):
+    """Wer hat Läufe, wer hat ein Goldset? — `promt-team/T-0008` als **Prüfung**.
+
+    Rückgabe `{"mit_laeufen", "faelle_je_rolle", "unterdeckt", "ohne_laeufe"}`:
+
+    * ``unterdeckt`` — Rollen **mit** Läufen und **weniger** als
+      `MINDESTFAELLE_JE_ROLLE` Fällen. Das ist der **Befund**; jede andere Zeile ist Auskunft.
+    * ``ohne_laeufe`` — Rollen im Goldset ohne einen einzigen aufgezeichneten Lauf.
+      ⚠ **Kein Befund**, sondern DoD 2 des Tickets: *die Lücke bleibt sichtbar* statt mit
+      abgeleiteten Fällen gefüllt zu werden.
+
+    ⚠ Was hier **nicht** gemessen wird: ob ein Lauf `status: ok` hatte. Ein Fehlschlag ist
+    ein Lauf — er zeigt, dass die Rolle im Betrieb angefasst wird, und genau darauf zielt
+    *„das Goldset folgt dem Betrieb"*. Die Verwechslung von „gelaufen" mit „gelungen" hat
+    dieses Haus in Sprint 26 schon einmal einen Sprint gekostet.
+    """
+    laeufe = rollen_mit_laeufen(wurzel)
+    faelle, _ = lies(os.path.join(wurzel, *goldset_pfad.split("/")))
+    je_rolle = {}
+    for f in faelle:
+        r = (f.get("rolle") or "").strip()
+        if r:
+            je_rolle[r] = je_rolle.get(r, 0) + 1
+    unterdeckt = sorted((r, je_rolle.get(r, 0)) for r in laeufe
+                        if je_rolle.get(r, 0) < MINDESTFAELLE_JE_ROLLE)
+    return {"mit_laeufen": laeufe,
+            "faelle_je_rolle": je_rolle,
+            "unterdeckt": unterdeckt,
+            "ohne_laeufe": sorted(r for r in je_rolle if r not in laeufe)}
+
+
 def haenge_an(pfad, fall):
     """Einen **geprüften** Fall anhängen — append-only wie die Run-Registry.
 

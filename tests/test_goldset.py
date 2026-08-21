@@ -268,3 +268,82 @@ class DateiTest(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+# ---------------------------------------- promt-team/T-0008 (Sprint 28, VIERTE Berührung)
+
+class AbdeckungTest(unittest.TestCase):
+    """SWR-190: *„eine Rolle bekommt ein Goldset, sobald sie Läufe hat — mit Prüfung."*
+
+    ⚠⚠ **Der Anlass ist, dass das Ticket bei der vierten Berührung SCHON ERFÜLLT war.**
+    Es hat drei Sprints lang auf *„einen frischen Lauf"* gewartet. Seine DoD 1 fragt aber
+    nach Rollen, die Läufe **haben** — und das sind `cm` und `dev`, beide seit dem
+    2026-08-17 mit 23 bzw. 28 Fällen abgedeckt.
+
+    > **Zum DRITTEN Mal in drei Sprints hat eine Bedingung über den BESTAND gelesen und
+    > ist an einem EREIGNIS gemessen worden (`SWR-128`-Familie). Was gefehlt hat, war nie
+    > der Lauf, sondern der VERTRETER: eine Prüfung, die die Regel von allein wiederholt.**
+
+    Ab hier wird die Frage nicht mehr gestellt, sondern beantwortet — bei jedem Lauf.
+    """
+
+    def setUp(self):
+        if not os.path.isfile(os.path.join(_WURZEL, "promt-team", "management",
+                                           "goldset.jsonl")):
+            self.skipTest("Goldset hier nicht erreichbar")
+        self.a = goldset.abdeckung(_WURZEL)
+
+    def test_die_grundmenge_ist_nicht_leer(self):
+        """⚠ SWR-128: eine Prüfung über null Rollen ist grün, weil sie nichts ansieht."""
+        self.assertGreaterEqual(len(self.a["mit_laeufen"]), 1,
+                                "keine Rolle mit Läufen gefunden — die Prüfung läse nichts")
+        self.assertGreaterEqual(len(self.a["faelle_je_rolle"]), 1,
+                                "Goldset leer — die Prüfung läse nichts")
+
+    def test_jede_rolle_mit_laeufen_hat_ihr_goldset(self):
+        """DoD 1: ≥ 20 belegte Fälle je Rolle mit mindestens einem aufgezeichneten Lauf.
+
+        ⚠ Diese Zusicherung wird **von allein rot**, sobald eine elfte Rolle ihren ersten
+        Lauf bekommt — und genau das ist der Ertrag der vierten Berührung. Vorher hätte
+        die Lücke gewartet, bis jemand nachfragt.
+        """
+        self.assertEqual(
+            self.a["unterdeckt"], [],
+            "Rolle(n) mit Läufen und zu wenig Goldset-Fällen (Untergrenze "
+            f"{goldset.MINDESTFAELLE_JE_ROLLE}): "
+            + ", ".join(f"{r} hat {n}" for r, n in self.a["unterdeckt"]))
+
+    def test_rollen_ohne_lauf_sind_KEIN_befund_sondern_werden_benannt(self):
+        """DoD 2, und die ⚠ Gegenprobe zur Zusicherung darüber.
+
+        Eine Rolle **ohne** Lauf darf das Set nicht rot machen — sonst erzwänge die
+        Prüfung genau das, was DoD 2 verbietet: abgeleitete Fälle für Rollen, gegen die
+        man sie nicht halten kann. Sie ist deshalb eine **Auskunft**, und sie ist
+        **namentlich**, damit die Lücke sichtbar bleibt statt zu verschwinden.
+        """
+        self.assertIsInstance(self.a["ohne_laeufe"], list)
+        for rolle in self.a["ohne_laeufe"]:
+            self.assertNotIn(rolle, self.a["mit_laeufen"])
+            self.assertNotIn(rolle, [r for r, _ in self.a["unterdeckt"]])
+
+    def test_ein_fehlgeschlagener_lauf_zaehlt_als_lauf(self):
+        """⚠ Die Verwechslung, die diesem Haus Sprint 26 gekostet hat, hier ausdrücklich.
+
+        `abdeckung` fragt „wird die Rolle im Betrieb angefasst?" und nicht „ist es gut
+        ausgegangen?". Gemessen am echten Bestand: `dev` hat Läufe, von denen mehrere
+        `status: fehler` tragen — und ist trotzdem eine Rolle mit Läufen.
+        """
+        self.assertIn("dev", self.a["mit_laeufen"])
+
+    def test_gegenprobe_eine_rolle_mit_lauf_und_ohne_faelle_wird_gemeldet(self):
+        """⚠ Ohne diese Hälfte wäre die Prüfung auch dann grün, wenn sie nichts fände."""
+        with tempfile.TemporaryDirectory() as tmp:
+            reg = os.path.join(tmp, "p0", "management", "runs")
+            os.makedirs(reg)
+            with open(os.path.join(reg, "run-registry.jsonl"), "w", encoding="utf-8") as f:
+                f.write(json.dumps({"rolle": "hausmeister", "status": "ok"}) + "\n")
+            gs = os.path.join(tmp, "promt-team", "management")
+            os.makedirs(gs)
+            open(os.path.join(gs, "goldset.jsonl"), "w", encoding="utf-8").close()
+            a = goldset.abdeckung(tmp)
+            self.assertEqual(a["unterdeckt"], [("hausmeister", 0)])
