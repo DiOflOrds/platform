@@ -410,6 +410,29 @@ def statusdrift(root):
     return None if sicht is None else sicht.get("status_drift", [])
 
 
+def plannachlauf(root):
+    """SWR-201 (platform/T-0052): die Planzeilen, die der LAUFENDE Sprint garantiert erzeugt.
+
+    Gelesen wird derselbe Schlüssel, den `sprint.plan` gefüllt hat — hier wird **nicht**
+    ein zweites Mal klassifiziert. Die Trennung steht in `sprint.plan_nachlauf` und
+    nirgends sonst; eine zweite Bedingung an dieser Stelle wäre B033 mit einer
+    **Begründung** als Kopie, und genau daran ist `SWR-166` 83 Läufe lang gescheitert.
+
+    ⚠⚠ **`None` heißt „konnte nicht prüfen" und deckt AUCH den fehlenden Schlüssel ab.**
+    Der erste Entwurf schrieb `sicht.get("plan_nachlauf", [])` — und damit hätte ein
+    Ausbau der Verdrahtung in `sprint.plan` eine **leere Liste** ergeben, also die stille
+    Erfolgsmeldung, gegen die `statusdrift` oben ausdrücklich argumentiert. Das Review
+    dieses Sprints hat es am Bestand vorgeführt: Aufruf und Payload-Schlüssel entfernt,
+    alle sechs Zusicherungen blieben grün und der Preflight meldete „0".
+
+    > **Ein Vorgabewert verwandelt eine fehlende Antwort in eine beruhigende.**
+    """
+    sicht = sprintsicht(root)
+    if sicht is None or "plan_nachlauf" not in sicht:
+        return None
+    return sicht["plan_nachlauf"]
+
+
 def plandrift(root):
     """SWR-122 (platform/T-0011): Planzeilen, die eine ANDERE Sprintnummer nennen als ihr Ticket.
 
@@ -1044,6 +1067,26 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         befunde += 1
     else:
         print("[org] Statusdrift Plan/Ticket: 0.")
+    # SWR-201 (platform/T-0052): der Plannachlauf des LAUFENDEN Sprints. Kein Befund und
+    # trotzdem eine Zeile — am laufenden Betrieb gemessen (60 Läufe, 7 Sprints): dieses
+    # Fenster steht in JEDEM Sprint, 15–45 Min, 24 % der Beobachtungszeit, und hat den
+    # Schnelltakt des Auftraggebers dreimal als EINZIGER Befund abgebrochen.
+    #
+    # ⚠ Die Zeile nennt Referenzen und den GRUND, nicht nur eine Zahl. `SWR-196` hat
+    # gemessen, was eine wahre, aber zu enge Meldung kostet: sie lädt ein, es in 15
+    # Minuten nochmal zu versuchen — 90-mal geschehen. Wer hier liest, soll wissen, dass
+    # Warten die falsche Handlung ist und der Plan am Sprint-Abschluss nachzieht.
+    nachlauf = plannachlauf(root)
+    if nachlauf is None:
+        print("[org] Plannachlauf laufender Sprint: nicht prüfbar (Sprintsicht nicht ladbar).")
+    elif nachlauf:
+        print(f"[org] {len(nachlauf)} Planzeile(n) hinken dem Ticket nach, weil der Sprint "
+              f"LÄUFT — kein Befund (pm/D006: der Plan wird am Sprint-Abschluss "
+              f"fortgeschrieben):")
+        for d in nachlauf:
+            print(f"    {d['ref']}: {d['meldung']}")
+    else:
+        print("[org] Plannachlauf laufender Sprint: 0.")
     # SWR-122 (platform/T-0011): die beiden Nachbarn von `status_drift`, die bis Sprint 10
     # berechnet und von niemandem gelesen wurden.
     #

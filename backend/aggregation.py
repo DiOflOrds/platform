@@ -240,20 +240,31 @@ def navigation(root):
             "anzahl_weitere": len(weitere)}
 
 
+# SWR-202 (platform/T-0053): die Endzustaende als EIN benannter Ort.
+# ⚠ Steht bewusst VOR seinen Lesern: die Konstante lag bis Sprint 32 unter der
+# Funktion, die sie braucht — lauffaehig, aber ein Leser, der `uebersicht` liest,
+# sah nur ein Literal und musste die Festlegung suchen. Genau dieses Suchen hat
+# `kennzahlen.py` zwanzig Sprints lang nicht getan (SWR-113 -> SWR-202).
+ENDZUSTAENDE = ("done", "rejected")
+
+
 def uebersicht(root):
     """SWR-026: je Projekt offene Tickets + offene Decision Requests."""
     eintraege = []
     for name in projekte(root):
         tickets, _ = board.lade_tickets(projekt_pfad(root, name))  # SWR-070
-        offen = [t for t in tickets if t.get("status") not in ("done", "rejected")]
+        # SWR-202 (platform/T-0053): dieselbe benannte Konstante wie `offen_gesamt`.
+        # Das Literal stand hier inline und stimmte zufällig — ein Literal, das mit der
+        # Festlegung zusammenfällt, ist von einem, das sie zitiert, nicht zu
+        # unterscheiden, und genau daran ist `kennzahlen.py` zwanzig Sprints später
+        # vorbeigelaufen.
+        offen = [t for t in tickets if t.get("status") not in ENDZUSTAENDE]
         drs = [{"id": t.get("id"), "titel": t.get("titel")} for t in offen
                if t.get("typ") == "decision-request"]
         eintraege.append({"projekt": name, "tickets_gesamt": len(tickets),
                           "tickets_offen": len(offen), "offene_drs": drs})
     return {"projekte": eintraege}
 
-
-ENDZUSTAENDE = ("done", "rejected")
 
 
 def ist_altlast(t, heute=None, tage=1):

@@ -123,8 +123,43 @@ def zaehle_briefkasten(root):
     return offen
 
 
+# SWR-202 (platform/T-0053): „nicht geschlossen" steht ab hier an EINER Stelle.
+#
+# `SWR-113` (Sprint 7, pm/T-0046) hat die Zählweise festgelegt — und die Festlegung stand
+# in einem **Docstring** und in **keiner Zusicherung**. Zwanzig Sprints später ist
+# `kennzahlen.py` entstanden und hat sie nicht übernommen; nicht aus Widerspruch, sondern
+# weil nichts sie vertrat. Das ist wörtlich `SWR-125`: eine Entscheidung, die keine
+# Prüfung mitgeändert hat, ist eine Absichtserklärung.
+ENDZUSTAENDE = ("done", "rejected")
+
+
 def zaehle_tickets(root):
-    """Offene Tickets und die davon, die auf einen Menschen warten (Entscheidungsanfragen)."""
+    """Offene Tickets und die davon, die auf einen Menschen warten.
+
+    ⚠⚠ **Die Messung hat die Frage des Tickets umgestellt.** `platform/T-0053` fragte,
+    welche von **zwei** Zählweisen bleibt (9 gegen 12). Gezählt sind **drei** Erzeuger
+    derselben Größe, und das Ergebnis ist keine Mehrheitsentscheidung:
+
+    | Erzeuger | Name | Zahl | Definition |
+    |---|---|---|---|
+    | `sprint.kennzahlen` | `offen_gesamt` | **12** | nicht `done`/`rejected` (`SWR-113`) |
+    | `aggregation.uebersicht` | `tickets_offen` | **12** | nicht `done`/`rejected` (`SWR-113`) |
+    | `kennzahlen.zaehle_tickets` | `tickets_offen` | **9** | `status == "open"` |
+
+    > **Zwei von drei Erzeugern folgten der Festlegung bereits — und ausgerechnet die
+    > beiden, die sich den NAMEN `tickets_offen` teilen, waren die, die sich
+    > widersprachen.** Die Alternative des Tickets („eine Zahl ODER zwei Namen") ist damit
+    > gegenstandslos: es gibt nicht zwei berechtigte Größen unter einem Namen, sondern
+    > **eine** Größe mit einem abweichenden Erzeuger — dem jüngsten.
+
+    Die Differenz sind genau die **3 gesperrten** Tickets. Ein `blocked`-Ticket ist nicht
+    geschlossen; es aus der Zahl „offen" zu nehmen hieße, dass eine Sperre eine Aufgabe
+    zum Verschwinden bringt — und das ist die Bauform, gegen die `SWR-193` gebaut wurde.
+
+    ⚠ `warten` zählt aus **derselben** Grundmenge. Liefe es weiter über `== "open"`,
+    entstünde genau der Fehler, den `test_offene_tickets_und_wartende_haengen_zusammen`
+    seit Sprint 24 fängt: zwei Zahlen über zwei Mengen, die niemand zusammen liest.
+    """
     offen = warten = 0
     muster = [os.path.join(root, "*", "tickets", "T-*.md"),
               os.path.join(root, "*", "*", "tickets", "T-*.md")]
@@ -136,7 +171,7 @@ def zaehle_tickets(root):
                 continue
             gesehen.add(echt)
             fm = _frontmatter(pfad)
-            if fm.get("status") != "open":
+            if (fm.get("status") or "") in ENDZUSTAENDE:
                 continue
             offen += 1
             if fm.get("typ") == "decision-request":

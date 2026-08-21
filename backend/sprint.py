@@ -585,6 +585,93 @@ def _nach_ref(tickets):
     return nach_ref
 
 
+def plan_nachlauf(treffer, laeuft):
+    """SWR-201 (platform/T-0052): trennt den GARANTIERTEN Zustand vom Befund.
+
+    Anlass (am laufenden Betrieb gemessen, 2026-08-20/21, `ollama-schnelltakt.log`):
+    **60** Läufe über **7** Sprints (25–31). In **14** davon (23 %) meldete
+    `status_drift`; in **jedem einzelnen** der 7 Sprints gab es genau ein solches
+    Fenster, 15–45 Minuten lang, zusammen **210 von 885** Minuten (24 %) der
+    Beobachtungszeit. In 3 Läufen war die Drift der **einzige** Befund — dort und nur
+    dort hätte der Tick gearbeitet, wenn sie nicht dagewesen wäre.
+
+    **Zwei richtige Regeln, und dazwischen ein Zustand, den keine von ihnen kennt:**
+
+    * `pm/D006` schreibt den Sprintplan am **Sprint-Abschluss** fort. Richtig — ihn nach
+      jedem Ticket umzuschreiben hieße, eine Entscheidung des PM in Raten zu treffen.
+    * `SWR-115` meldet jede Planzeile, die ihrem Ticket widerspricht. Richtig und teuer
+      erkauft (Sprint 7, `platform/T-0010`, vierfache Falschmeldung).
+
+    Zusammen heißt das: **sobald eine Session ihr erstes Ticket schließt und bevor sie
+    ihren Plan neu schreibt, ist der Bestand widersprüchlich — per Konstruktion.** Das
+    Fenster ist kein Ausrutscher, es ist die Dauer eines Sprints. Dieselbe Familie wie
+    `SWR-198` aus Sprint 31: der Fehler liegt nicht IN einer Prüfung, sondern ZWISCHEN
+    zweien.
+
+    ⚠⚠ **Die Messung hat die Bauform entschieden, nicht die Bequemlichkeit.** Über
+    dieselben 60 Läufe:
+
+    | Richtung | Zeilen im Log |
+    |---|---|
+    | `ticket_zu_frueh_fertig` (Ticket `done`, Plan „offen") | **38** |
+    | `plan_zu_frueh_fertig` (Plan „erledigt", Ticket offen) | **0** |
+
+    **Die Richtung, die während eines laufenden Sprints garantiert auftritt, ist genau
+    die HARMLOSE — und die teure aus Sprint 7 ist in 7 Sprints kein einziges Mal
+    vorgekommen.** Deshalb greift die Ausnahme **nur** für
+    `ticket_zu_frueh_fertig`: dort ist die Arbeit *fertig* und der Plan hinkt nach; die
+    Meldung untertreibt den Fortschritt und kann keine Falschmeldung nach außen
+    erzeugen. `plan_zu_frueh_fertig` behauptet Arbeit, die nicht getan ist — das ist der
+    Schaden, gegen den `SWR-115` gebaut wurde, und der bleibt in **jedem** Sprint ein
+    Befund.
+
+    ⚠ **Gebunden an den laufenden Sprint und damit an etwas, das von allein endet.**
+    `laeuft` ist `sprint_register.laufender(root)`; sobald der Sprint beendet ist,
+    liefert es `None` und **alle** Zeilen sind wieder Befund. Eine Ausnahme, die auf ein
+    Statuswort oder eine Selbstauskunft hörte, wäre ein Schlupfloch für jede unbequeme
+    Planzeile (die Lehre aus `SWR-198`: an den Verweis binden, nicht an das Wort). Hier
+    ist das bindende Merkmal ein Registereintrag, den die Session nicht nebenbei setzt.
+
+    ⚠ **Stillgestellt wird nichts.** Die Nachlaufzeilen werden **namentlich** gemeldet,
+    nur ohne Befundzähler — sonst wäre es `SWR-114` (eine Prüfung, die schweigt, ist von
+    einer, die nicht läuft, nicht zu unterscheiden). Und weil `SWR-196` gezeigt hat, dass
+    eine wahre, aber zu enge Meldung dasselbe Wegsehen trainiert wie eine falsche, nennt
+    die Meldung den **Grund** (`pm/D006`) statt nur die Zeilen.
+
+    Gibt `(befund, nachlauf)` zurück.
+    """
+    if not laeuft:
+        return list(treffer), []
+    nr = laeuft.get("nr") if hasattr(laeuft, "get") else None
+    befund, nachlauf = [], []
+    for t in treffer:
+        # ⚠⚠ DREI Bedingungen, und jede einzelne ist im Review dieses Sprints als
+        # fehlend nachgewiesen worden — die erste Fassung hatte nur die erste.
+        #
+        # 1. Die harmlose Richtung. `plan_zu_frueh_fertig` behauptet Arbeit, die das
+        #    Ticket nicht bestätigt — der Schaden aus Sprint 7.
+        # 2. **`done`, ausdrücklich NICHT `rejected`.** `TICKET_GESCHLOSSEN` enthält
+        #    beide, und über diesen Weg wäre die Ausnahme ein Schlupfloch gewesen: eine
+        #    Session, die ein unbequemes Ticket auf `rejected` setzt, während der Plan
+        #    „offen" sagt, hätte gar keinen Befund mehr erzeugt. Ein verworfenes Ticket
+        #    ist kein „fertig, Plan hinkt nach" — es ist eine Entscheidung, die der Plan
+        #    abbilden muss.
+        # 3. **Die Planzeile muss zum LAUFENDEN Sprint gehören.** Sonst wäre die
+        #    Ausnahme an „irgendein Sprint läuft" gebunden — und während gearbeitet
+        #    wird, läuft immer einer. Eine Planzeile aus Sprint 7 mit längst `done`
+        #    Ticket wäre mit unterdrückt worden, und genau das verbietet die DoD von
+        #    `platform/T-0052` („Wirkung für VERGANGENE Sprints nachweislich
+        #    unverändert"). `sprint_nr is None` heißt „dieser Sprint" (SWR-106) und
+        #    gehört dazu.
+        eigener = t.get("plan_sprint") in (None, nr)
+        if (t.get("richtung") == "ticket_zu_frueh_fertig"
+                and t.get("ticket") == "done" and eigener):
+            nachlauf.append(t)
+        else:
+            befund.append(t)
+    return befund, nachlauf
+
+
 def status_drift(plan_zeilen, alle):
     """SWR-115 (pm/T-0049): Planzeilen, deren STATUSSPALTE dem Ticket widerspricht.
 
@@ -632,6 +719,11 @@ def status_drift(plan_zeilen, alle):
         elif wort in PLAN_OFFEN and geschlossen:
             treffer.append({"ref": ticket["ref"], "titel": ticket["titel"],
                             "plan": wort, "ticket": ticket.get("status", ""),
+                            # SWR-201: die Sprintnummer der PLANZEILE. Ohne sie kann
+                            # `plan_nachlauf` nur wissen, DASS ein Sprint läuft, und
+                            # nicht, ob diese Zeile zu ihm gehört — eine Zeile aus
+                            # Sprint 7 sähe genauso aus wie eine von heute.
+                            "plan_sprint": z.get("sprint_nr"),
                             "richtung": "ticket_zu_frueh_fertig",
                             "meldung": "Ticket steht auf \u201e%s\u201c, Plan sagt \u201e%s\u201c"
                                        % (ticket.get("status", ""), wort)})
@@ -723,6 +815,12 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
     drift = plan_drift(plan_zeilen, offene)   # SWR-109
     vergangen = sprint_vergangen(offene, jetzt_nr)   # SWR-112 (pm/T-0045)
     statusdrift = status_drift(plan_zeilen, alle_tickets(root))  # SWR-115 (pm/T-0049)
+    # SWR-201 (platform/T-0052): der Nachlauf des Plans im LAUFENDEN Sprint ist ein
+    # garantierter Zustand (pm/D006) und kein Befund. Getrennt wird HIER, damit beide
+    # Leser — Preflight und Sichtenbau — dieselbe Antwort bekommen; zwei Aufrufer eines
+    # Satzes wären B033 (die Lehre aus SWR-198: eine Implementierung, nicht ein Text).
+    statusdrift, nachlauf = plan_nachlauf(statusdrift,
+                                          sprint_register.laufender(root))
     zahlen = kennzahlen(offene)                      # SWR-113 (pm/T-0046)
     for o in offene:
         o.pop("_ticket", None)
@@ -764,6 +862,11 @@ def plan(root, jetzt=None, heute=None, projekt=QUELLE_PROJEKT, datei=QUELLE_DATE
             "plan_drift": drift,            # SWR-109
             "sprint_vergangen": vergangen,  # SWR-112 (pm/T-0045)
             "status_drift": statusdrift,    # SWR-115 (pm/T-0049)
+            # SWR-201 (platform/T-0052): dieselben Zeilen, aber die, die der laufende
+            # Sprint per Konstruktion erzeugt. Eigener Schlüssel und eigener Name, weil
+            # sie eine ANDERE Aussage sind — nicht eine zweite Lesart von `status_drift`
+            # (B033, die Familie platform/T-0027: zwei Größen unter einem Namen).
+            "plan_nachlauf": nachlauf,      # SWR-201 (platform/T-0052)
             "kennzahlen": zahlen,           # SWR-113 (pm/T-0046)
             "sprint_nr": jetzt_nr,          # SWR-106: der laufende Sprint
             # SWR-144 (pm/T-0065): die Nummer, die der Knopf setzen wird — damit die
