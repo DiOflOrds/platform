@@ -172,8 +172,119 @@
    "datenklasse": "intern",
    "einheit": "p13",
    "profil": "entwicklung",
-   "rollen": [],
-   "status": "ohne Status",
+   "rollen": [
+    {
+     "hinweis": "",
+     "instanz": "ARCH@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Architekt",
+     "quelle": "core",
+     "rolle": "ARCH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CHG@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Change-Manager",
+     "quelle": "core",
+     "rolle": "CHG",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CM@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Konfigurationsmanager",
+     "quelle": "core",
+     "rolle": "CM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "COACH@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prozess-Coach",
+     "quelle": "core",
+     "rolle": "COACH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "DEV@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Entwickler",
+     "quelle": "core",
+     "rolle": "DEV",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PL@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "core",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PROB@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Problemmanager",
+     "quelle": "core",
+     "rolle": "PROB",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "QM@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Qualitätsmanager",
+     "quelle": "core",
+     "rolle": "QM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "RM@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Requirements-Manager",
+     "quelle": "core",
+     "rolle": "RM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "TEST@p13",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Verifikationsingenieur",
+     "quelle": "core",
+     "rolle": "TEST",
+     "status": "aktiv",
+     "takt": "sprint"
+    }
+   ],
+   "status": "aktiv",
    "team": null,
    "typ": "projekt"
   },
@@ -929,6 +1040,128 @@
    ],
    "status": "aktiv",
    "team": "team-mail",
+   "typ": "projekt"
+  },
+  {
+   "anzeigename": "P16 Termine (Kalender der Familie)",
+   "beschreibung": "Termine aus E-Mails erkennen und im Google-Kalender der Familie fuehren (lesend zuerst; Schreiben nur mit Bestaetigungsstufe, pm/D016 = B)",
+   "datenklasse": "sensibel",
+   "einheit": "team-termine",
+   "profil": "entwicklung",
+   "rollen": [
+    {
+     "hinweis": "",
+     "instanz": "ARCH@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Architekt",
+     "quelle": "core",
+     "rolle": "ARCH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CHG@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Change-Manager",
+     "quelle": "core",
+     "rolle": "CHG",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "CM@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Konfigurationsmanager",
+     "quelle": "core",
+     "rolle": "CM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "COACH@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Prozess-Coach",
+     "quelle": "core",
+     "rolle": "COACH",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "DEV@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Entwickler",
+     "quelle": "core",
+     "rolle": "DEV",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PL@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Projektleiter",
+     "quelle": "core",
+     "rolle": "PL",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "PROB@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Problemmanager",
+     "quelle": "core",
+     "rolle": "PROB",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "QM@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Qualitätsmanager",
+     "quelle": "core",
+     "rolle": "QM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "RM@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Requirements-Manager",
+     "quelle": "core",
+     "rolle": "RM",
+     "status": "aktiv",
+     "takt": "sprint"
+    },
+    {
+     "hinweis": "",
+     "instanz": "TEST@team-termine",
+     "modell": "",
+     "motor": "cowork",
+     "name": "Verifikationsingenieur",
+     "quelle": "core",
+     "rolle": "TEST",
+     "status": "aktiv",
+     "takt": "sprint"
+    }
+   ],
+   "status": "aktiv",
+   "team": "team-termine",
    "typ": "projekt"
   }
  ],

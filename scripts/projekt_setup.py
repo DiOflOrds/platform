@@ -32,6 +32,26 @@ import board  # noqa: E402
 
 PROFILE = ["entwicklung", "dienstleistung", "wiederkehrend"]
 DATENKLASSEN = ["intern", "sensibel"]
+#: ⚠⚠ **Datenklassen, deren Inhalte dieses Haus nie an einen Remote gibt** (Playbook
+#: Kap. 16 / F17, dieselbe Menge, die `pool.KLASSEN_OHNE_REMOTE` für die Team-Gründung
+#: führt). Ein Projekt dieser Klasse entsteht **oberhalb** von `projects/` und trägt
+#: `.kein-remote`; `abschluss.cmd` überspringt es damit beim Push.
+#:
+#: ⚠⚠ **Gemessen am 2026-08-21 (`platform/T-0063`, Sprint 34): bis dahin hat dieses
+#: Skript `datenklasse` ENTGEGENGENOMMEN, GEPRÜFT — und dann als `#`-KOMMENTAR in den
+#: Steckbrief geschrieben.** Der Ablageort war unverändert `projects/<kennung>`, und
+#: `projects` ist ein Repo **mit** GitHub-Remote. Ein Projekt, das ausdrücklich als
+#: `sensibel` gegründet wurde, wäre also beim nächsten `abschluss.cmd` mitgepusht worden
+#: — während im Steckbrief das Wort „sensibel" stand.
+#:
+#: > **Eine Datenklasse, die nur beschriftet und nicht platziert, ist keine Schranke,
+#: > sondern eine Aufschrift. Und sie stand in einem Kommentar, also an der einzigen
+#: > Stelle, die kein Werkzeug dieses Hauses liest.**
+#:
+#: Der Gegenbeleg stand die ganze Zeit daneben: `pool.gruendung_vorlegen` (der Weg der
+#: TEAM-Gründung) sagt dasselbe Wort korrekt an — zwei Gründungswege, ein Begriff, zwei
+#: Bedeutungen. Das ist die B033-Familie mit einem GRÜNDUNGSWEG als vergessener Kopie.
+KLASSEN_OHNE_REMOTE = ("sensibel",)
 
 # Rollen-Initialisierung (Konzept 04, Kap. 4.2): Rolle -> (prozess, reviewer, titel, ziel)
 INIT_TICKETS = [
@@ -97,25 +117,52 @@ def _ticket(nr, kennung, rolle, prozess, reviewer, titel, ziel, heute,
                  f"Herkunft und Ablauf: docs/01-projektauftrag.md, docs/projektplan.md.*\n")
 
 
+def ablageort(root, kennung, datenklasse):
+    """Wo dieses Projekt entsteht — abgeleitet aus der DATENKLASSE, nicht aus Gewohnheit.
+
+    `intern` → `projects/<kennung>` (Sammel-Repo mit Remote, Monorepo-Beschluss `pm/D003`).
+    `sensibel` → `<kennung>` auf oberster Ebene, eigenes Repo **ohne** Remote — dieselbe
+    Bauform wie `team-mail` und `promt-team`, die genau diese Klasse tragen (`SWR-208`).
+    """
+    if datenklasse in KLASSEN_OHNE_REMOTE:
+        return os.path.join(root, kennung)
+    return os.path.join(root, "projects", kennung)
+
+
 def erzeuge(root, kennung, name, beschreibung, profil="entwicklung",
             datenklasse="intern", heute=None):
-    """Legt projects/<kennung> vollstaendig an. Liefert den Projektpfad."""
+    """Legt das Projekt vollstaendig an. Liefert den Projektpfad.
+
+    ⚠ Der Ablageort kommt aus :func:`ablageort` und damit aus der **Datenklasse**
+    (`SWR-208`) — bis Sprint 34 war er unbedingt `projects/<kennung>`.
+    """
     if not kennung or not kennung.replace("-", "").isalnum() or not kennung.islower():
         raise ValueError(f"Ungueltige Kennung: {kennung!r} (klein, alphanumerisch, z. B. p16)")
     if profil not in PROFILE:
         raise ValueError(f"Ungueltiges Profil: {profil} (erlaubt: {', '.join(PROFILE)})")
     if datenklasse not in DATENKLASSEN:
         raise ValueError(f"Ungueltige Datenklasse: {datenklasse}")
-    pfad = os.path.join(root, "projects", kennung)
+    pfad = ablageort(root, kennung, datenklasse)
+    ohne_remote = datenklasse in KLASSEN_OHNE_REMOTE
     if os.path.exists(pfad):
         raise ValueError(f"{pfad} existiert bereits — Setup bricht ab, nichts geschrieben.")
     heute = heute or datetime.date.today().isoformat()
 
-    # Steckbrief (SWR-175: name = Beschriftung, Ordner = Identitaet)
+    # Steckbrief (SWR-175: name = Beschriftung, Ordner = Identitaet).
+    # ⚠ `datenklasse` ist ein FELD und kein Kommentar (SWR-208): als `#`-Zeile hat sie
+    # kein Werkzeug dieses Hauses je gelesen — `organigramm.py` hat jedes so gegruendete
+    # Projekt als `intern` ausgewiesen, also als das Gegenteil dessen, was dastand.
     _schreib(os.path.join(pfad, "steckbrief.yaml"),
              f'beschreibung: "{beschreibung}"\nstatus: aktiv\nname: "{kennung.upper()} {name}"\n'
-             f'# profil: {profil} · datenklasse: {datenklasse} — Governance-Eintrag in\n'
-             f'# process/teams/registry.yaml nur noetig, wenn von den Defaults abgewichen wird.\n')
+             f'profil: {profil}\ndatenklasse: {datenklasse}\n'
+             f'# Governance-Eintrag in process/teams/registry.yaml nur noetig, wenn von\n'
+             f'# den Defaults abgewichen wird.\n')
+    if ohne_remote:
+        _schreib(os.path.join(pfad, ".kein-remote"),
+                 f"Datenklasse {datenklasse} (Playbook Kap. 16 / F17, SWR-208): dieses Repo\n"
+                 f"bleibt OHNE GitHub-Remote. abschluss.cmd ueberspringt es beim Push;\n"
+                 f"sensible Inhalte werden nie an einen Cloud-Provider gegeben.\n"
+                 f"Angelegt: {heute} durch projekt_setup.py.\n")
     _schreib(os.path.join(pfad, "README.md"),
              f"# {kennung.upper()} {name}\n\n{beschreibung}\n\n"
              f"Setup nach Projektmodell (process/docs/04-projektmodell-orga-rework-2.md):\n"

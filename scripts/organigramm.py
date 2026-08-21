@@ -59,10 +59,20 @@ def _steckbrief(pfad):
     Tickets, Commits und Querverweise stehen; geändert wird, was ein Mensch liest. Ein
     Ordnername ist eine Identität, ein Anzeigename eine Beschriftung — das ist genau der
     Unterschied, den `Option A` gewählt hat.
+
+    ⚠⚠ **`SWR-208` (Sprint 34): dazu `datenklasse`.** Bis dahin las diese Zeile sie
+    nirgends, und `eintrag["datenklasse"]` fiel fest auf `"intern"` zurück, wenn die
+    Einheit in der Team-Registry fehlt — also für **jedes** Projekt. Ein Projekt, das
+    ausdrücklich als `sensibel` gegründet wurde, stand im Organigramm als `intern`.
+
+    > **Ein fester Rückfall auf einen der beiden möglichen Werte macht aus „nicht
+    > nachgesehen" eine Auskunft. Das ist die Auflage aus `SWR-193` an ihrer
+    > gefährlichsten Stelle: hier bedeutet der erfundene Wert „darf nach außen".**
     """
     daten = _lies_yaml(os.path.join(pfad, "steckbrief.yaml"))
     return (daten.get("beschreibung", ""), daten.get("status", ""),
-            str(daten.get("name", "") or "").strip())
+            str(daten.get("name", "") or "").strip(),
+            str(daten.get("datenklasse", "") or "").strip())
 
 
 def entdecke_einheiten(root):
@@ -108,7 +118,7 @@ def effektive_besetzungen(root):
         team = team_je_repo.get(einheit)
         if team is not None and team.get("typ") == "pm":
             continue  # PM-Team ist kein Projekt (Konzept 04, Kap. 2)
-        _besch, status, _name = _steckbrief(pfad)
+        _besch, status, _name, _klasse = _steckbrief(pfad)
         status = (team or {}).get("status") or status or ""
         if status != "aktiv":
             continue
@@ -141,7 +151,7 @@ def sammle(root):
     einheiten = []
     for name in sorted(einheiten_pfade):
         pfad = einheiten_pfade[name]
-        beschreibung, status, steckbrief_name = _steckbrief(pfad)
+        beschreibung, status, steckbrief_name, sb_klasse = _steckbrief(pfad)
         team = team_je_repo.get(name)
         typ = (team or {}).get("typ") or "projekt"
         eintrag = {
@@ -154,7 +164,11 @@ def sammle(root):
             "anzeigename": (team or {}).get("name") or steckbrief_name or name,
             "profil": (team or {}).get("profil") or ("entwicklung" if name.startswith("p") else ""),
             "status": (team or {}).get("status") or status or "ohne Status",
-            "datenklasse": (team or {}).get("datenklasse") or "intern",
+            # SWR-208: dieselbe Rangfolge wie beim Anzeigenamen — Team-Registry, dann
+            # Steckbrief, dann der Default. ⚠ Der Default steht bewusst ZULETZT: bis
+            # Sprint 34 stand er an zweiter Stelle und hat jedem Projekt „intern"
+            # zugeschrieben, weil kein Projekt in der Team-Registry steht.
+            "datenklasse": ((team or {}).get("datenklasse") or sb_klasse or "intern"),
             "beschreibung": beschreibung,
             "rollen": [],
         }

@@ -493,7 +493,27 @@ def _projekt_dateien_schreiben(pfad, neuer_name, name, quelle, nummer_text, fris
     open(os.path.join(pfad, "management", "decisions", "decision-log.md"), "w",
         encoding="utf-8", newline="\n").write(log)
 
-    steckbrief = f'beschreibung: "{name}"\n'
+    # ⚠⚠ SWR-208 (platform/T-0063, Sprint 34): MIT `status` und `datenklasse`. Bis dahin
+    # schrieb der Knopf **nur** die Beschreibung — und `organigramm.effektive_besetzungen`
+    # überspringt jede Einheit, deren Status nicht `aktiv` ist.
+    #
+    # **Gemessen am echten Bestand:** `projects/p13` ist am 2026-08-21 mit `p13/D000` = G0a
+    # freigegeben worden und hatte danach **kein Core Team** — der einzige Resolver des
+    # Hauses hat es stillschweigend übersprungen, weil sein Steckbrief keinen Status trug.
+    # Im Cockpit stand „ohne Status".
+    #
+    # > **Ein fehlendes Feld ist hier kein leerer Wert, sondern ein anderes Projekt: eines
+    # > ohne Mannschaft. Und niemand hat gefragt, weil ein freigegebenes Projekt so
+    # > aussieht wie ein freigegebenes Projekt.**
+    #
+    # ⚠ `datenklasse` steht ausdrücklich als **Feld** und nicht als Kommentar dabei —
+    # dieselbe Zeile hat `projekt_setup.py` als `#`-Zeile geführt, und `aggregation.
+    # steckbrief` schneidet jede Zeile bei `#` ab.
+    steckbrief = (f'beschreibung: "{name}"\nstatus: aktiv\n'
+                  f'datenklasse: intern\n'
+                  f'# Der Pool-Knopf gründet ausschließlich in `projects/` (Sammel-Repo mit\n'
+                  f'# Remote) und damit ausschließlich `intern`. Eine sensible Gründung läuft\n'
+                  f'# über projekt_setup.py --datenklasse sensibel (SWR-208).\n')
     open(os.path.join(pfad, "steckbrief.yaml"), "w", encoding="utf-8", newline="\n").write(steckbrief)
 
     ticket = (

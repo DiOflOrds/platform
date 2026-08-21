@@ -140,6 +140,31 @@ def historie(root, projekt=None):
     return {"historie": eintraege}
 
 
+def _wurzel_vom_aufrufer(log_pfad):
+    """Die Organisationswurzel **über dem Log, das geschrieben werden soll** — oder `None`.
+
+    ⚠⚠ **Der Vorgänger dieser Funktion war eine Zeile in `_naechste_d_id` und leitete die
+    Wurzel aus `os.path.dirname(__file__)` ab** — also aus dem Ort, an dem dieser
+    Quelltext zufällig liegt, und nicht aus dem Vorgang, um den es geht (`SWR-207`,
+    `platform/T-0062`).
+
+    > **Ein Vorgabewert, der aus dem eigenen Standort abgeleitet wird, ist kein
+    > Vorgabewert, sondern eine stille Annahme über die Welt.**
+
+    Gemessen an sieben roten Zusicherungen in `tests/test_backend`: eine Vorrichtung baute
+    ein leeres Repo im Temp-Ordner, erwartete `D001` und bekam `D030` — die nächste freie
+    Nummer des **echten** Hauses. ⚠ Und der ausdrücklich vorgesehene Rückfall aus
+    `SWR-193` („bei unbekannter Wurzel das einzelne Log") **konnte nie greifen**: die
+    Wurzel war nie unbekannt, sie wurde erfunden.
+
+    Die Auflösung geht ab jetzt den umgekehrten, richtigen Weg — vom **Repo des
+    Aufrufers** aufwärts (`board._org_wurzel`, seit `SWR-193` die eine Auflösung dieses
+    Hauses). `None` heißt weiterhin „unerreichbar" und ist **kein** Fehler.
+    """
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(log_pfad))))
+    return board._org_wurzel(repo)
+
+
 def _naechste_d_id(log_pfad, wurzel=None):
     """Die nächste freie `D`-Nummer — **organisationsweit**, nicht je Log (SWR-203).
 
@@ -163,12 +188,16 @@ def _naechste_d_id(log_pfad, wurzel=None):
     einzelne Log zurück — das ist das alte Verhalten und bewusst **nicht** ein Fehler:
     ein einzeln ausgechecktes Repo darf weiterhin entscheiden können (dieselbe Auflage
     wie in `SWR-193`: „unbekannt" und „unerreichbar" sind zwei Antworten).
+
+    ⚠⚠ **`SWR-207` (Sprint 34): die Wurzel kommt vom AUFRUFER und nicht mehr aus dem
+    Dateipfad dieses Moduls.** Bis dahin las die Vergabe immer das Haus, in dem
+    `platform/` liegt — auch dann, wenn sie für ein ganz anderes schrieb.
     """
     ids = []
     logs = [log_pfad]
     if wurzel is None:
-        wurzel = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    if os.path.isdir(wurzel):
+        wurzel = _wurzel_vom_aufrufer(log_pfad)
+    if wurzel and os.path.isdir(wurzel):
         for muster in (os.path.join(wurzel, "*", "management", "decisions", "*.md"),
                        os.path.join(wurzel, "*", "*", "management", "decisions", "*.md")):
             logs.extend(glob.glob(muster))
