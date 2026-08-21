@@ -297,6 +297,23 @@ def lade_ticket(root, projekt="p0", ticket_id=""):
             felder["body"] = t.get("_body", "")
             felder["projekt"] = projekt
             felder["ref"] = ref(projekt, t.get("id"))  # SWR-087 (platform/N-0003)
+            # SWR-192 (platform/T-0030): der Verlauf und der Fingerabdruck, den ein
+            # Beitrag mitschicken muss.
+            #
+            # ⚠ Der Fingerabdruck steht hier und nicht nur am Editor, und das ist die
+            # Begründung aus `SWR-144` in der anderen Richtung gelesen: der
+            # Terminier-Knopf darf seinen Fingerabdruck selbst lesen, weil er **keine**
+            # Werte vom Client mitbringt. Ein Kommentar bringt Text mit — also gehört
+            # der Fingerabdruck zum Zustand, den der Client gesehen hat, sonst schützt
+            # er nichts.
+            repo = projekt_pfad(root, projekt)
+            try:
+                roh, _ = board.lies_ticket(repo, ticket_id)
+                felder["fingerprint"] = board.fingerprint(roh)
+                felder["kommentare"] = board.kommentare(repo, ticket_id)
+            except ValueError:
+                felder["fingerprint"] = ""
+                felder["kommentare"] = []
             return felder
     raise ValueError(f"unbekanntes Ticket: {ticket_id} in {projekt}")
 

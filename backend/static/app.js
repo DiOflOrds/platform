@@ -888,8 +888,90 @@ function ladeTicket() {  // SWR-040: Detailansicht
       el("button", { "class": "knopf zweit", onclick: function () {
         gehe("board", projekt);
       } }, "Zurück zum Board")));
-    zeige([kopf, el("div", { "class": "karte" }, preMitLinks(t.body, projekt))]);
+    zeige([kopf, el("div", { "class": "karte" }, preMitLinks(t.body, projekt)),
+           verlaufsKarte(t)]);
   });
+}
+
+// SWR-192 (platform/T-0030, Brief platform/N-0007): „direkte kommentare/antworten …
+// aehnlich wie hier beim Team-Chat".
+//
+// ⚠⚠ Der Kasten steht AUCH an erledigten Aufgaben, und das ist die eigentliche
+// Entscheidung des Tickets (DoD 6): die Archivsperre gilt dem FORMULAR, nicht dem
+// GESPRAECH. Eine erledigte Aufgabe ist der haeufigste Anlass fuer eine Rueckfrage —
+// ein Kanal, der genau dort schweigt, ist keiner.
+//
+// ⚠ Neueste zuerst (DoD 5, SWR-083). Die Reihenfolge kommt aus dem BACKEND und wird
+// hier nicht noch einmal sortiert: zwei Sortierungen sind zwei Meinungen darueber, was
+// „neu" heisst, und nur eine davon steht in einer Zusicherung.
+function verlaufsKarte(t) {
+  var karte = el("div", { "class": "karte" });
+  karte.appendChild(el("h3", {}, "Verlauf"));
+  var liste = el("div", {});
+  function zeichne(eintraege) {
+    leeren(liste);
+    if (!eintraege || !eintraege.length) {
+      liste.appendChild(el("div", { "class": "zeile" },
+        "Noch kein Beitrag. Schreib den ersten."));
+      return;
+    }
+    eintraege.forEach(function (k) {
+      var b = el("div", { "class": "karte" });
+      b.appendChild(el("div", { "class": "zeile" }, pille(k.von || "?", "in_review"),
+                       " " + (k.zeit || "")));
+      b.appendChild(preMitLinks(k.text || "", projekt));
+      liste.appendChild(b);
+    });
+  }
+  zeichne(t.kommentare);
+  var feld = el("textarea", { rows: "4", "class": "feld",
+                              placeholder: "Antwort oder Rückfrage …" });
+  var meldung = el("div", {});
+  var knopf = el("button", { "class": "knopf" }, "Beitrag senden");
+  // ⚠ Der Fingerabdruck stammt aus DEM Zustand, den der Nutzer gesehen hat, und wird
+  // nach jedem Beitrag nachgezogen (SWR-080). Ohne das Nachziehen waere der Schutz
+  // nach dem ersten Beitrag wertlos — der zweite liefe immer in einen Konflikt.
+  var fingerprint = t.fingerprint || "";
+  knopf.onclick = function () {
+    var text = String(feld.value || "").trim();
+    leeren(meldung);
+    if (!text) {
+      meldung.appendChild(el("div", { "class": "meldung fehler" },
+        "Ein Kommentar ohne Text ist keiner — bitte etwas schreiben."));
+      return;
+    }
+    knopf.disabled = true;
+    api("/api/ticket/kommentar", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projekt: projekt, id: t.id, text: text,
+                             fingerprint: fingerprint })
+    }).then(function (r) {
+      knopf.disabled = false;
+      feld.value = "";
+      fingerprint = r.fingerprint || fingerprint;
+      zeichne(r.kommentare);
+      meldung.appendChild(el("div", { "class": "meldung ok" },
+        r.meldung + " Commit " + r.commit + "."));
+    }).catch(function (fehler) {
+      knopf.disabled = false;
+      var grund = String(fehler.message || fehler);
+      meldung.appendChild(el("div", { "class": "meldung fehler" }, grund));
+      // SWR-080: ein Konflikt ist kein Tippfehler. ⚠ Der Text bleibt im Feld stehen —
+      // ihn zu leeren hiesse, dem Menschen seine Arbeit wegzunehmen, weil eine ANDERE
+      // Stelle geschrieben hat.
+      if (grund.indexOf("Routine-Session") >= 0) {
+        meldung.appendChild(el("div", { "class": "btnreihe" },
+          el("button", { "class": "knopf", onclick: function () { lade(); } },
+             "Ticket neu laden")));
+      }
+    });
+  };
+  karte.appendChild(liste);
+  karte.appendChild(el("div", { "class": "zeile" }, "Neuer Beitrag:"));
+  karte.appendChild(feld);
+  karte.appendChild(el("div", { "class": "btnreihe" }, knopf));
+  karte.appendChild(meldung);
+  return karte;
 }
 
 // SWR-138 (pm/T-0052): eine Handlung — dieselbe Kartenform wie ein DR, aber **ohne

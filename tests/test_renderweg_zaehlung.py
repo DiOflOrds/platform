@@ -239,7 +239,18 @@ class RohtextAnsichtTest(unittest.TestCase):
     #: der **benannte Folgepunkt**, der mit dem G4-Antrag zur Entscheidung steht.
     #: ⚠ Die Zahl steht hier, damit der Folgepunkt eine **Größe** hat und nicht nur einen
     #: Namen — und damit niemand ihn nebenbei erledigt, ohne dass es auffällt.
-    ROHTEXT_ANSICHTEN = 4
+    #:
+    #: ⚠⚠ **Sprint 29: 4 -> 5, und die Prüfung hat den Zuwachs gefunden, bevor ein Mensch
+    #: ihn gesehen hat.** `SWR-192` (`platform/T-0030`) hat den Kommentar-Verlauf gebaut;
+    #: sein Beitragstext läuft über **denselben** `preMitLinks` wie der Ticket-Rumpf. Das
+    #: ist die richtige Wahl — ein Verweis `T-0042` in einem Kommentar wäre sonst als
+    #: einziger Text dieser Ansicht kein Link — aber es ist eine **Vergrößerung des
+    #: Folgepunkts**, und die gehört benannt statt gediffed.
+    #:
+    #: > **Der Zähler hat genau das getan, wofür er dasteht. Er hat eine Entscheidung
+    #: > erzwungen, die sonst als Nebenwirkung durchgegangen wäre — und der Zuwachs ist
+    #: > hier begründet, statt dass die Zahl still nachgezogen wurde.**
+    ROHTEXT_ANSICHTEN = 5
 
     #: ⚠⚠ **`p12/T-0011`, Sprint 25: die Zahl allein war zu wenig.** Der Zähler darüber
     #: sagt *wie viele* und nicht *welche*. Wer eine der vier auf den Block-Renderer
@@ -258,6 +269,10 @@ class RohtextAnsichtTest(unittest.TestCase):
         "DR-Body": r"preMitLinks\(dr\.body",
         "Dokumentenansicht (dateiKarten)": r"preMitLinks\(d\.text, projekt\)",
         "Requirements-Ansicht": r"preMitLinks\(d\.text, d\.projekt",
+        # SWR-192 (platform/T-0030): der Kommentar-Verlauf am Ticket. Bewusst über
+        # DENSELBEN Rohtext-Weg wie der Ticket-Rumpf, den er ergänzt — zwei Textsorten
+        # in einer Ansicht wären die schlechtere Antwort auf dieselbe Frage.
+        "Kommentar-Verlauf am Ticket": r"preMitLinks\(k\.text",
     }
 
     def test_es_sind_DIESE_vier_ansichten_und_nicht_irgendwelche(self):

@@ -183,6 +183,55 @@ def speichere(root, projekt, ticket_id, werte):
                         f"— {ergebnis['zeitpunkt']}.")}
 
 
+def kommentiere(root, projekt, ticket_id, werte):
+    """SWR-192 (platform/T-0030): einen Beitrag an ein Ticket hängen.
+
+    ⚠ **Derselbe Schreibweg wie der Editor** (DoD 3): `git_schreiben.verbuche` mit
+    derselben Commit-Identität. Keine zweite Regelprüfung im Server — das ist wörtlich
+    die Lehre aus P10 Sprint 1, und die Regeln stehen in `board.kommentiere`.
+
+    ⚠ **Nur die Ticketdatei ist Ziel, BOARD.md ausdrücklich nicht.** Ein Kommentar
+    ändert kein Frontmatter-Feld, also zeigt BOARD.md danach dasselbe; es mitzucommitten
+    hieße, bei jedem Beitrag seine `Stand:`-Zeile zu bewegen.
+
+    ⚠ Bei gescheitertem Commit wird zurückgenommen — wie bei `speichere`. Ein Beitrag,
+    der auf der Platte steht und in keinem Commit, wäre genau die Hälfte, die `SWR-078`
+    ausschließt.
+    """
+    repo = _repo(root, projekt)
+    text = werte.get("text")
+    erwartet = str(werte.get("fingerprint") or "").strip()
+    if not erwartet:
+        raise TicketFehler(400, "fingerprint fehlt — bitte das Ticket neu laden "
+                                "(Schutz gegen stilles Überschreiben, SWR-080).")
+    try:
+        vorher_text, _ = board.lies_ticket(repo, ticket_id)
+    except ValueError as e:
+        raise TicketFehler(404, str(e))
+    try:
+        ergebnis = board.kommentiere(repo, ticket_id, text, von=HERKUNFT,
+                                     erwarteter_fingerprint=erwartet)
+    except board.KonfliktFehler as e:
+        raise TicketFehler(409, str(e))
+    except ValueError as e:
+        raise TicketFehler(400, str(e))
+    ziel = os.path.join("tickets", f"{ticket_id}.md")
+    nachricht = f"{ticket_id}: Kommentar via HMI — {HERKUNFT}"
+    v = git_schreiben.verbuche(repo, [ziel], nachricht, COMMIT_IDENTITAET)
+    if not v.ok:
+        open(board.ticket_pfad(repo, ticket_id), "w", encoding="utf-8",
+             newline="\n").write(vorher_text)
+        raise TicketFehler(503, "Git-Commit fehlgeschlagen — dein Beitrag wurde "
+                                "zurückgenommen, die Datei steht unverändert: " +
+                           v.fehler[:400])
+    return {"ok": True, "projekt": projekt, "ticket": ticket_id,
+            "ref": aggregation.ref(projekt, ticket_id),
+            "fingerprint": ergebnis["fingerprint"], "commit": _kurz_hash(repo),
+            "beitraege": ergebnis["beitraege"],
+            "kommentare": board.kommentare(repo, ticket_id),
+            "meldung": f"Beitrag gespeichert und committet — {ergebnis['zeitpunkt']}."}
+
+
 #: SWR-144: Die **einzige** Feldmenge, die eine Terminierung anfasst. Als Konstante und
 #: nicht als Literal im Aufruf, weil die Zusicherung sie messen muss: das Argument, warum
 #: dieser Weg seinen Fingerprint selbst lesen darf, hängt daran, dass es **ein** Feld ist

@@ -1100,6 +1100,124 @@ def aktualisiere(repo, tid, aenderungen, body=None, erwarteter_fingerprint=None,
             "status": entwurf.get("status"), "zeitpunkt": stempel}
 
 
+#: SWR-192 (platform/T-0030, Brief platform/N-0007): die Überschrift, unter der der
+#: Verlauf steht. Als Konstante und nicht als Literal, weil drei Stellen sie brauchen
+#: (Schreiber, Leser, Zusicherung) — drei Literale wären drei Gelegenheiten, sie
+#: auseinanderlaufen zu lassen (SWR-131).
+KOMMENTAR_UEBERSCHRIFT = "## Verlauf"
+#: Der Kopf eines einzelnen Beitrags. `%s` = Absender, `%s` = Zeitstempel.
+KOMMENTAR_FORMAT = "**%s (%s):**"
+_KOMMENTAR_KOPF = re.compile(r"^\*\*(?P<von>.+?) \((?P<zeit>[^)]+)\):\*\*$", re.M)
+
+
+def kommentiere(repo, tid, text, von="Mensch via HMI", erwarteter_fingerprint=None,
+                jetzt=None):
+    """SWR-192: einen Beitrag an den Ticket-Rumpf hängen — der dritte Schreibpfad.
+
+    ⚠⚠ **Der Brief hat die Bauart mitbestellt und nicht nur das Merkmal:** *„ähnlich wie
+    hier beim Team-Chat"*. Der Team-Chat ist **kein eigener Speicher** — ein Beitrag
+    wird an **dieselbe Datei** gehängt (`briefkasten._beitrag_anhaengen`). Deshalb steht
+    ein Kommentar im **Ticket-Rumpf** und nicht in einer Kommentardatei, einer Tabelle
+    oder einem zweiten Ordner. Der bequeme Bau wäre ein zweiter Ort gewesen, und dieses
+    Haus hat B033 dreimal bezahlt (`p9/T-0007`, `pm/T-0017`, `platform/T-0028`).
+
+    ⚠⚠ **Ein Kommentar ist KEINE Bearbeitung, und daran hängt der ganze Zuschnitt.**
+    Deshalb ausdrücklich **nicht** über `aktualisiere`:
+
+    * **kein Frontmatter-Feld** wird angefasst — auch `geändert` nicht. Ein
+      `geändert`-Sprung nach einem Kommentar sähe aus wie eine Bearbeitung, und
+      `unverbuchte_status`/`uebergang_historie` lesen genau diese Felder.
+    * **kein `Bearbeitet`-Vermerk** — der Verlauf datiert sich selbst.
+    * **die Archivsperre gilt nicht.** `SWR-077` sperrt `done`/`rejected` gegen
+      **Änderungen**; DoD 6 des Tickets sagt den Grund: *die Sperre gilt dem Formular,
+      nicht dem Gespräch.* Eine erledigte Aufgabe ist der häufigste Anlass für eine
+      Rückfrage, und ein Kanal, der genau dort schweigt, ist keiner.
+
+    ⚠ **Neuester Beitrag zuerst** (DoD 5, wie im Team-Chat bestellt, `SWR-083`): der
+    neue Kopf steht **direkt unter** der Überschrift, die alten rutschen nach unten.
+
+    ⚠ Der Zeitstempel kommt aus `zeitpunkt()` — **eine** Zeitquelle (`SWR-084`). Eine
+    zweite Implementierung wäre nach B025 ein künftiger Befund.
+
+    ⚠ Der Konfliktschutz ist derselbe wie am Editor (`SWR-080`): die Routine-Session
+    schreibt in dieselben Dateien, und ein Fingerabdruck ist der einzige Weg, ein
+    stilles Überschreiben zu bemerken. `None` heißt „nicht geprüft" und ist den
+    Aufrufern vorbehalten, die keinen Client-Zustand haben.
+
+    Gibt {"fingerprint", "zeitpunkt", "beitraege"} zurück; wirft `KonfliktFehler`
+    bzw. `ValueError`.
+    """
+    beitrag = str(text or "").replace("\r\n", "\n").strip()
+    if not beitrag:
+        raise ValueError("Ein Kommentar ohne Text ist keiner — bitte etwas schreiben.")
+    absender = str(von or "").strip() or "Mensch via HMI"
+    if "\n" in absender:
+        raise ValueError("Absender darf keine Zeilenumbrüche enthalten")
+    alt_text, t = lies_ticket(repo, tid)
+    ist = fingerprint(alt_text)
+    if erwarteter_fingerprint and erwarteter_fingerprint != ist:
+        raise KonfliktFehler(
+            f"{tid} wurde inzwischen von einer anderen Stelle geändert (sehr wahrscheinlich "
+            f"die laufende Routine-Session). Dein Beitrag wurde NICHT gespeichert, damit "
+            f"nichts still überschrieben wird — bitte das Ticket neu laden und den Beitrag "
+            f"erneut eintragen.")
+    stempel = zeitpunkt(jetzt)
+    kopf = re.match(r"^---\n.*?\n---\n", alt_text, re.S).group(0)
+    body = t.get("_body", "")
+    neuer_kopf = KOMMENTAR_FORMAT % (absender, stempel)
+    if KOMMENTAR_UEBERSCHRIFT in body:
+        vorher, nachher = body.split(KOMMENTAR_UEBERSCHRIFT, 1)
+        body = (vorher + KOMMENTAR_UEBERSCHRIFT + "\n\n" + neuer_kopf + "\n\n" + beitrag
+                + "\n" + nachher.lstrip("\n").rstrip() + "\n").rstrip()
+    else:
+        body = (body.rstrip() + "\n\n" + KOMMENTAR_UEBERSCHRIFT + "\n\n"
+                + neuer_kopf + "\n\n" + beitrag).strip()
+    neu_text = kopf + "\n" + body + "\n"
+    # ⚠ Vollvalidierung mit GENAU denselben Regeln wie jeder andere Schreibpfad. Ein
+    # Kommentar darf das Ticket nicht ungültig machen — und weil er das Frontmatter
+    # nicht anfasst, ist ein Fehler hier ein Befund über den BESTAND und nicht über
+    # den Beitrag. Er wird trotzdem gemeldet statt geschluckt.
+    tickets, probleme = lade_tickets(repo)
+    entwurf, err = parse_frontmatter(neu_text)
+    if err:
+        raise ValueError(f"{tid}: {err}")
+    entwurf["_datei"] = f"{tid}.md"
+    tickets = [entwurf if x.get("id") == tid else x for x in tickets]
+    probleme += validiere_alle(tickets, repo, git_pruefen=False)
+    if probleme:
+        raise ValueError("; ".join(probleme))
+    if entwurf.get("status") != t.get("status"):  # kann nicht passieren — deshalb geprüft
+        raise ValueError(f"{tid}: ein Kommentar hat den Status verändert — abgebrochen")
+    open(ticket_pfad(repo, tid), "w", encoding="utf-8", newline="\n").write(neu_text)
+    # ⚠ **BOARD.md wird NICHT neu geschrieben.** Es zeigt Frontmatter-Felder, und der
+    # Kommentar ändert keines. Es trotzdem zu regenerieren hieße, bei jedem Beitrag
+    # die `Stand:`-Zeile zu bewegen — genau die Sorte Rauschen, für die `SWR-110`
+    # eigens eine Ausnahme bauen musste.
+    return {"fingerprint": fingerprint(neu_text), "zeitpunkt": stempel,
+            "beitraege": len(_KOMMENTAR_KOPF.findall(body))}
+
+
+def kommentare(repo, tid):
+    """[{von, zeit, text}] — der Verlauf eines Tickets, neueste zuerst.
+
+    Der Leser zur Konstante oben. Er parst denselben Text, den `kommentiere` schreibt,
+    und ist damit die Gegenprobe zum Schreiber: laufen die beiden auseinander, wird
+    diese Funktion leer — und eine Zusicherung sieht es.
+    """
+    _text, t = lies_ticket(repo, tid)
+    body = t.get("_body", "")
+    if KOMMENTAR_UEBERSCHRIFT not in body:
+        return []
+    abschnitt = body.split(KOMMENTAR_UEBERSCHRIFT, 1)[1]
+    treffer = list(_KOMMENTAR_KOPF.finditer(abschnitt))
+    ergebnis = []
+    for i, m in enumerate(treffer):
+        ende = treffer[i + 1].start() if i + 1 < len(treffer) else len(abschnitt)
+        ergebnis.append({"von": m.group("von"), "zeit": m.group("zeit"),
+                         "text": abschnitt[m.end():ende].strip()})
+    return ergebnis
+
+
 def _status_cli(argv):
     """`board.py <repo> status T-xxxx <neu> [--reviewer r] [--notiz t] [--meldung m]`.
 

@@ -419,6 +419,21 @@ class Api(BaseHTTPRequestHandler):
         # Unterschied, an dem die Fingerprint-Begründung von SWR-144 hängt. Ein
         # Feld-Parameter an `/api/ticket` hätte beide Fälle in einen Aufruf gelegt und die
         # Begründung damit unprüfbar gemacht.
+        # SWR-192 (platform/T-0030, Brief platform/N-0007): Kommentar an eine Aufgabe.
+        # ⚠ Eigene Route aus demselben Grund wie `/terminieren`: `/api/ticket` ändert
+        # FELDER, diese hier hängt einen Beitrag an den RUMPF an und lässt das Frontmatter
+        # in Ruhe. Beides in einen Aufruf zu legen hieße, die Archivsperre (SWR-077) mit
+        # einem Schalter zu versehen — und ein Schalter an einer Sperre ist keine Sperre.
+        # ⚠ PIN oben geprüft wie an jedem Schreibweg (DoD 7): das Gate steht EINMAL am
+        # Kopf von do_POST und nicht je Route; eine zweite Prüfung hier wäre das zweite
+        # Gate, das dieses Haus sich an anderer Stelle ausdrücklich verboten hat.
+        if self.path == "/api/ticket/kommentar":
+            try:
+                erg = tickets.kommentiere(type(self).wurzel, daten.get("projekt", ""),
+                                          daten.get("id", ""), daten)
+            except tickets.TicketFehler as e:
+                return self._json(e.code, {"fehler": str(e)})
+            return self._json(200, erg)
         if self.path == "/api/ticket/terminieren":
             try:
                 erg = tickets.terminiere(type(self).wurzel, daten.get("projekt", ""),
