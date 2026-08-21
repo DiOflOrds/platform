@@ -360,6 +360,13 @@ def offene_tickets(root):
                             "frist": t.get("frist", ""),
                             "takt": t.get("takt", ""),
                             "geplant_sprint": t.get("geplant_sprint", ""),  # SWR-106
+                            # SWR-198: die Sperre gehört in die flache Zeile und nicht
+                            # nur nach `_ticket`. `plan()` entfernt `_ticket` vor der
+                            # Auslieferung; ohne dieses Feld wäre `blocked_by` für jeden
+                            # Leser des Payloads unsichtbar, und `board.gesperrt` hätte
+                            # auf der ausgelieferten Zeile eine andere Antwort als auf
+                            # der internen — zwei Antworten auf eine Frage (B033).
+                            "blocked_by": t.get("blocked_by", ""),
                             # SWR-132 (pm/T-0064, Brief pm/N-0042): die Rollen-Sicht des
                             # Auftraggebers. ⚠ `rolle` und `verantwortlich` bleiben
                             # **getrennte Felder** und werden nicht zu einem verschmolzen:
@@ -507,11 +514,21 @@ def sprint_vergangen(offene, jetzt_nr):
        hätte die Prüfung an ihrem ersten Tag `p11/T-0006` gemeldet, das seit Sprint 6
        ordnungsgemäß beim Auftraggeber liegt — ein Fehlalarm, und ein Fehlalarm an Tag
        eins trainiert das Wegsehen (dieselbe Sorge wie bei SWR-109 und SWR-110).
+    4. **`status: blocked` ist ausgenommen** (SWR-198, platform/T-0051, Sprint 31) — und
+       zwar aus **derselben** Begründung wie Punkt 3, nicht aus einer zweiten. Sie steht
+       deshalb genau einmal, in `board.gesperrt`, und wird hier **aufgerufen** statt
+       abgeschrieben: zwei Begründungen für eine Sache laufen auseinander (B033). Punkt 3
+       ist der Sonderfall, den `blocked` bis Sprint 29 vertreten musste, weil es ihn noch
+       nicht gab; er bleibt stehen, weil ein DR beim Menschen liegt, **ohne** gesperrt zu
+       sein.
     """
     treffer = []
     for t in offene:
         if (t.get("_ticket") or {}).get("typ") == "decision-request" \
                 or t.get("typ") == "decision-request":
+            continue
+        # SWR-198: die Begründung steht in `board.gesperrt` — hier nur der Aufruf.
+        if board.gesperrt(t.get("_ticket") or t):
             continue
         roh = str(t.get("geplant_sprint", "")).strip()
         if not roh.isdigit():          # Takt-Dauerläufer und leere Felder: kein Termin

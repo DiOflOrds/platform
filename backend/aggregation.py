@@ -621,11 +621,20 @@ def _ist_unterminiert(fm):
       Zusage über einen fremden Kalender. Ohne `frist` ist auch ein DR unterminiert —
       im Bestand tragen **3 von 46** DRs keine (`p0/T-0022`, `p0/T-0035`, `p0/T-0041`),
       und die alte Regel nahm sie pauschal aus, statt sie zu melden.
+    * **`status: blocked` mit `blocked_by`** (SWR-198, `platform/T-0051`, Sprint 31):
+      unplanbar, also nie unterminiert. **Die Begründung steht nicht hier** — sie steht
+      in `board.gesperrt` und wird von dort **aufgerufen**, weil dieselbe Ausnahme
+      gleichzeitig in `sprint.sprint_vergangen` gebraucht wird. Zwei Begründungen für
+      eine Sache laufen auseinander (B033); eine der beiden Prüfungen allein zu
+      reparieren, hätte den Befund nur verschoben statt aufgelöst — genau das ist beim
+      Abschluss von Sprint 30 passiert.
     * **alles andere** — die Arbeit des Teams — wird auf **Sprints** terminiert
       (SWR-106, bestätigt durch Brief `pm/N-0041`). Ein Kalenderdatum zählt hier nicht
       mehr als Termin; dass es überhaupt noch dasteht, meldet `kalenderfristen`.
     """
     if fm.get("takt"):
+        return False
+    if board.gesperrt(fm):          # SWR-198 — Begründung in `board.gesperrt`
         return False
     if fm.get("typ") == "decision-request":
         return not str(fm.get("frist") or "").strip()

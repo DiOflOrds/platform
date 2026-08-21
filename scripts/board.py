@@ -865,6 +865,57 @@ def wartet_auf_mensch(t):
     return verantwortlich_wert(t) == "mensch" or t.get("typ") == "decision-request"
 
 
+def gesperrt(t):
+    """SWR-198 (platform/T-0051): Ist dieses Ticket **gesperrt** — und damit unplanbar?
+
+    **Die eine Begründung, an einer Stelle.** Zwei Prüfungen brauchen sie:
+    `sprint.sprint_vergangen` (SWR-112) und `aggregation._ist_unterminiert`
+    (SWR-114/125). Beide sind einzeln richtig, und genau deshalb bildeten sie bis
+    Sprint 30 eine **Zange**:
+
+    | `geplant_sprint` eines gesperrten Tickets | Prüfung | Ergebnis |
+    |---|---|---|
+    | vergangen (`29`) | `sprint_vergangen` | Befund „offen auf vergangenem Sprint" |
+    | leer | `unterminierte_tickets` | Befund „Ticket ohne Sprint" |
+    | Zukunft (`31`) | — | still, **aber** eine Zusage über fremdes Handeln |
+
+    **Für ein gesperrtes Ticket gibt es keinen zulässigen Terminwert.** Der einzige
+    Wert, der beide Prüfungen still hält, ist eine Terminzusage, die das Team nicht
+    halten kann — die Sperre hängt an einer Entscheidung des Auftraggebers. Eine Lage,
+    in der die bequeme Handlung die einzige ist, die grün macht, ist genau die Bauart,
+    gegen die SWR-166 gebaut wurde.
+
+    **Warum die Lücke niemandes Versäumnis ist.** `sprint.py` nahm bereits **einen Typ**
+    aus, `decision-request`, mit wörtlich dieser Begründung: *„ein DR liegt beim
+    Menschen, das Team kann ihn nicht bewegen, und eine Sprintnummer daneben wäre eine
+    Zusage, die das Team nicht halten kann."* Sie stand nur an einem **Typ** statt an
+    einem **Zustand** — weil `decision-request` bis Sprint 29 der einzige Weg war,
+    *„das Team kann hier nicht handeln"* auszudrücken. `blocked` mit `blocked_by` gibt
+    es erst seit SWR-193, **einen Sprint alt**.
+
+    > **Ein Stellvertreter, der lange mit der Sache zusammenfiel, wird zum Loch in dem
+    > Moment, in dem die Sache einen eigenen Namen bekommt.** Dieselbe Familie wie
+    > SWR-196: dort war die Besetzungsprüfung an der falschen Stelle in der Reihenfolge,
+    > hier die Ausnahme an der falschen Sorte Merkmal.
+
+    **⚠ Gebunden an den VERWEIS, nicht an das Wort.** „Gesperrt" ohne `blocked_by` ist
+    eine Behauptung, keine Sperre — und eine Ausnahme, die auf ein bloßes Wort hört,
+    wäre ein Schlupfloch: jedes unbequeme Ticket ließe sich mit einem Statuswort
+    aus beiden Prüfungen nehmen. Gemessen (2026-08-21, Sprint 31): `validiere` lehnt
+    `blocked` ohne `blocked_by` bereits ab (*„blocked erfordert blocked_by-Verweis"*),
+    und alle **3** gesperrten Tickets des Bestands tragen einen Verweis. Die Bindung an
+    den Verweis kostet heute also **nichts** und schließt den Weg trotzdem — und wird
+    nicht dadurch tautologisch, dass eine zweite Prüfung dasselbe fordert: die beiden
+    laufen an verschiedenen Toren, und ein aufgeweichter Validator macht diese Ausnahme
+    nicht auf.
+
+    ⚠ **Nicht ausgenommen: die Frist.** Ein gesperrtes Ticket, das eine `frist` trägt,
+    bleibt für `ueberfaellig` (SWR-091) sichtbar. Eine Sperre verschiebt keinen Termin
+    nach außen; sie sagt nur, dass das Team ihn nicht durch Arbeit halten kann.
+    """
+    return t.get("status") == "blocked" and bool(parse_liste(t.get("blocked_by")))
+
+
 def offene_blocker(t, tickets_nach_id):
     """IDs der blocked_by-Tickets, die noch nicht done sind."""
     return [ref for ref in parse_liste(t.get("blocked_by"))
