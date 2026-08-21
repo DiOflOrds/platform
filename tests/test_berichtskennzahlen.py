@@ -100,8 +100,12 @@ class VergleichTest(unittest.TestCase):
         allen — der Fehler, den SWR-128 fünf Sprints lang verborgen hat, hier auf den
         Bericht statt auf die Testmenge angewandt.
         """
-        g = {"tests": 1128, "testdateien": 2, "swr": 5, "luecken": 0,
-             "briefkasten_offen": 0, "tickets_offen": 3, "wartet_auf_mensch": 1}
+        # ⚠ SWR-206 (Sprint 33): die Vorrichtung wird aus `VERGLEICHSFELDER` gebaut und
+        # nicht daneben aufgezählt. Die erste Fassung listete die Felder von Hand und ist
+        # beim ersten neuen Feld (`briefe_im_lauf`) mit `KeyError` gestorben — eine
+        # Zusicherung, die ihre eigene Grundmenge nicht aus der Quelle nimmt, bricht bei
+        # jeder Erweiterung und trainiert damit das Wegsehen (`SWR-166`).
+        g = {f: i for i, f in enumerate(kennzahlen.VERGLEICHSFELDER)}
         self.assertEqual(kennzahlen.vergleiche({}, g),
                          [(f, None, g[f]) for f in kennzahlen.VERGLEICHSFELDER])
 
