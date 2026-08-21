@@ -560,6 +560,91 @@ def status_in_head(repo, datei):
         return UNLESBAR
 
 
+#: SWR-193 (platform/T-0045): die **qualifizierte** Sperr-Kennung `<einheit>/T-xxxx`.
+#: Dieselbe Form, die `aggregation.ref` (SWR-087) erzeugt und die `SWR-176` bereits
+#: gegenüber der nackten ID bevorzugt — **keine zweite Schreibweise für dieselbe Sache**.
+#: ⚠ Die nackte `T-xxxx` bleibt unverändert repo-lokal. Sie umzudeuten hätte den ganzen
+#: Bestand angefasst; hier kommt eine Form **dazu**, es wird keine ersetzt.
+QUALIFIZIERTE_REF = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.-]*)/(T-\d{4})$")
+#: Wie viele Ebenen `_org_wurzel` nach oben sucht. `projects/p11` liegt zwei Ebenen unter
+#: der Wurzel; drei gibt einen Schritt Luft und schließt eine Wanderung bis `/` aus.
+_WURZEL_TIEFE = 3
+
+
+def _org_wurzel(repo):
+    """Die Organisationswurzel über einem Repo — oder `None`, wenn sie nicht zu finden ist.
+
+    ⚠⚠ `None` heißt **„unerreichbar"** und ausdrücklich nicht „leer". Der Unterschied
+    trägt die ganze Zusicherung von `SWR-193`: eine Sperre, deren Repo nicht gefunden
+    wird, ist etwas anderes als eine Sperre, die auf ein Ticket zeigt, das es dort nicht
+    gibt. Nur die zweite ist ein Befund.
+
+    ⚠ Die Wurzel ist die **oberste** Ebene, die dieses Repo **selbst als Einheit sieht**
+    und dabei mindestens zwei Einheiten trägt. Beide Hälften sind nötig, und beide sind
+    an einem Fehlschlag gelernt:
+
+    * **„oberste"**, weil über `projects/p11` das Sammel-Repo `projects` liegt: drei
+      Einheiten (p10–p12), die **erste** passende Ebene — und die falsche. Sie kennt `pm`
+      nicht, und eine Sperre auf `pm/T-0077` fiele still in die Lage „unerreichbar",
+      obwohl die echte Wurzel jede Einheit sieht (`projekt_pfade` nimmt das Sammel-Repo
+      ausdrücklich mit).
+    * **⚠⚠ „sieht dieses Repo"**, weil „oberste Ebene mit ≥ 2 Einheiten" allein
+      **weiterläuft, als sie darf**. Eine Zusicherung hat es gefunden: unter `/tmp` liegen
+      die Arbeitsordner nebenläufiger Testläufe, jeder mit `tickets/` — `/tmp` sah damit
+      aus wie eine Organisationswurzel. Die Bedingung, dass die Ebene **das eigene Repo**
+      unter ihren Einheiten führt, endet von selbst dort, wo die Organisation endet.
+
+    > **Ein Aufwärtsgang braucht ein Abbruchkriterium, das aus dem Gegenstand kommt, und
+    > nicht nur eine Zählung. Eine Zahl sagt „hier sind mehrere Ordner"; sie sagt nicht
+    > „und einer davon bin ich".**
+    """
+    ziel = os.path.abspath(repo or ".")
+    pfad, treffer = ziel, None
+    for _ in range(_WURZEL_TIEFE):
+        pfad = os.path.dirname(pfad)
+        if not pfad or pfad == os.path.dirname(pfad):
+            break
+        einheiten = projekt_pfade(pfad)
+        if len(einheiten) >= 2 and any(os.path.abspath(p) == ziel for _n, p in einheiten):
+            treffer = pfad
+    return treffer
+
+
+def _pruefe_fremde_sperre(ref, repo):
+    """[fehler] für eine qualifizierte `blocked_by`-Kennung. Leer = in Ordnung.
+
+    ⚠⚠ **Drei Lagen, und nur EINE davon ist ein Befund** (`SWR-096`/`SWR-108`-Familie):
+
+    * die Einheit gibt es und das Ticket auch → **still**, die Sperre ist gültig;
+    * die Einheit gibt es und das Ticket **nicht** → **Befund**, das ist ein Tippfehler
+      oder eine Kennung, die jemand nicht nachgezogen hat;
+    * die Wurzel oder die Einheit ist **nicht auffindbar** → **kein Befund**.
+
+    ⚠ Die dritte Lage ist der Grund, warum diese Funktion überhaupt so ausführlich ist.
+    `board.py --check` läuft auch in einem einzeln ausgecheckten Repo und in CI, wo die
+    Nachbarrepos schlicht nicht daliegen. Dort einen Befund zu melden hieße, eine
+    **Aussage über die Umgebung** als **Aussage über das Ticket** auszugeben — und ein
+    Gate, das aus einem unerreichbaren Nachbarn einen Fehler macht, ist genau die
+    Bauart, die `SWR-166` 83 abgebrochene Läufe gekostet hat.
+
+    > **„Unbekannt" und „unerreichbar" sind zwei Antworten, und nur eine darf blockieren.
+    > Sie unter einem Meldetext zusammenzufassen wäre B033 an der Stelle, an der es am
+    > teuersten ist: an einem Gate.**
+    """
+    m = QUALIFIZIERTE_REF.match(ref)
+    einheit, tid = m.group(1), m.group(2)
+    wurzel = _org_wurzel(repo)
+    if wurzel is None:
+        return []  # unerreichbar — kein Befund, siehe Rumpf
+    pfade = dict(projekt_pfade(wurzel))
+    if einheit not in pfade:
+        return []  # dieselbe Lage: die Einheit liegt hier nicht, das sagt nichts über sie
+    if not os.path.isfile(os.path.join(pfade[einheit], "tickets", f"{tid}.md")):
+        return [f"blocked_by verweist auf unbekanntes Ticket: {ref} "
+                f"(Einheit {einheit} gefunden, {tid} nicht)"]
+    return []
+
+
 def validiere(t, alle_ids, repo=None, git_pruefen=True):
     """Einzelticket validieren. Gibt Fehlerliste zurück."""
     fehler = []
@@ -626,6 +711,9 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
     for ref in bb:
         if ref == tid:
             fehler.append("blocked_by verweist auf sich selbst")
+        elif QUALIFIZIERTE_REF.match(ref):
+            # SWR-193 (platform/T-0045): eine Sperre darf ein fremdes Repo nennen.
+            fehler.extend(_pruefe_fremde_sperre(ref, repo))
         elif ref not in alle_ids:
             fehler.append(f"blocked_by verweist auf unbekanntes Ticket: {ref}")
     # Status-Regeln (Playbook Kap. 5)
