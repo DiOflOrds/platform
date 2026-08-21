@@ -82,7 +82,16 @@ test("beitragKopf holt Absender und Zeit des Erstbeitrags aus dem Brief, wenn si
                   beitraege: [{ absender: "", zeit: "", text: "x", ist_erstbeitrag: true }] };
   const k = R.beitragKopf(brief.beitraege[0], brief, NUTZER);
   assert.strictEqual(k.absender, "E. John");
-  assert.strictEqual(k.zeit, "2026-08-17T07:41:29+00:00");
+  // ⚠ ERWARTUNG IN SPRINT 35 GEAENDERT, und das gehoert benannt statt gruen gemacht
+  // (SWR-166). Der GEGENSTAND dieser Zusicherung ist unveraendert: der Erstbeitrag holt
+  // Absender und Zeit aus dem BRIEF, wenn sie fehlen. Geaendert hat sich nur, dass der
+  // Kopf ab SWR-213 durch `zeitLesbar` geht — bis Sprint 34 stand hier der Rohwert
+  // "2026-08-17T07:41:29+00:00", weil es keine Formatierung gab.
+  //
+  // Das ist KEINE Abschwaechung: die Formatierung selbst hat zwei eigene Zusicherungen
+  // weiter unten, und diese hier haette ohne die Aenderung eine Anzeige festgehalten,
+  // die dem Auftraggeber einen Zonenversatz in die Briefansicht schreibt.
+  assert.strictEqual(k.zeit, "2026-08-17 07:41");
 });
 
 test("beitragKopf erfindet nichts, wenn auch der Brief nichts hergibt (B038)", () => {
@@ -621,4 +630,33 @@ test("textRefAnnahme heisst so, wie sie ist — und liefert ohne Projekt nichts"
   // Und sie geht durch dieselbe Route — kein zweiter Weg ins Ziel.
   assert.strictEqual(R.ticketRoute(R.textRefAnnahme("pm", "T-0002")),
                      R.ticketRoute("pm/T-0002"));
+});
+
+test("SWR-213: ein ISO-Zeitstempel wird lesbar angezeigt, ein Datum bleibt ein Datum", () => {
+  // ⚠⚠ Befund 17 des Gegenlesens von Sprint 35, und eine Regression, die der
+  // Auftraggeber SIEHT. Die Erweiterung von DATUM_IM_KOPF war noetig, damit die
+  // Kennzahl die Uhrzeit eines Beitrags ueberhaupt lesen kann — dadurch liefert
+  // beitraege()[].zeit fuer N-0004 jetzt "2026-08-21T10:26:10+00:00" statt
+  // "2026-08-21", und dieser Wert ging UNFORMATIERT in die Briefansicht.
+  //
+  // > Nicht nur eine Klassifikation kann wandern, wenn man einen Ausdruck erweitert,
+  // > sondern auch der zurueckgegebene WERT.
+  assert.strictEqual(R.zeitLesbar("2026-08-21T10:26:10+00:00"), "2026-08-21 10:26");
+  assert.strictEqual(R.zeitLesbar("2026-08-20 11:50"), "2026-08-20 11:50");
+  // Ein reines Datum bleibt ein reines Datum — es wird KEINE Uhrzeit erfunden.
+  assert.strictEqual(R.zeitLesbar("2026-08-21"), "2026-08-21");
+  assert.strictEqual(R.zeitLesbar(""), "");
+  assert.strictEqual(R.zeitLesbar(null), "");
+});
+
+test("SWR-213: der Briefkopf geht durch die Formatierung und nicht daran vorbei", () => {
+  // Die Verdrahtung, nicht die Funktion (Review-Befund aus Sprint 32): eine
+  // Formatierung, die niemand ruft, ist so viel wert wie ein Kommentar.
+  const kopf = R.beitragKopf({ absender: "E. John",
+                               zeit: "2026-08-21T10:26:10+00:00" }, {}, []);
+  assert.strictEqual(kopf.zeit, "2026-08-21 10:26");
+  // Auch der Erstbeitrag, der seine Zeit aus dem BRIEF zieht.
+  const erst = R.beitragKopf({ ist_erstbeitrag: true },
+                             { von: "E. John", zeit: "2026-08-21T08:07:00+00:00" }, []);
+  assert.strictEqual(erst.zeit, "2026-08-21 08:07");
 });

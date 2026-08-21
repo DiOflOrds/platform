@@ -89,10 +89,19 @@ def execute(rolle, aufgabe, kontext):
     # SWR-212: mitgeführt, weil der Fehlerausgang sonst NICHTS über den Versuch weiß.
     versuchte = []
     letztes_modell = ""
+    uebersprungen = []
     for provider in kette:
         executor = EXECUTORS.get(provider)
         if executor is None:
-            letzter_fehler = f"unbekannter Provider: {provider}"
+            # ⚠ Gegenlesen Sprint 35, Befund 3: bis hierher hat ein unbekanntes
+            # LETZTES Kettenglied die Meldung des wirklich versuchten Providers
+            # überschrieben — die Registry sagte dann „ollama/gemma3:27b gescheitert,
+            # weil ein unbekannter Provider da war", und der echte 404-Text war weg.
+            # > Die Meldung folgte der KETTE, `provider` folgte dem VERSUCH. Zwei
+            # > Felder desselben Eintrags, zwei verschiedene Zeitpunkte.
+            uebersprungen.append(provider)
+            if not versuchte:
+                letzter_fehler = f"unbekannter Provider: {provider}"
             continue
         versuchte.append(provider)
         try:
@@ -103,11 +112,20 @@ def execute(rolle, aufgabe, kontext):
             # zweites Mal aus Register und Guardrails zu bilden wäre B033 mit der
             # Modellauflösung als vergessener Kopie (SWR-169 hat genau diese Kopie
             # bereits einmal gekostet).
-            letztes_modell = getattr(e, "modell", "") or letztes_modell
+            #
+            # ⚠⚠ Gegenlesen Sprint 35, Befund 2: hier stand `or letztes_modell`. Damit
+            # trug ein Kettenglied das Modell des VORIGEN weiter — gemessen schrieb die
+            # Registry bei `[ollama, claude]` den Eintrag
+            # `provider='claude' modell='gemma3:27b'`, und claude hat gemma3 nie
+            # angefasst.
+            # > Ein Feld, das den Wert des Vorgängers erbt, behauptet einen Versuch, den
+            # > es nicht gab — genau die Falschaussage, gegen die diese Anforderung
+            # > gebaut wurde, nur eine Feldbreite weiter rechts.
+            letztes_modell = getattr(e, "modell", "")
             continue  # on_unavailable: next_in_chain
         except Exception as e:  # Executor-Fehler: nächste Stufe versuchen
             letzter_fehler = f"{provider}: {type(e).__name__}: {e}"
-            letztes_modell = getattr(e, "modell", "") or letztes_modell
+            letztes_modell = getattr(e, "modell", "")
             continue
 
         if roh.get("wartet"):
@@ -158,6 +176,11 @@ def execute(rolle, aufgabe, kontext):
     #
     # ⚠ Leer bleibt es weiterhin, wenn wirklich kein Executor gerufen wurde — dann ist
     # die Leere eine Aussage und keine Lücke.
+    if uebersprungen and versuchte:
+        # ⚠ Übersprungene Glieder gehen nicht verloren — sie stehen HINTER der Meldung
+        # des echten Versuchs statt an ihrer Stelle.
+        letzter_fehler += (" | uebersprungen (kein Executor): "
+                           + ", ".join(uebersprungen))
     erg = Ergebnis(status="fehler", meldung=letzter_fehler,
                    provider=(versuchte[-1] if versuchte else ""),
                    modell=letztes_modell,

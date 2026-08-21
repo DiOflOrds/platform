@@ -151,26 +151,21 @@ def zaehle_briefe_im_lauf(root, seit=None):
         return None
     anzahl = 0
     for _e, pfad in board.briefkasten_dateien(root):
-        zeit = (_frontmatter(pfad).get("zeit") or "").strip()
-        if not zeit:
-            continue
-        try:
-            wert = datetime.fromisoformat(zeit.replace("Z", "+00:00"))
-        except ValueError:
-            continue  # ein unlesbarer Zeitstempel ist kein Ereignis, das wir erfinden
-        # ⚠⚠ **Der teuerste Fehler dieses Sprints saß in dieser einen Zeile.** Briefe
-        # tragen ihre Zeit in **UTC** (`briefkasten.py`: `datetime.now(timezone.utc)`),
-        # das Sprintregister in **Wanduhrzeit** (`sprint_register.py`: `datetime.now()`).
-        # Der erste Bau hat `.replace(tzinfo=None)` benutzt — das wirft den Offset weg
-        # statt umzurechnen — und damit einen UTC-Wert gegen einen Ortszeit-Wert
-        # verglichen. Bei CEST sind das zwei Stunden; bei Sprintlängen von ein bis zwei
-        # Stunden hätte die Kennzahl **immer 0** gemeldet.
+        # ⚠⚠ Gegenlesen Sprint 35, Befund 8: bis hierher stand die Zeitbehandlung
+        # ZWEIMAL in dieser Datei — hier und in `_zeitwert`, zwanzig Zeilen tiefer,
+        # samt doppelt ausformulierter SWR-206-Begründung. Und der Quelltext-Wächter
+        # (`test_brief_discovery.test_zeitzone_wird_umgerechnet…`) kannte nur diese
+        # Kopie: eine Mutation an der ANDEREN machte 1 Test rot statt 2.
         #
-        # > **Eine Größe, die den Satz „keiner eingegangen" verhindern sollte, hätte ihn
-        # > maschinell erzeugt. Und sie hat, bevor das Gegenlesen sie fand, bereits eine
-        # > ANFORDERUNG mit einer falschen Aussage gefüllt (SWR-206, erste Fassung).**
-        if wert.tzinfo is not None:
-            wert = wert.astimezone().replace(tzinfo=None)
+        # > **Eine Regel, die in zwei Funktionen einer Datei lebt und deren Wächter nur
+        # > eine davon kennt, ist zur Hälfte unbewacht — und die unbewachte Hälfte ist
+        # > immer die jüngere.**
+        #
+        # `_zeitwert` ist ab jetzt die einzige Stelle. Der Wächter greift weiterhin,
+        # weil `zaehle_briefe_im_lauf` sie nachweislich RUFT (eigene Zusicherung).
+        wert, _genau = _zeitwert(_frontmatter(pfad).get("zeit"))
+        if wert is None:
+            continue  # ein unlesbarer Zeitstempel ist kein Ereignis, das wir erfinden
         if wert >= seit:
             anzahl += 1
     return anzahl
@@ -179,8 +174,8 @@ def zaehle_briefe_im_lauf(root, seit=None):
 def _zeitwert(roh):
     """`(datetime, traegt_uhrzeit)` — oder `(None, False)`, wenn unlesbar.
 
-    ⚠ `traegt_uhrzeit` ist kein Beiwerk: 48 der 74 Folgebeiträge im Bestand tragen nur
-    ein Datum. Ein Datum ohne Uhrzeit wird beim Parsen zu **Mitternacht**, und
+    ⚠ `traegt_uhrzeit` ist kein Beiwerk: 46 der 74 Folgebeiträge im Bestand (62 %) tragen
+    nur ein Datum. Ein Datum ohne Uhrzeit wird beim Parsen zu **Mitternacht**, und
     Mitternacht liegt vor jedem Sprintstart dieses Hauses. Ohne die Unterscheidung
     würde „ich weiß es nicht" als „nicht im Lauf" gezählt — der Vorgabewert-Fehler aus
     Sprint 32 in seiner teuersten Gestalt.
@@ -218,7 +213,7 @@ def zaehle_post_im_lauf(root, seit=None):
     | Erstbriefe | **69** |
     | Folgebeiträge (`SWR-126`) | **74** |
     | **Anteil Beiträge an aller Post** | **52 %** |
-    | Beiträge **ohne Uhrzeit** im Kopf | **48** (65 %) |
+    | Beiträge **ohne Uhrzeit** im Kopf | **46** (62 %) |
 
     **Damit ist DoD 2 entschieden und nicht gemeint:** Beiträge sind nicht der Rand,
     sondern die **Mehrheit** der Post. Eine Kennzahl, die sie nicht sieht, sieht die
@@ -246,37 +241,65 @@ def zaehle_post_im_lauf(root, seit=None):
         seit = _sprint_start(root)
     if seit is None:
         return None
+    def _einordnen(roh):
+        """`"im_lauf"` | `"davor"` | `"unbestimmbar"` | `None` — EINE Regel für beide
+        Mengen.
+
+        ⚠⚠ Gegenlesen Sprint 35, Befund 10: die Datumsregel galt im ersten Bau nur für
+        Beiträge. Ein **Erstbrief** mit datumslosem `zeit` fiel dadurch durch alle drei
+        Zahlen — weder gezählt noch `unbestimmbar`, sondern spurlos weg. Gemessen an
+        einem Brief mit `zeit: 2026-08-25` und Start am 20.08.: `briefe_im_lauf` = 1,
+        `post_im_lauf` = 0/0/0.
+
+        > **Der Fehler, den diese Größe für Beiträge benennt, stand für Erstbriefe im
+        > eigenen Code — und in der schärferen Form: hier verschwand auch BEKANNTES.**
+
+        Dass er heute nichts kostet (0 von 69 Briefen tragen ein datumsloses `zeit`), ist
+        ein Zufall des Bestands und keine Eigenschaft des Codes.
+        """
+        wert, genau = _zeitwert(roh)
+        if wert is None:
+            return None
+        if genau:
+            return "im_lauf" if wert >= seit else "davor"
+        # Nur ein Datum. Der erste Entwurf hat ALLE datumslosen Einträge als
+        # `unbestimmbar` gemeldet — auch einen vom 15.08., über den das Datum längst
+        # entscheidet. Eine Größe, die Bekanntes als unbekannt führt, ist genauso falsch
+        # wie eine, die Unbekanntes als Null führt; sie irrt nur bequemer.
+        if wert.date() > seit.date():
+            return "im_lauf"            # der ganze Tag liegt nach dem Start
+        if wert.date() == seit.date():
+            return "unbestimmbar"       # derselbe Tag — davor oder danach, nicht messbar
+        return "davor"
+
     erst = beitr = unbest = 0
     for _e, pfad in board.briefkasten_dateien(root):
-        wert, genau = _zeitwert(_frontmatter(pfad).get("zeit"))
-        if wert is not None and genau and wert >= seit:
-            erst += 1
+        # ⚠ Gegenlesen Sprint 35, Befund 7: der erste Bau hat die Datei ein ZWEITES Mal
+        # gelesen und das Frontmatter von Hand mit `text.split("---")` abgetrennt — eine
+        # dritte Fassung neben `briefkasten._parse` und `kennzahlen._frontmatter`. Das
+        # ist B033 mit einer ZERLEGUNG als vergessener Kopie, in einer Funktion, deren
+        # DoD ausdrücklich „geteilt, nicht kopiert" verlangt.
+        #
+        # `_parse` liefert beides aus EINER Lesung: das Frontmatter-`zeit` des Briefes
+        # **und** den Verlauf, und es setzt dem Erstbeitrag Absender und Zeit aus dem
+        # Frontmatter — die Verbindung, die dieser Zähler sonst selbst herstellen müsste.
         try:
-            with io.open(pfad, encoding="utf-8") as f:
-                text = f.read()
+            brief = _bk._parse(pfad)
         except OSError:
             continue
-        teile = text.split("---")
-        body = "---".join(teile[2:]) if len(teile) >= 3 else text
-        for b in _bk.beitraege(body):
+        lage = _einordnen(brief.get("zeit"))
+        if lage == "im_lauf":
+            erst += 1
+        elif lage == "unbestimmbar":
+            unbest += 1
+        for b in brief.get("beitraege") or []:
             if b.get("ist_erstbeitrag"):
                 continue           # der Erstbeitrag IST der Brief, sonst doppelt gezählt
-            wert, genau = _zeitwert(b.get("zeit"))
-            if wert is None:
-                continue
-            if genau:
-                if wert >= seit:
-                    beitr += 1
-                continue
-            # ⚠ Nur ein Datum. Der erste Entwurf hat ALLE 46 davon als `unbestimmbar`
-            # gemeldet — auch einen Beitrag vom 15.08., über den das Datum längst
-            # entscheidet. Eine Größe, die Bekanntes als unbekannt führt, ist genauso
-            # falsch wie eine, die Unbekanntes als Null führt; sie irrt nur in die
-            # bequemere Richtung.
-            if wert.date() > seit.date():
-                beitr += 1              # der ganze Tag liegt nach dem Start
-            elif wert.date() == seit.date():
-                unbest += 1             # derselbe Tag — davor oder danach, nicht messbar
+            lage = _einordnen(b.get("zeit"))
+            if lage == "im_lauf":
+                beitr += 1
+            elif lage == "unbestimmbar":
+                unbest += 1
     return {"erstbriefe": erst, "beitraege": beitr, "unbestimmbar": unbest}
 
 

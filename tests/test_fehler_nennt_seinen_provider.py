@@ -132,6 +132,82 @@ class FehlerNenntSeinenProvider(unittest.TestCase):
             self.assertEqual(_eintraege(tmp)[0]["versuchte_provider"],
                              ["ollama", "claude"])
 
+    def test_modell_wird_NICHT_vom_vorgaenger_geerbt(self):
+        """⚠⚠ Befund 2 des Gegenlesens, als Zusicherung festgehalten.
+
+        Der erste Bau schrieb `letztes_modell = getattr(e, "modell", "") or
+        letztes_modell`. Gemessen ergab das bei `[ollama, claude]` den Eintrag
+        `provider='claude' modell='gemma3:27b'` — **claude hat gemma3 nie angefasst.**
+
+        > **Ein Feld, das den Wert seines Vorgängers erbt, behauptet einen Versuch, den
+        > es nicht gab.**
+        """
+        def mit_modell(rolle, aufgabe, kontext, cfg):
+            raise ollama_executor._mit_modell(
+                NotImplementedError("ollama: 404"), "gemma3:27b")
+
+        def ohne_modell(rolle, aufgabe, kontext, cfg):
+            raise RuntimeError("claude kaputt")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            core.EXECUTORS["ollama"] = mit_modell
+            core.EXECUTORS["claude"] = ohne_modell
+            erg = core.execute("CM", "Aufgabe",
+                               _kontext(tmp, ["ollama", "claude"], _guardrails(tmp)))
+            self.assertEqual(erg.provider, "claude")
+            self.assertEqual(erg.modell, "",
+                             "claude hat kein Modell gemeldet -> das Feld bleibt LEER, "
+                             "es erbt nicht das Modell von ollama")
+            self.assertEqual(_eintraege(tmp)[0]["modell"], "")
+
+    def test_unbekanntes_letztes_glied_loescht_die_echte_meldung_nicht(self):
+        """⚠⚠ Befund 3 des Gegenlesens, als Zusicherung festgehalten.
+
+        Bei `[ollama, gibtsnicht]` folgte `meldung` der KETTE und `provider` dem
+        VERSUCH. Der Leser sah *„ollama/gemma3:27b gescheitert, weil ein unbekannter
+        Provider da war"* — der echte 404-Text war weg, also genau das Feld, in dem
+        laut dieser Anforderung „die Wahrheit lag".
+        """
+        def mit_modell(rolle, aufgabe, kontext, cfg):
+            raise ollama_executor._mit_modell(
+                NotImplementedError("ollama: Anfrage fehlgeschlagen (404)"), "gemma3:27b")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            core.EXECUTORS["ollama"] = mit_modell
+            core.EXECUTORS.pop("gibtsnicht", None)
+            erg = core.execute("CM", "Aufgabe",
+                               _kontext(tmp, ["ollama", "gibtsnicht"], _guardrails(tmp)))
+            self.assertEqual(erg.provider, "ollama")
+            self.assertEqual(erg.modell, "gemma3:27b")
+            self.assertIn("404", erg.meldung,
+                          "die Meldung des ECHTEN Versuchs darf nicht ueberschrieben werden")
+            self.assertIn("gibtsnicht", erg.meldung,
+                          "das uebersprungene Glied geht auch nicht verloren")
+
+    def test_keine_zweite_modellaufloesung_im_kern(self):
+        """⚠⚠ Befund 1 des Gegenlesens: der Halbsatz *„never re-resolved in the core"*
+        hatte KEINEN Vertreter.
+
+        Gemessen: die volle `SWR-169`-Rangfolge liess sich in `core.execute` nachbauen,
+        ohne dass ein einziger Test rot wurde — dieselbe Kopie, die am 2026-08-20 sechs
+        Ticks gekostet hat.
+
+        > **Ein Halbsatz in einer Anforderung, den keine Zusicherung vertritt, ist eine
+        > Absichtserklärung.**
+
+        Geprüft wird die ABWESENHEIT der Auflösungsquellen im Kern — nicht die
+        Anwesenheit eines Namens (`SWR-202`: Anwesenheit ist nicht Verwendung, und ihre
+        Umkehrung gilt hier).
+        """
+        import inspect
+        quelle = inspect.getsource(core.execute)
+        for verboten in ("OLLAMA_MODEL", "modell_name", "modell_der_besetzung",
+                         "llama3.1", '["model"]', '"model"'):
+            self.assertNotIn(verboten, quelle,
+                             f"der Kern loest das Modell NICHT selbst auf ({verboten})")
+        self.assertIn('getattr(e, "modell"', quelle,
+                      "das Modell kommt vom Executor, der es aufgeloest hat")
+
     def test_erfolg_traegt_die_versuchte_kette_mit(self):
         """Auch der gute Ausgang sagt, was davor scheiterte — sonst ist die Kette blind."""
         def kaputt(rolle, aufgabe, kontext, cfg):
@@ -164,18 +240,27 @@ class FehlerNenntSeinenProvider(unittest.TestCase):
             self.assertEqual(erg.versuchte_provider, [])
             self.assertEqual(_eintraege(tmp)[0]["versuchte_provider"], [])
 
-    def test_leere_kette_nennt_niemanden(self):
-        """Die zweite Gegenprobe: gar keine Kette, gar kein Versuch."""
+    def test_leere_kette_faellt_auf_claude_zurueck_und_sagt_es(self):
+        """⚠ Befund 16 des Gegenlesens: die erste Fassung nahm mit `assertIn(…, ("",
+        "claude"))` **beide** Antworten an und leitete die Erwartung der Folgezeile aus
+        dem beobachteten Wert ab.
+
+        > **Eine Zusicherung, die ihre Erwartung aus dem Ergebnis bildet, prüft nur noch
+        > Widerspruchsfreiheit — nicht Verhalten.**
+
+        Gemessen ist das Verhalten eindeutig: eine leere Kette fällt im Kern auf
+        `["claude"]` zurück, der Executor wird gerufen und scheitert.
+        """
+        def kaputt(rolle, aufgabe, kontext, cfg):
+            raise NotImplementedError("claude nicht verfuegbar")
+
         with tempfile.TemporaryDirectory() as tmp:
+            core.EXECUTORS["claude"] = kaputt
             k = _kontext(tmp, [], _guardrails(tmp))
             k["provider_kette"] = []
             erg = core.execute("CM", "Aufgabe", k)
-            # leere Kette faellt im Kern auf ["claude"] zurueck; ohne Executor-Attrappe
-            # ist claude nicht verfuegbar -> Versuch fand statt, Provider wird genannt.
-            self.assertIn(erg.provider, ("", "claude"))
-            self.assertEqual(erg.versuchte_provider,
-                             [] if erg.provider == "" else ["claude"],
-                             "Provider und Versuchsliste duerfen sich nie widersprechen")
+            self.assertEqual(erg.provider, "claude")
+            self.assertEqual(erg.versuchte_provider, ["claude"])
 
     # ---- Rueckbau-Waechter (SWR-148-Paarform) -------------------------------
 

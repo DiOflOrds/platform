@@ -196,11 +196,32 @@ class AussageUeberDasFenster(unittest.TestCase):
 
         `.replace(tzinfo=None)` wirft den Offset weg, `.astimezone()` rechnet um. Der
         Unterschied ist bei CEST zwei Stunden — und damit laenger als ein ganzer Sprint.
+
+        ⚠⚠ **Gegenlesen Sprint 35, Befund 8: dieser Waechter kannte nur EINE der beiden
+        Kopien.** Die Regel stand im ersten Bau von Sprint 35 zweimal in `kennzahlen.py`
+        — hier und in `_zeitwert` — und eine Mutation an der juengeren machte 1 Test rot
+        statt 2.
+
+        > **Eine Regel, deren Waechter nur eine ihrer Kopien kennt, ist zur Haelfte
+        > unbewacht — und die unbewachte Haelfte ist immer die juengere.**
+
+        Die Regel lebt jetzt in `_zeitwert`. Geprueft wird deshalb BEIDES: dass
+        `_zeitwert` sie traegt, und dass beide Zaehlungen sie wirklich RUFEN statt sie
+        stehenzulassen (`SWR-202`: Anwesenheit ist nicht Verwendung).
         """
+        import ast
         import inspect
-        quelle = inspect.getsource(kennzahlen.zaehle_briefe_im_lauf)
-        self.assertIn("astimezone", quelle,
+        self.assertIn("astimezone", inspect.getsource(kennzahlen._zeitwert),
                       "ohne astimezone wird UTC gegen Wanduhr verglichen")
+        for funktion in (kennzahlen.zaehle_briefe_im_lauf,
+                         kennzahlen.zaehle_post_im_lauf):
+            baum = ast.parse(inspect.getsource(funktion).lstrip())
+            aufrufe = {ast.unparse(k.func) for k in ast.walk(baum)
+                       if isinstance(k, ast.Call)}
+            self.assertIn("_zeitwert", aufrufe,
+                          f"{funktion.__name__} MUSS die eine Zeitregel rufen")
+            self.assertNotIn("datetime.fromisoformat", aufrufe,
+                             f"{funktion.__name__} baut die Regel NICHT nach")
 
     def test_unbekannt_ist_nicht_null(self):
         """⚠ Ohne laufenden Sprint gibt es `None` und nicht `0`.

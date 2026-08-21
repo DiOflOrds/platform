@@ -129,7 +129,30 @@ var Regeln = (function () {
       if (!absender) absender = brief.von || "";
       if (!zeit) zeit = brief.zeit || "";
     }
-    return { absender: absender, zeit: zeit, urheber: urheber(beitrag, nutzerNamen) };
+    return { absender: absender, zeit: zeitLesbar(zeit),
+             urheber: urheber(beitrag, nutzerNamen) };
+  }
+
+  /** SWR-213 (platform/T-0065): einen Zeitstempel fuer Menschen lesbar machen.
+   *
+   * ⚠⚠ Befund 17 des Gegenlesens von Sprint 35, und es ist eine Regression, die der
+   * Auftraggeber SIEHT. `DATUM_IM_KOPF` wurde erweitert, damit die Kennzahl die Uhrzeit
+   * eines Beitrags ueberhaupt lesen kann. Dadurch liefert `beitraege()[].zeit` fuer
+   * `N-0004` jetzt `2026-08-21T10:26:10+00:00` statt vorher `2026-08-21` — und dieser
+   * Wert ging UNFORMATIERT in die Briefansicht.
+   *
+   * > Nicht nur eine Klassifikation kann wandern, wenn man einen Ausdruck erweitert,
+   * > sondern auch der zurueckgegebene WERT. Die Zusicherung hielt die Klassifikation
+   * > fest und den Wert nicht.
+   *
+   * Angezeigt wird `YYYY-MM-DD HH:MM`; ein reines Datum bleibt ein reines Datum
+   * (nichts wird erfunden). Umgerechnet wird NICHT — die Anzeige zeigt, was dasteht;
+   * das Umrechnen gehoert dorthin, wo verglichen wird (`SWR-206`).
+   */
+  function zeitLesbar(roh) {
+    roh = (roh || "").trim();
+    var m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(roh);
+    return m ? m[1] + " " + m[2] : roh;
   }
 
   /** Ist dieser Brief durch eine **Nachfrage des Menschen** wieder offen? (pm/T-0060 Pkt. 3)
@@ -720,7 +743,8 @@ var Regeln = (function () {
            FUER_DICH_LEER_HANDLUNGEN: FUER_DICH_LEER_HANDLUNGEN,
            KEINE_DATEN: KEINE_DATEN,
            istGruppeOffen: istGruppeOffen,
-           urheber: urheber, beitragKopf: beitragKopf, istWiederOffen: istWiederOffen,
+           urheber: urheber, beitragKopf: beitragKopf, zeitLesbar: zeitLesbar,
+           istWiederOffen: istWiederOffen,
            verlauf: verlauf, sortiereBriefe: sortiereBriefe,
            briefIdAusFehler: briefIdAusFehler,
            sortiereAufgaben: sortiereAufgaben, aufgabenNachRolle: aufgabenNachRolle,
