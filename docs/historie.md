@@ -13,6 +13,7 @@
 
 | Datum | Ereignis | Beleg |
 |---|---|---|
+| 2026-08-21 | **Sprint 34** — **SWR-207** (Organisationswurzel kommt vom Aufrufer; sieben seit Sprint 32 rote Zusicherungen grün, ohne Anpassung ihrer Erwartung), **SWR-208** (Datenklasse platziert statt beschriftet; `p13` bekommt seine 10 Core-Instanzen), **SWR-209** (91 in Sprint 32 gelöschte Lehren wiederhergestellt), **SWR-210** (2×2-Raster des Post-Widgets), **SWR-211** (eine erteilte Abnahme hat ihren Tag; `p12-v1.0` nachgetragen). ⚠ Danach **sieben Befunde des unabhängigen Gegenlesens** an eben dieser Arbeit behoben. | SWR-207–211, T-0056, T-0061–T-0065 |
 | 2026-08-07 | P0 „Genesis" abgeschlossen und abgenommen; Baseline genesis-v1.0; 112 grüne Tests | D024, p0-Abschlussbericht |
 | 2026-08-15 | Genesis 2.0: Organisation mit PM-Team + Profilen (F14–F17) | p0/D027 |
 | 2026-08-17 | Sprintzähler/Register (SWR-106), Discovery projects/ | pm/T-0041, P9 |
