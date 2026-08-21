@@ -1,20 +1,17 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-21 · Tickets: 46 · davon wiederkehrend: 1
+Stand: 2026-08-21 · Tickets: 48 · davon wiederkehrend: 1
 
 
-## open (6)
+## open (3)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
-| [T-0030](tickets/T-0030.md) | Kommentare an Aufgaben — Verlauf im Ticket-Rumpf wie im Team-Chat, ein Schreibweg, kein zweiter Speicher | change-request | einmalig | dev | Team | hoch | 25 | — |
-| [T-0034](tickets/T-0034.md) | Gelernt ohne Vertreter: eine Lehre, deren Gegenmaßnahme nie ein Ticket und nie eine Prüfung geworden ist, hat vierzehn Tage lang null Wirkung gehabt | problem | einmalig | coach | Team | hoch | 27 | — |
-| [T-0045](tickets/T-0045.md) | Eine repo-übergreifende Sperre ist in diesem Haus nicht ausdrückbar — und vier Terminierungen sahen wie eine Beurteilung aus, waren aber der einzige erlaubte Status | change-request | einmalig | dev | Team | hoch | 28 | — |
-| [T-0046](tickets/T-0046.md) | Die Commit-Prüfung des Preflight vergleicht den INDEX mit HEAD statt den BAUM mit HEAD — ein stehengebliebenes index.lock erzeugt damit einen Befund über Arbeit, die committet ist | change-request | einmalig | dev | Team | hoch | 28 | — |
-| [T-0036](tickets/T-0036.md) | Entscheidungs-IDs sind je Repo vergeben und werden global zitiert — D000 gibt es 17-mal, D005 dreimal in EINER Datei | problem | einmalig | cm | Team | mittel | 27 | — |
+| [T-0048](tickets/T-0048.md) | Der Schnelltakt prüft die Besetzung ERST NACH der Auswahl — 2 von 2 Ticks im ersten startklaren Lauf ohne Ergebnis, obwohl der Preflight repariert ist | problem | einmalig | dev | Team | hoch | 30 | — |
+| [T-0047](tickets/T-0047.md) | Entscheidungen werden global zitiert und je Repo vergeben — 1003 Zitatstellen ohne Repo-Präfix gegen 319 mit, gemessen | change-request | einmalig | cm | Team | mittel | 29 | — |
 
-## done (40)
+## done (45)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -45,16 +42,21 @@ Stand: 2026-08-21 · Tickets: 46 · davon wiederkehrend: 1
 | [T-0025](tickets/T-0025.md) | Wir messen, ob ein Lauf sauber endete — nicht, ob der nächste jemals anfing: 60,2 Stunden Pause bei 60 Minuten Takt, unbemerkt | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0027](tickets/T-0027.md) | Der Abschlussbericht hat für seine EIGENEN Kennzahlen keine Prüfung — fünfmal in sechs Sprints eine fortgeschriebene statt einer gemessenen Zahl | problem | einmalig | cm | Team | hoch | 0 | — |
 | [T-0028](tickets/T-0028.md) | Orga-Rework: Rollen-Detail und Besetzungs-Konfiguration im HMI (organisation.py, /api/organisation/*, organisation.html v2) | change-request | einmalig | dev | Team | hoch | 24 | — |
+| [T-0030](tickets/T-0030.md) | Kommentare an Aufgaben — Verlauf im Ticket-Rumpf wie im Team-Chat, ein Schreibweg, kein zweiter Speicher | change-request | einmalig | dev | Team | hoch | 29 | — |
+| [T-0034](tickets/T-0034.md) | Gelernt ohne Vertreter: eine Lehre, deren Gegenmaßnahme nie ein Ticket und nie eine Prüfung geworden ist, hat vierzehn Tage lang null Wirkung gehabt | problem | einmalig | coach | Team | hoch | 29 | — |
 | [T-0035](tickets/T-0035.md) | Der Schnelltakt hat nichts zu tun: 0 von 14 offenen Tickets tragen eine ollama-besetzte Rolle — bleibt er an, wird er umgestellt, oder wird er abgeschaltet? | decision-request | einmalig | pl | Team | hoch | 27 | — |
 | [T-0037](tickets/T-0037.md) | Projektmodell (pm/T-0073): effektive_besetzungen-Resolver, Core-Team-Expansion in SWR-169/170/171-Wegen, projekt_setup.py, HMI-Core-Kennzeichnung | change-request | einmalig | dev | Team | hoch | 27 | — |
 | [T-0038](tickets/T-0038.md) | Setup-Nachzieh (Projektmodell, pm/T-0073): Initial-Artefakte für das Plattform-Projekt — verweisen, wo Bestand existiert, anlegen, wo nicht | task | einmalig | pl | Team | hoch | 0 | — |
 | [T-0039](tickets/T-0039.md) | Folge-CR (Konzept 04 Kap. 6): Work-Product-Sicht je Projekt im HMI — CM-Plan-getrieben, live (Requirements-first: erst SWRs) | change-request | einmalig | rm | Team | hoch | 0 | — |
 | [T-0043](tickets/T-0043.md) | Auftraggeber-Auftrag: Organisationsseite aus Mission Control verlinken (SWR-185) + Rollen-Aktivitäten-Sicht (SWR-186) | change-request | einmalig | rm | Team | hoch | 0 | — |
+| [T-0045](tickets/T-0045.md) | Eine repo-übergreifende Sperre ist in diesem Haus nicht ausdrückbar — und vier Terminierungen sahen wie eine Beurteilung aus, waren aber der einzige erlaubte Status | change-request | einmalig | dev | Team | hoch | 29 | — |
+| [T-0046](tickets/T-0046.md) | Die Commit-Prüfung des Preflight vergleicht den INDEX mit HEAD statt den BAUM mit HEAD — ein stehengebliebenes index.lock erzeugt damit einen Befund über Arbeit, die committet ist | change-request | einmalig | dev | Team | hoch | 29 | — |
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0015](tickets/T-0015.md) | SWR-123 räumt Git-Locks per unlink — auf dem Cowork-Mount ist das verboten, rename gelingt | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0016](tickets/T-0016.md) | Die Drei-Zustände-Regel des Widget-Vertrags steht in der Cockpit-Ansicht dreimal inline | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0020](tickets/T-0020.md) | Die Matrix schrumpft still: kein Vergleich mit dem Bestand beim Schreiben | problem | einmalig | cm | Team | mittel | 0 | T-0019 |
 | [T-0026](tickets/T-0026.md) | Eine von sieben Pausen im Sprintregister ist NEGATIV — die Zeitstempel stammen aus der Uhr des jeweils schreibenden Laufs | problem | einmalig | cm | Team | mittel | 0 | — |
+| [T-0036](tickets/T-0036.md) | Entscheidungs-IDs sind je Repo vergeben und werden global zitiert — D000 gibt es 17-mal, D005 dreimal in EINER Datei | problem | einmalig | cm | Team | mittel | 29 | — |
 | [T-0040](tickets/T-0040.md) | Folge-CR (Konzept 04 Kap. 6): projektübergreifende Kommunikations-Sicht — alle Briefe/Kommentare/DRs chronologisch, filterbar, live | change-request | einmalig | rm | Team | mittel | 0 | — |
 | [T-0042](tickets/T-0042.md) | SWR-Nachtrag (aus T-0028/T-0037 'Ehrliche Grenzen'): Organisations-Endpunkte, Besetzungs-Resolver, Materialisierung, projekt_setup als Anforderungen | task | einmalig | rm | Team | mittel | 0 | — |
 | [T-0041](tickets/T-0041.md) | Folge-CR (Konzept 04 Kap. 7): typ-Literale semantisch nachziehen — aspice→plattform, teams→projekte (Backend + Tests, ein Zug) | change-request | einmalig | chg | Team | niedrig | 0 | — |
