@@ -3,13 +3,18 @@
 Stand: 2026-08-21 · Tickets: 48 · davon wiederkehrend: 1
 
 
-## open (3)
+## open (2)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
-| [T-0048](tickets/T-0048.md) | Der Schnelltakt prüft die Besetzung ERST NACH der Auswahl — 2 von 2 Ticks im ersten startklaren Lauf ohne Ergebnis, obwohl der Preflight repariert ist | problem | einmalig | dev | Team | hoch | 30 | — |
 | [T-0047](tickets/T-0047.md) | Entscheidungen werden global zitiert und je Repo vergeben — 1003 Zitatstellen ohne Repo-Präfix gegen 319 mit, gemessen | change-request | einmalig | cm | Team | mittel | 29 | — |
+
+## in_progress (1)
+
+| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|---|
+| [T-0048](tickets/T-0048.md) | Der Schnelltakt prüft die Besetzung ERST NACH der Auswahl — 2 von 2 Ticks im ersten startklaren Lauf ohne Ergebnis, obwohl der Preflight repariert ist | problem | einmalig | dev | Team | hoch | 30 | — |
 
 ## done (45)
 
