@@ -12,16 +12,7 @@ Stand: 2026-08-21 · Tickets: 64 · davon wiederkehrend: 1
 | [T-0060](tickets/T-0060.md) | Ollama-Takt: EIN echter Lauf mit dem tatsaechlich vorhandenen Modell — die 11 Fehlschlaege liegen alle VOR der Reparatur | task | einmalig | dev | Team | hoch | 33 | — |
 | [T-0064](tickets/T-0064.md) | Kein Waechter verhindert das UEBERSCHREIBEN einer Anhaenge-Datei — SWR-209 meldet den Verlust erst danach | problem | einmalig | cm | Team | hoch | 34 | — |
 
-## in_review (4)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0061](tickets/T-0061.md) | 84 von 119 Lehren stehen in KEINEM Lehrbuch — die Kennzahl 'Lehren' und die Pruefung 'ohne Vertreter' messen verschiedene Mengen | problem | einmalig | coach | Team | hoch | 34 | — |
-| [T-0062](tickets/T-0062.md) | SWR-203 nimmt seine Wurzel aus dem eigenen DATEIPFAD statt vom Aufrufer — sieben Zusicherungen greifen dadurch ins echte Haus | problem | einmalig | dev | Team | hoch | 34 | — |
-| [T-0063](tickets/T-0063.md) | Die Datenklasse hat nur BESCHRIFTET und nicht platziert — ein sensibles Projekt waere in ein Repo mit Remote gegruendet worden | problem | einmalig | cm | Team | hoch | 34 | — |
-| [T-0056](tickets/T-0056.md) | Seit dem 07.08. wurde keine Baseline mehr gezogen — Ursache messen, bevor gebaut wird (Brief N-0009) | problem | einmalig | cm | Team | mittel | 34 | — |
-
-## done (56)
+## done (60)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -68,6 +59,9 @@ Stand: 2026-08-21 · Tickets: 64 · davon wiederkehrend: 1
 | [T-0057](tickets/T-0057.md) | Briefkasten zuerst ist eine Reihenfolge und keine Zusicherung — 7 Briefe kamen WAEHREND des Laufs, und der Haken stand schon | problem | einmalig | dev | Team | hoch | 32 | — |
 | [T-0058](tickets/T-0058.md) | Eine ENTSCHIEDENE Sperre ist keine Sperre mehr — und der Zustand besteht fort: dritte Zange in drei Sprints | problem | einmalig | dev | Team | hoch | 32 | — |
 | [T-0059](tickets/T-0059.md) | Die D-Nummernvergabe las EIN Log — SWR-197s Sperrklinke ist beim ersten Gebrauch gebrochen worden (14 -> 17 an einem Tag) | problem | einmalig | cm | Team | hoch | 32 | — |
+| [T-0061](tickets/T-0061.md) | 84 von 119 Lehren stehen in KEINEM Lehrbuch — die Kennzahl 'Lehren' und die Pruefung 'ohne Vertreter' messen verschiedene Mengen | problem | einmalig | coach | Team | hoch | 34 | — |
+| [T-0062](tickets/T-0062.md) | SWR-203 nimmt seine Wurzel aus dem eigenen DATEIPFAD statt vom Aufrufer — sieben Zusicherungen greifen dadurch ins echte Haus | problem | einmalig | dev | Team | hoch | 34 | — |
+| [T-0063](tickets/T-0063.md) | Die Datenklasse hat nur BESCHRIFTET und nicht platziert — ein sensibles Projekt waere in ein Repo mit Remote gegruendet worden | problem | einmalig | cm | Team | hoch | 34 | — |
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0015](tickets/T-0015.md) | SWR-123 räumt Git-Locks per unlink — auf dem Cowork-Mount ist das verboten, rename gelingt | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0016](tickets/T-0016.md) | Die Drei-Zustände-Regel des Widget-Vertrags steht in der Cockpit-Ansicht dreimal inline | problem | einmalig | cm | Team | mittel | 0 | — |
@@ -79,5 +73,6 @@ Stand: 2026-08-21 · Tickets: 64 · davon wiederkehrend: 1
 | [T-0047](tickets/T-0047.md) | Entscheidungen werden global zitiert und je Repo vergeben — 1003 Zitatstellen ohne Repo-Präfix gegen 319 mit, gemessen | change-request | einmalig | cm | Team | mittel | 29 | — |
 | [T-0049](tickets/T-0049.md) | Der zweite Schreibweg ins Entscheidungslog hat keine Nummernvergabe — zum zweiten Mal weitergereicht, jetzt mit eigenem Termin | change-request | einmalig | cm | Team | mittel | 30 | — |
 | [T-0053](tickets/T-0053.md) | Zwei Werkzeuge zaehlen offene Tickets verschieden — 9 gegen 12, und SWR-113 hatte genau das vor vier Sprints entschieden | problem | einmalig | cm | Team | mittel | 32 | — |
+| [T-0056](tickets/T-0056.md) | Seit dem 07.08. wurde keine Baseline mehr gezogen — Ursache messen, bevor gebaut wird (Brief N-0009) | problem | einmalig | cm | Team | mittel | 34 | — |
 | [T-0041](tickets/T-0041.md) | Folge-CR (Konzept 04 Kap. 7): typ-Literale semantisch nachziehen — aspice→plattform, teams→projekte (Backend + Tests, ein Zug) | change-request | einmalig | chg | Team | niedrig | 0 | — |
 | [T-0054](tickets/T-0054.md) | Die Endzustaende stehen 7x als Literal und tragen 3 Namen — SWR-202 hat 2 Stellen geheilt, die Menge ist gezaehlt | problem | einmalig | cm | Team | niedrig | 32 | — |
