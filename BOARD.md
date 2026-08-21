@@ -10,7 +10,7 @@ Stand: 2026-08-21 · Tickets: 51 · davon wiederkehrend: 1
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0049](tickets/T-0049.md) | Der zweite Schreibweg ins Entscheidungslog hat keine Nummernvergabe — zum zweiten Mal weitergereicht, jetzt mit eigenem Termin | change-request | einmalig | cm | Team | mittel | 30 | — |
 
-## in_progress (1)
+## in_review (1)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
