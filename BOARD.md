@@ -3,7 +3,7 @@
 Stand: 2026-08-21 · Tickets: 64 · davon wiederkehrend: 1
 
 
-## open (5)
+## open (4)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -11,7 +11,12 @@ Stand: 2026-08-21 · Tickets: 64 · davon wiederkehrend: 1
 | [T-0055](tickets/T-0055.md) | Wächter über die regelmäßigen Skripte — wer prüft, ob sie überhaupt gelaufen sind? (Brief N-0008) | problem | einmalig | dev | Team | hoch | 32 | — |
 | [T-0060](tickets/T-0060.md) | Ollama-Takt: EIN echter Lauf mit dem tatsaechlich vorhandenen Modell — die 11 Fehlschlaege liegen alle VOR der Reparatur | task | einmalig | dev | Team | hoch | 33 | — |
 | [T-0064](tickets/T-0064.md) | Kein Waechter verhindert das UEBERSCHREIBEN einer Anhaenge-Datei — SWR-209 meldet den Verlust erst danach | problem | einmalig | cm | Team | hoch | 34 | — |
-| [T-0056](tickets/T-0056.md) | Seit dem 07.08. wurde keine Baseline mehr gezogen — Ursache messen, bevor gebaut wird (Brief N-0009) | problem | einmalig | cm | Team | mittel | 32 | — |
+
+## in_progress (1)
+
+| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|---|
+| [T-0056](tickets/T-0056.md) | Seit dem 07.08. wurde keine Baseline mehr gezogen — Ursache messen, bevor gebaut wird (Brief N-0009) | problem | einmalig | cm | Team | mittel | 34 | — |
 
 ## in_review (3)
 
