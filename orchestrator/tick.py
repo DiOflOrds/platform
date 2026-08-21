@@ -62,8 +62,30 @@ def arbeitskopie_sauber(repo, ignoriere_praefix=None):
 
     ignoriere_praefix: Pfad-Präfix, das nicht zählt (z.B. session-austausch/,
     damit die Antwortdatei des 2. Session-Laufs den Tick nicht blockiert).
+
+    ⚠⚠ **SWR-191 (platform/T-0046): dieselbe Größe wie im Preflight, deshalb dieselbe
+    Messung.** Diese Funktion ist das zweite Tor vor einem Tick. Sie las bisher den
+    realen Index; ein nicht entfernbares `.git/index.lock` friert den auf dem Stand vor
+    dem letzten Commit ein, und der Tick hätte eine Arbeitskopie für schmutzig gehalten,
+    die mit HEAD byte-identisch ist.
+
+    > **Vorabfrage 3 des Tickets war „wo sonst liest dieses Haus `git status
+    > --porcelain`?" — gezählt VOR der Reparatur: drei Stellen im Betriebscode.
+    > `preflight.repo_status` (gemessener Schaden: 2 falsche Befunde), diese hier
+    > (gleiche Bauart, gleiche Folge) und `gateway.core._geaenderte_dateien`.**
+
+    ⚠ **Die dritte ist ausdrücklich NICHT geändert, und der Grund ist struktureller
+    Art statt Bequemlichkeit:** `gateway` bildet eine *Differenz* zweier Aufnahmen
+    (vorher/nachher) gegen **denselben** Index. Ein eingefrorener Index hebt sich in
+    einer Differenz heraus — beide Seiten tragen dieselben veralteten Einträge. Dort
+    beißt der Fehler nicht, und eine Änderung wäre eine Reparatur ohne Schaden.
+
+    Aufgerufen wird `preflight.repo_status` und **keine zweite Kopie derselben Logik**:
+    zwei Implementierungen einer Prüfung sind die Bauart aus B033 — sie können zu
+    verschiedenen Zeitpunkten verschiedene Antworten geben, und niemand merkt es.
     """
-    for zeile in git(repo, "status", "--porcelain", "-uall").splitlines():
+    dirty, _tracking = preflight_mod.repo_status(repo)
+    for zeile in dirty:
         pfad = zeile[3:].strip().replace("\\", "/")
         if ignoriere_praefix and pfad.startswith(ignoriere_praefix):
             continue

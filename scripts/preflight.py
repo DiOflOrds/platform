@@ -21,6 +21,7 @@ import os
 import platform as _platform
 import subprocess
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -143,15 +144,76 @@ def entferne_artefakte(pfade):
     return entfernt, geparkt, fehlgeschlagen
 
 
+def index_gesperrt(repo):
+    """True, wenn `.git/index.lock` liegt — der reale Index kann dann nicht auffrischen.
+
+    Bewusst eine reine `stat()`-Frage und ausdrücklich **keine** zweite Messung:
+    ein Vergleich „realer Index vs. Baum" würde den plain-`git status` je Repo
+    zusätzlich kosten (gemessen: 6,8 s über 17 Repos), um eine Auskunft zu erzeugen,
+    die nichts entscheidet.
+
+    ⚠ **Grenze, benannt statt verschwiegen:** ein veralteter Index OHNE Sperre wird
+    hiervon nicht erkannt. Das ist hinnehmbar, weil er sich beim nächsten Git-Aufruf
+    von allein auffrischt — die Sperre ist genau der Fall, in dem er das nicht kann.
+    """
+    return os.path.exists(os.path.join(repo, ".git", "index.lock"))
+
+
 def repo_status(repo):
-    """(dirty_zeilen, tracking_zeile) aus `git status --porcelain -b`.
+    """(dirty_zeilen, tracking_zeile) aus `git status --porcelain -b` — gegen den BAUM.
 
     `-uall` (SWR-110): ohne diese Option fasst git einen nicht getrackten Ordner zu
     EINER Zeile `?? tickets/` zusammen. Ein neu angelegtes Ticket in einem neuen
     Ordner wäre damit unsichtbar — genau der Fall, in dem eine Datei nur in der
-    Arbeitskopie existiert. Ein Test hat das gefunden (platform/T-0010)."""
-    out = subprocess.run(["git", "-C", repo, "status", "--porcelain", "-uall", "-b"],
-                         capture_output=True, text=True, encoding="utf-8", errors="replace")
+    Arbeitskopie existiert. Ein Test hat das gefunden (platform/T-0010).
+
+    ⚠⚠ **SWR-191 (platform/T-0046): der Vergleich läuft gegen einen aus HEAD frisch
+    geseedeten Index und nicht gegen den realen.** Der reale Index ist ein
+    Zwischenspeicher; die Arbeit ist der Baum. Liegt ein `.git/index.lock`, das auf
+    diesem Mount nicht entfernbar ist (`SWR-163/164`, R7), friert der reale Index auf
+    dem Stand **vor** dem letzten Commit ein — `git status` meldet dann `MM` für
+    Dateien, die mit HEAD byte-identisch sind.
+
+    > **Gemessen am Ende von Sprint 28: 2 Befunde („3 Dateien in `platform`", „1 Datei
+    > in `pm`") über Arbeit, die vollständig committet war. Ein falscher Befund ist
+    > teurer als kein Befund, weil er dieselbe Wirkung hat wie ein echter — er bricht
+    > jeden Tick ab — und keine Handlung kennt, die ihn abstellt. Genau diese Bauart
+    > hat `SWR-166` gekostet: 83 abgebrochene Auto-Pushes, 12 nie gelaufene Ticks.**
+
+    ⚠ **Preis, gemessen und nicht geschätzt:** ein `read-tree` je Repo kostet über die
+    17 Repos dieses Hauses **+7,6 s** (14,4 s statt 6,8 s). Das ist der Preis dafür,
+    dass der Befund die Arbeit misst und nicht den Zwischenspeicher.
+
+    ⚠ Der Temp-Index liegt **außerhalb** des Repos. Er im Repo abzulegen hieße, dem
+    Parkplatz bei jedem Preflight-Lauf ein weiteres nicht löschbares Artefakt
+    beizulegen — die Reparatur würde die Ursache füttern.
+
+    Fällt das Seeding aus (Repo ohne Commit, `read-tree` scheitert), fällt die Messung
+    auf den realen Index zurück: eine Auskunft aus dem Zwischenspeicher ist besser als
+    keine, und der Rückfall ist an dieser einen Stelle benannt.
+    """
+    umgebung, temp = None, None
+    try:
+        fd, temp = tempfile.mkstemp(prefix="preflight-index-")
+        os.close(fd)
+        os.remove(temp)  # read-tree legt die Datei selbst an; ein leerer Index wäre falsch
+        seed = subprocess.run(["git", "-C", repo, "read-tree", "HEAD"],
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", env=dict(os.environ, GIT_INDEX_FILE=temp))
+        if seed.returncode == 0 and os.path.exists(temp):
+            umgebung = dict(os.environ, GIT_INDEX_FILE=temp)
+    except OSError:
+        umgebung = None
+    try:
+        out = subprocess.run(["git", "-C", repo, "status", "--porcelain", "-uall", "-b"],
+                             capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", env=umgebung)
+    finally:
+        for p in ([temp, temp + ".lock"] if temp else []):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
     zeilen = out.stdout.splitlines()
     tracking = zeilen[0] if zeilen else ""
     return [z for z in zeilen[1:] if z.strip()], tracking
@@ -692,6 +754,20 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
             befunde += 1
             continue
         dirty, tracking = repo_status(repo)
+        # SWR-191, Vorabfrage 2 aus platform/T-0046: der veraltete Index ist eine
+        # Auskunft wert — aber eine ANDERE als „nicht committet". Zwei Sachverhalte
+        # unter EINEM Meldetext ist die Bauart, die SWR-116 abgelehnt hat; deshalb
+        # eine eigene Zeile mit eigenem Wortlaut.
+        #
+        # ⚠ Ausdrücklich KEIN Befund: der Zähler ist das Tor vor dem Schnelltakt, und
+        # der Aufrufer kann in der Sandbox nichts dagegen tun (`rm` -> R7). Ihn hier
+        # hochzuzählen hieße, SWR-166 ein zweites Mal zu bauen — diesmal wissentlich.
+        # Auf dem Host räumt `raeume_locks` die Sperre, und die Zeile verschwindet.
+        if index_gesperrt(repo):
+            print(f"[{name}] Hinweis: Index gesperrt (.git/index.lock) — er kann nicht "
+                  f"auffrischen und steht auf dem Stand VOR dem letzten Commit. Die "
+                  f"Messung oben lief gegen den BAUM und ist davon unberührt (SWR-191). "
+                  f"Auf dem Host löschbar; kein Befund.")
         if dirty:
             # SWR-110: Dateien NENNEN statt zählen. Sechs Zeilen "1 Datei(en)" sahen in
             # Sprint 6 gleich aus — fünfmal eine regenerierte Stand-Zeile, einmal eine
