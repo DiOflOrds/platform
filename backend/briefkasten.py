@@ -20,7 +20,26 @@ COMMIT_IDENTITAET = ["-c", "user.name=Mensch via Briefkasten",
 # Fassung — die Sessions schreiben sie mit Zusatz ("des Teams", "Routine-Session",
 # Uhrzeit). Das Datum kommt aus derselben Kopfzeile.
 ANTWORT_KOPF = re.compile(r"(?m)^## Antwort\b(.*)$")
-DATUM_IM_KOPF = re.compile(r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?")
+# ⚠⚠ SWR-213 (platform/T-0065): der Ausdruck endete bis Sprint 35 nach `\d{2}:\d{2}`
+# mit einem LEERZEICHEN als einzigem Trenner — und `BEITRAG_FORMAT` schreibt seit
+# `SWR-126` eine volle ISO-Zeit mit `T`, Sekunden und Zonenversatz. Ein Kopf
+# `## E. John (2026-08-21T10:26:10+00:00)` wurde damit als `2026-08-21` gelesen,
+# also als **Mitternacht**.
+#
+# > **Der Zerleger hat die Uhrzeit weggeschnitten, die er selbst geschrieben hat.**
+#
+# Das ist nicht kosmetisch: der Beitrag vom 2026-08-21 **12:26** fiel damit auf
+# 00:00 desselben Tages und lag VOR dem Sprintstart (12:07). Eine Kennzahl, die
+# Beiträge zählt, hätte auch nach der naheliegenden Reparatur weiter **0** gemeldet —
+# und diesmal grün aussehend.
+#
+# ⚠ Erweitert, nicht ersetzt: die drei Bestandsformen (`2026-08-21`,
+# `2026-08-21 11:50`, `2026-08-21T10:26:10+00:00`) treffen alle. Dass die
+# Klassifikation `_ist_beitragskopf` dadurch NICHT wandert, ist eine eigene
+# Zusicherung — der Ausdruck entscheidet dort mit, was überhaupt ein Beitrag ist.
+DATUM_IM_KOPF = re.compile(
+    r"\d{4}-\d{2}-\d{2}"
+    r"(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?")
 
 # SWR-126 (pm/T-0059, Brief pm/N-0031): Ein Brief ist ein VERLAUF aus Beiträgen.
 # Jede `##`-Zeile, die ein Beitragskopf ist, beginnt einen neuen Beitrag.

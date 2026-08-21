@@ -176,6 +176,110 @@ def zaehle_briefe_im_lauf(root, seit=None):
     return anzahl
 
 
+def _zeitwert(roh):
+    """`(datetime, traegt_uhrzeit)` — oder `(None, False)`, wenn unlesbar.
+
+    ⚠ `traegt_uhrzeit` ist kein Beiwerk: 48 der 74 Folgebeiträge im Bestand tragen nur
+    ein Datum. Ein Datum ohne Uhrzeit wird beim Parsen zu **Mitternacht**, und
+    Mitternacht liegt vor jedem Sprintstart dieses Hauses. Ohne die Unterscheidung
+    würde „ich weiß es nicht" als „nicht im Lauf" gezählt — der Vorgabewert-Fehler aus
+    Sprint 32 in seiner teuersten Gestalt.
+    """
+    roh = (roh or "").strip()
+    if not roh:
+        return None, False
+    try:
+        wert = datetime.fromisoformat(roh.replace("Z", "+00:00"))
+    except ValueError:
+        return None, False
+    if wert.tzinfo is not None:
+        # SWR-206: umrechnen, nie `replace(tzinfo=None)` — der Offset ist eine
+        # Maßeinheit und kein Format.
+        wert = wert.astimezone().replace(tzinfo=None)
+    return wert, len(roh) > 10
+
+
+def zaehle_post_im_lauf(root, seit=None):
+    """SWR-213 (platform/T-0065): **alle** Post seit `seit` — Erstbriefe UND Beiträge.
+
+    ⚠⚠ **Der Anlass ist die eigene Kennzahl von Sprint 34.** Am 2026-08-21 um 12:26 hat
+    der Auftraggeber geschrieben, einen gesperrten Vorgang entsperrt und einen Brief
+    wieder auf `offen` gesetzt. `zaehle_briefe_im_lauf` meldete für denselben Zeitraum
+    **0** — es liest ausschließlich das Frontmatter `zeit`, also den Zeitpunkt, zu dem
+    ein Brief **angelegt** wurde.
+
+    > **„Kein Brief eingegangen" und „kein NEUER Brief eingegangen" sind zwei Sätze, und
+    > die Kennzahl trug den ersten.**
+
+    **DoD 1 — gezählt statt geschätzt** (2026-08-21, ganzer Bestand, 69 Briefe):
+
+    | Größe | Wert |
+    |---|---|
+    | Erstbriefe | **69** |
+    | Folgebeiträge (`SWR-126`) | **74** |
+    | **Anteil Beiträge an aller Post** | **52 %** |
+    | Beiträge **ohne Uhrzeit** im Kopf | **48** (65 %) |
+
+    **Damit ist DoD 2 entschieden und nicht gemeint:** Beiträge sind nicht der Rand,
+    sondern die **Mehrheit** der Post. Eine Kennzahl, die sie nicht sieht, sieht die
+    Hälfte. Gebaut ist deshalb **eine** Größe mit Aufschlüsselung — und mit einer
+    **dritten** Zahl, die die Messung erzwungen hat: `unbestimmbar`.
+
+    ⚠⚠ **Und die naheliegende Reparatur allein hätte NICHTS geändert.** `DATUM_IM_KOPF`
+    endete vor Sprint 35 nach `\\d{2}:\\d{2}` mit Leerzeichen als einzigem Trenner;
+    `## E. John (2026-08-21T10:26:10+00:00)` wurde deshalb als `2026-08-21` gelesen, also
+    als Mitternacht — und Mitternacht liegt vor dem Sprintstart 12:07.
+
+    > **Der Zerleger hat die Uhrzeit weggeschnitten, die er selbst geschrieben hat. Eine
+    > Kennzahl, die nur ihre eigene Leseseite repariert, hätte weiter 0 gemeldet — und
+    > diesmal grün aussehend.**
+
+    ⚠ Die Zerlegung kommt aus `briefkasten.beitraege` (`SWR-126`) und ist **nicht** hier
+    ein zweites Mal geschrieben (B033, DoD 3).
+
+    Rückgabe: `{"erstbriefe": n, "beitraege": m, "unbestimmbar": k}` oder `None`, wenn
+    kein Sprint läuft. ⚠ Drei Zahlen, nicht eine Summe: `unbestimmbar` zu addieren hieße
+    behaupten, sie lägen im Fenster; sie wegzulassen hieße behaupten, sie lägen davor.
+    """
+    from backend import briefkasten as _bk
+    if seit is None:
+        seit = _sprint_start(root)
+    if seit is None:
+        return None
+    erst = beitr = unbest = 0
+    for _e, pfad in board.briefkasten_dateien(root):
+        wert, genau = _zeitwert(_frontmatter(pfad).get("zeit"))
+        if wert is not None and genau and wert >= seit:
+            erst += 1
+        try:
+            with io.open(pfad, encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        teile = text.split("---")
+        body = "---".join(teile[2:]) if len(teile) >= 3 else text
+        for b in _bk.beitraege(body):
+            if b.get("ist_erstbeitrag"):
+                continue           # der Erstbeitrag IST der Brief, sonst doppelt gezählt
+            wert, genau = _zeitwert(b.get("zeit"))
+            if wert is None:
+                continue
+            if genau:
+                if wert >= seit:
+                    beitr += 1
+                continue
+            # ⚠ Nur ein Datum. Der erste Entwurf hat ALLE 46 davon als `unbestimmbar`
+            # gemeldet — auch einen Beitrag vom 15.08., über den das Datum längst
+            # entscheidet. Eine Größe, die Bekanntes als unbekannt führt, ist genauso
+            # falsch wie eine, die Unbekanntes als Null führt; sie irrt nur in die
+            # bequemere Richtung.
+            if wert.date() > seit.date():
+                beitr += 1              # der ganze Tag liegt nach dem Start
+            elif wert.date() == seit.date():
+                unbest += 1             # derselbe Tag — davor oder danach, nicht messbar
+    return {"erstbriefe": erst, "beitraege": beitr, "unbestimmbar": unbest}
+
+
 def _sprint_start(root):
     """Startzeitpunkt des laufenden Sprints — oder `None`, wenn keiner läuft.
 
@@ -304,7 +408,17 @@ def miss(root):
         "luecken": luecken,
         "briefkasten_offen": zaehle_briefkasten(root),
         # SWR-206: die Aussage ueber das FENSTER, nicht ueber den Zeitpunkt.
+        # ⚠ SWR-213: bleibt und bedeutet ab Sprint 35 ausdruecklich NUR die ERSTBRIEFE.
+        # Der Name ist geblieben, damit die Vergleichsreihe der Berichte nicht bricht;
+        # die Beitraege stehen daneben und werden nicht hineingefaltet (T-0027-Familie:
+        # zwei Mengen unter einem Namen ist die Bauform, die dieses Haus zehnmal bezahlt
+        # hat).
         "briefe_im_lauf": zaehle_briefe_im_lauf(root),
+        "post_im_lauf": (lambda p: None if p is None
+                         else p["erstbriefe"] + p["beitraege"])(
+            zaehle_post_im_lauf(root)),
+        "beitraege_im_lauf": (lambda p: None if p is None else p["beitraege"])(
+            zaehle_post_im_lauf(root)),
         "tickets_offen": offen,
         "wartet_auf_mensch": warten,
         "parkplatz": zaehle_parkplatz(root),
