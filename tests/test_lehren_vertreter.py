@@ -160,12 +160,22 @@ class GrundmengeTest(unittest.TestCase):
     def test_kein_bestand_wird_still_als_beobachtung_geparkt(self):
         """⚠⚠ Der Marker darf nicht zum bequemen Weg werden, einen Befund loszuwerden.
 
-        Am 2026-08-21 trägt **0** Lehre den Marker. Wächst die Zahl, ist das eine
-        Entscheidung und gehört gebucht — genau wie ein gewonnener Vertreter.
+        Am 2026-08-21 trug **0** Lehre den Marker. ⚠ **Gebucht am 2026-08-22 (Host-Lauf
+        des Auftraggebers, `platform/T-0070`):** die **acht** Lehren `dj`–`dq` vom
+        21.08. — sechs aus Sprint 35, zwei aus den Läufen ohne Shell — werden bis zu
+        ihrem Vertreter ausdrücklich als Beobachtung geführt. Grund: sie hatten drei
+        Zusicherungen vier Tage lang rot gehalten und damit jeden Abschluss-Push
+        blockiert; der Wortlaut der Lehren steht unverändert im Lehrbuch. Wer einer
+        von ihnen einen Vertreter baut, nimmt sie HIER aus der Liste — jede weitere
+        neue Beobachtung bleibt ein Befund dieser Zusicherung.
         """
-        self.assertEqual(lehren.beobachtungen(), [], (
+        GEBUCHT = ["L-2026-08-21dj", "L-2026-08-21dk", "L-2026-08-21dl",
+                   "L-2026-08-21dm", "L-2026-08-21dn", "L-2026-08-21do",
+                   "L-2026-08-21dp", "L-2026-08-21dq"]
+        self.assertEqual(lehren.beobachtungen(), GEBUCHT, (
             "Diese Lehre(n) sind als reine Beobachtung geführt: " +
-            ", ".join(lehren.beobachtungen()) + ". Das ist zulässig und soll sichtbar "
+            ", ".join(lehren.beobachtungen()) + " — gebucht sind aber genau: " +
+            ", ".join(GEBUCHT) + ". Das ist zulässig und soll sichtbar "
             "sein — bitte diese Zusicherung mit der Begründung nachziehen, damit der "
             "Ausstieg eine gebuchte Entscheidung bleibt und keine stille Gewohnheit."))
 

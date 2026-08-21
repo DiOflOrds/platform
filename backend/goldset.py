@@ -133,7 +133,15 @@ def _maengel_herkunft_form(fall):
         pfad = eintrag.split(HERKUNFT_TRENNER, 1)[0].strip()
         if not pfad:
             m.append(f"herkunft[{i}] nennt keine Datei")
-        elif os.path.isabs(pfad) or ".." in pfad.split("/"):
+        # ⚠ Nicht nur os.path.isabs: seit Python 3.13 sagt es unter Windows fuer
+        # "/etc/passwd" False (kein Laufwerk = nicht absolut). Die Zusicherung
+        # test_absoluter_pfad_und_aufstieg_werden_abgelehnt war auf dem Host genau
+        # dadurch blind (Befund Host-Lauf 2026-08-22). Deshalb zusaetzlich: fuehrender
+        # Schraegstrich (beide Richtungen), Laufwerksbuchstabe, und ".." auch in
+        # Backslash-Schreibweise.
+        elif (os.path.isabs(pfad) or pfad.startswith(("/", "\\"))
+              or re.match(r"^[A-Za-z]:", pfad)
+              or ".." in pfad.replace("\\", "/").split("/")):
             m.append(f"herkunft[{i}] ist kein repo-relativer Pfad: {pfad}")
     return m
 
