@@ -31,27 +31,45 @@ if _HIER not in sys.path:
 import board  # noqa: E402
 
 PROFILE = ["entwicklung", "dienstleistung", "wiederkehrend"]
-DATENKLASSEN = ["intern", "sensibel"]
-#: ⚠⚠ **Datenklassen, deren Inhalte dieses Haus nie an einen Remote gibt** (Playbook
-#: Kap. 16 / F17, dieselbe Menge, die `pool.KLASSEN_OHNE_REMOTE` für die Team-Gründung
-#: führt). Ein Projekt dieser Klasse entsteht **oberhalb** von `projects/` und trägt
-#: `.kein-remote`; `abschluss.cmd` überspringt es damit beim Push.
+
+# ⚠⚠ **Die Datenklassen kommen aus `pool` und stehen hier NICHT ein zweites Mal**
+# (`SWR-208`, Nachtrag aus dem Gegenlesen von Sprint 34).
+#
+# Der erste Bau schrieb `DATENKLASSEN = ["intern", "sensibel"]` und
+# `KLASSEN_OHNE_REMOTE = ("sensibel",)` hierher — mit dem Kommentar, das sei *„dieselbe
+# Menge, die `pool.KLASSEN_OHNE_REMOTE` führt"*. Gemessen war sie es nicht: `pool` kennt
+# **vier** Klassen (`offen, intern, sensibel, geheim`) und **zwei** ohne Remote
+# (`sensibel, geheim`).
+#
+# > **⚠⚠ Ein Ticket, das die B033-Falle benennt, und ein Bau, der sie im selben Atemzug
+# > wieder aufstellt — mit einem Kommentar, der die Gleichheit BEHAUPTET, statt sie
+# > herzustellen. Eine Zusicherung dagegen gab es nicht; gefunden hat es das unabhängige
+# > Gegenlesen.**
+#
+# Folge des Versehens, konkret: ein Projekt der Klasse `geheim` wäre hier abgewiesen
+# worden, obwohl `pool` sie führt — und wäre es durchgekommen, hätte es einen Remote
+# bekommen.
+_HIER_BACKEND = os.path.normpath(os.path.join(_HIER, "..", "backend"))
+if os.path.dirname(_HIER_BACKEND) not in sys.path:
+    sys.path.insert(0, os.path.dirname(_HIER_BACKEND))
+from backend import pool as _pool  # noqa: E402
+
+DATENKLASSEN = list(_pool.STECKBRIEF_KLASSEN)
+#: Datenklassen, deren Inhalte dieses Haus nie an einen Remote gibt (Playbook Kap. 16 /
+#: F17). ⚠ **Ein Alias auf `pool.KLASSEN_OHNE_REMOTE`, keine Kopie** — eine Zusicherung
+#: hält die Identität (`assertIs`, dieselbe Bauform wie `inbox.FINAL` seit `SWR-131`).
 #:
-#: ⚠⚠ **Gemessen am 2026-08-21 (`platform/T-0063`, Sprint 34): bis dahin hat dieses
-#: Skript `datenklasse` ENTGEGENGENOMMEN, GEPRÜFT — und dann als `#`-KOMMENTAR in den
-#: Steckbrief geschrieben.** Der Ablageort war unverändert `projects/<kennung>`, und
-#: `projects` ist ein Repo **mit** GitHub-Remote. Ein Projekt, das ausdrücklich als
-#: `sensibel` gegründet wurde, wäre also beim nächsten `abschluss.cmd` mitgepusht worden
-#: — während im Steckbrief das Wort „sensibel" stand.
+#: ⚠⚠ **Gemessen am 2026-08-21 (`platform/T-0063`): bis dahin hat `projekt_setup.py`
+#: `datenklasse` ENTGEGENGENOMMEN, GEPRÜFT — und dann als `#`-KOMMENTAR in den Steckbrief
+#: geschrieben.** Der Ablageort war unverändert `projects/<kennung>`, und `projects` ist
+#: ein Repo **mit** GitHub-Remote. Ein Projekt, das ausdrücklich als `sensibel` gegründet
+#: wurde, wäre also beim nächsten `abschluss.cmd` mitgepusht worden — während im
+#: Steckbrief das Wort „sensibel" stand.
 #:
 #: > **Eine Datenklasse, die nur beschriftet und nicht platziert, ist keine Schranke,
 #: > sondern eine Aufschrift. Und sie stand in einem Kommentar, also an der einzigen
 #: > Stelle, die kein Werkzeug dieses Hauses liest.**
-#:
-#: Der Gegenbeleg stand die ganze Zeit daneben: `pool.gruendung_vorlegen` (der Weg der
-#: TEAM-Gründung) sagt dasselbe Wort korrekt an — zwei Gründungswege, ein Begriff, zwei
-#: Bedeutungen. Das ist die B033-Familie mit einem GRÜNDUNGSWEG als vergessener Kopie.
-KLASSEN_OHNE_REMOTE = ("sensibel",)
+KLASSEN_OHNE_REMOTE = _pool.KLASSEN_OHNE_REMOTE
 
 # Rollen-Initialisierung (Konzept 04, Kap. 4.2): Rolle -> (prozess, reviewer, titel, ziel)
 INIT_TICKETS = [

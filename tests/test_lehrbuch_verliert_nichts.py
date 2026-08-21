@@ -5,7 +5,7 @@ seine Prüfung hat ihn als Fortschritt gemeldet.**
 
 Der Abschluss-Commit von Sprint 32 (`process@a82f207`, Betreff *„Lehren cq-cv
 verankert"*) kürzte `knowledge/cm/lessons.md` von **1931 auf 26 Zeilen** und
-`knowledge/pl/lessons.md` von **871 auf 26**: **91 Lehr-Abschnitte gelöscht, 2
+`knowledge/pl/lessons.md` von **831 auf 26**: **91 Lehr-Abschnitte gelöscht, 2
 hinzugefügt.** Die Dateien wurden **geschrieben** statt **angehängt**.
 
 Was danach geschah, ist der eigentliche Gegenstand dieser Datei:

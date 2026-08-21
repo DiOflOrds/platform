@@ -28,7 +28,9 @@ in seinem eigenen Steckbrief stand.
 > **Ein fester Rückfall auf einen der beiden möglichen Werte macht aus „nicht
 > nachgesehen" eine Auskunft — und hier bedeutet der erfundene Wert „darf nach außen".**
 
-Vertreter von `L-2026-08-21dc`.
+Vertreter von `L-2026-08-21dc` — und, nach dem Gegenlesen, von `L-2026-08-21dg`:
+zwei der drei dort benannten Faelle (der ungeprueft gebliebene Halbsatz `status: aktiv`
+und die behauptete statt hergestellte Mengengleichheit) stehen hier als Zusicherung.
 """
 import os
 import shutil
@@ -94,6 +96,51 @@ class DieKlasseEntscheidetDenOrt(unittest.TestCase):
                       "genau der Zustand vor SWR-208")
         self.assertIn("profil: entwicklung", zeilen)
 
+    def test_jeder_gruendungsweg_schreibt_status_aktiv(self):
+        """⚠⚠ Der Halbsatz von `SWR-208`, der beim ersten Bau OHNE Zusicherung blieb.
+
+        Gefunden vom unabhängigen Gegenlesen: `status: aktiv` aus **beiden**
+        Gründungswegen entfernt — und **kein einziger** von 139 Tests wurde rot. Genau
+        dieser fehlende Halbsatz hat `projects/p13` sein Core Team gekostet, und die
+        Anforderung, die ihn repariert, hatte ihn selbst nicht abgesichert.
+
+        > **Ein Halbsatz in einer Anforderung, den keine Zusicherung vertritt, ist eine
+        > Absichtserklärung. Er hält bis zum nächsten Bau — und der war hier derselbe.**
+        """
+        pfad = self._erzeuge("team-s", "sensibel")
+        self.assertIn("status: aktiv", _feldzeilen(os.path.join(pfad, "steckbrief.yaml")),
+                      "projekt_setup schreibt keinen Status — organigramm."
+                      "effektive_besetzungen überspringt die Einheit stillschweigend")
+        # Der ZWEITE Gründungsweg: der Pool-Knopf. ⚠ Er wird über seinen Quelltext
+        # geprüft und nicht ausgeführt: `gruendung_ausfuehren` schreibt nach Git, und
+        # eine Vorrichtung, die das täte, hätte einen Fuß im echten Bestand (SWR-207).
+        with open(os.path.join(WURZEL, "backend", "pool.py"), encoding="utf-8") as f:
+            quelle = f.read()
+        i = quelle.index("steckbrief = ")
+        self.assertIn("status: aktiv", quelle[i:i + 400],
+                      "der Pool-Knopf schreibt wieder einen Steckbrief ohne Status — "
+                      "das ist der gemessene Fall von projects/p13")
+
+    def test_die_datenklassen_sind_EINE_menge_und_keine_kopie(self):
+        """⚠⚠ Zweiter Befund des Gegenlesens: der Kommentar behauptete die Gleichheit.
+
+        `projekt_setup` trug `("sensibel",)` und `pool` `("sensibel", "geheim")`, dazu
+        zwei gegen vier Klassen — mit einem Kommentar daneben, das sei *„dieselbe Menge"*.
+
+        > **Ein Ticket, das die B033-Falle benennt, und ein Bau, der sie im selben Atemzug
+        > wieder aufstellt. Ein Kommentar, der Gleichheit BEHAUPTET, stellt sie nicht her —
+        > `assertIs` tut es.**
+        """
+        from backend import pool
+        self.assertIs(pool.KLASSEN_OHNE_REMOTE, projekt_setup.KLASSEN_OHNE_REMOTE)
+        self.assertEqual(list(pool.STECKBRIEF_KLASSEN), projekt_setup.DATENKLASSEN)
+
+    def test_auch_geheim_landet_ohne_remote(self):
+        """Die Folge des Befunds, als eigener Fall: `geheim` war hier gar nicht zulässig."""
+        pfad = self._erzeuge("team-g", "geheim")
+        self.assertEqual(os.path.join(self.root, "team-g"), pfad)
+        self.assertTrue(os.path.isfile(os.path.join(pfad, ".kein-remote")))
+
     def test_eine_unzulaessige_klasse_schreibt_nichts(self):
         """Unter Unklarheit wird nichts angelegt — auch kein halber Ordner."""
         with self.assertRaises(ValueError):
@@ -148,11 +195,15 @@ class AmEchtenBestandGemessen(unittest.TestCase):
         self.assertTrue(ohne_remote,
                         "Grundmenge leer: keine Einheit trägt .kein-remote — die "
                         "Zusicherung sagt damit nichts (SWR-128-Familie)")
+        # ⚠ Gegen die MENGE und nicht gegen das Wort „sensibel": `pool` führt zwei
+        # Klassen ohne Remote (`sensibel`, `geheim`). Der erste Bau prüfte hart auf
+        # „sensibel" — eine zulässige `geheim`-Einheit hätte diese Zusicherung
+        # falsch-rot gemacht. Gefunden vom Gegenlesen.
         for name in ohne_remote:
-            self.assertEqual("sensibel", klasse.get(name),
-                             "%s trägt .kein-remote, wird aber als %r ausgewiesen — "
-                             "Aufschrift und Ablage widersprechen sich"
-                             % (name, klasse.get(name)))
+            self.assertIn(klasse.get(name), projekt_setup.KLASSEN_OHNE_REMOTE,
+                          "%s trägt .kein-remote, wird aber als %r ausgewiesen — "
+                          "Aufschrift und Ablage widersprechen sich"
+                          % (name, klasse.get(name)))
 
 
 if __name__ == "__main__":

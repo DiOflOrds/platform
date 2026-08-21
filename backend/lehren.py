@@ -209,7 +209,7 @@ def ohne_vertreter(wurzel=None):
 #: **Der Anlass ist ein Datenverlust, den fünf Sprints lang niemand bemerkt hat.** Der
 #: Abschluss-Commit von Sprint 32 (`process@a82f207`, Betreff *„Lehren cq-cv
 #: verankert"*) hat `knowledge/cm/lessons.md` von **1931 auf 26 Zeilen** und
-#: `knowledge/pl/lessons.md` von **871 auf 26** gekürzt: **91 Lehr-Abschnitte gelöscht**,
+#: `knowledge/pl/lessons.md` von **831 auf 26** gekürzt: **91 Lehr-Abschnitte gelöscht**,
 #: **2 hinzugefügt**. Geschrieben wurde die Datei, statt an sie anzuhängen.
 #:
 #: > **⚠⚠ Ein Commit, der „verankert" im Betreff trägt, hat 91 Lehren entfernt. Und die

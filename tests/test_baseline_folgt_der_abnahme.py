@@ -31,7 +31,9 @@ B-Zeilen, `p11/D000` enthält die Zeichenfolge in *„Gates G0–G4"*, und `p0`s
 > DR-Ticket, auf das die Logzeile zeigt — deshalb fragt diese Prüfung das Ticket und
 > nicht den Text.**
 
-Vertreter von `L-2026-08-21df`.
+Vertreter von `L-2026-08-21df` — und, nach dem Gegenlesen, von `L-2026-08-21dg`:
+die Auflage, die nur im Fehlertext stand, und die Verfallspruefung, die etwas anderes
+mass als das, was ihre Ausnahme verfallen liesse.
 """
 import os
 import re
@@ -48,10 +50,24 @@ import board  # noqa: E402
 #: Ein DR, dessen Titel eine **Projekt-Baseline abnimmt**. ⚠ Nicht „enthält G4": eine
 #: Sprint-Abnahme trägt dasselbe Wort und meint etwas anderes.
 G4_TITEL = re.compile(r"\bG4\b.*\bBaseline\s+(\S+?-v\d[\d.]*)\b", re.I)
-#: ⚠⚠ **Namentlich ausgenommen, mit Grund und mit Verfallsprüfung** (die Lehre aus
-#: `SWR-204`). `p0` ist das Genesis-Projekt; seine Baseline heißt `genesis-v1.0` und nicht
-#: `p0-v1.0`. Das ist eine Benennung aus Sprint 1 und keine Lücke — der Tag existiert.
-BASELINE_NAME_ABWEICHEND = {"p0": "genesis-v1.0"}
+#: ⚠⚠ **LEER — und das ist eine Messung, keine Bequemlichkeit** (Nachtrag aus dem
+#: Gegenlesen von Sprint 34).
+#:
+#: Der erste Bau trug hier `{"p0": "genesis-v1.0"}` mit der Begründung, `p0`s Baseline
+#: heiße anders. Gemessen: **`p0` kommt in `abgenommene_baselines` überhaupt nicht vor** —
+#: seine G4-Zeilen sind **Sprint**-Abnahmen, kein DR mit Projekt-G4-Titel. Der Eintrag
+#: konnte nie feuern, und seine „Verfallsprüfung" prüfte etwas anderes: dass es `p0` und
+#: den Tag `genesis-v1.0` gibt. Beides ist unabhängig davon wahr, ob die Ausnahme
+#: gebraucht wird.
+#:
+#: > **⚠⚠ Eine Ausnahme, die nie feuert, und eine Verfallsprüfung, die etwas anderes misst
+#: > als das, was sie verfallen ließe: die Ausnahme durfte spurlos gelöscht werden, ohne
+#: > dass eine Zusicherung rot wurde. Das ist derselbe Fehler wie `SWR-204` ihn behoben
+#: > hat — im selben Sprint, in dem seine Lehre zitiert wurde.**
+#:
+#: Die Verfallsprüfung unten misst ab jetzt das Richtige: **jeder Eintrag muss in der
+#: Grundmenge vorkommen**, sonst ist er Altpapier. Deshalb ist die Menge heute leer.
+BASELINE_NAME_ABWEICHEND = {}
 
 
 def _repo_von(pfad):
@@ -62,6 +78,23 @@ def _repo_von(pfad):
             return p
         p = os.path.dirname(p)
     return None
+
+
+def _tagdatum(repo, tag):
+    """Das Datum des Commits, auf dem ein Tag sitzt — `None`, wenn es ihn nicht gibt."""
+    r = subprocess.run(["git", "-C", repo, "log", "-1", "--format=%ad", "--date=short", tag],
+                       capture_output=True, text=True)
+    return r.stdout.strip() or None
+
+
+def _entscheidungsdatum(pfad, ticket):
+    """Das Datum der Entscheidung im Rumpf des DR — `None`, wenn keins dasteht."""
+    datei = os.path.join(pfad, "tickets", f"{ticket}.md")
+    if not os.path.isfile(datei):
+        return None
+    with open(datei, encoding="utf-8", errors="replace") as f:
+        m = re.search(r"\*\*Entscheidung[^*]*?(\d{4}-\d{2}-\d{2})", f.read())
+    return m.group(1) if m else None
 
 
 def _tags(repo):
@@ -122,15 +155,70 @@ class JedeAbnahmeHatIhrenTag(unittest.TestCase):
             "gehört auf den Abschluss-Commit des damaligen Laufs und NICHT auf HEAD: ein "
             "Tag auf heute behauptet, der heutige Stand sei abgenommen worden."))
 
-    def test_die_namensausnahme_beisst_noch(self):
-        """⚠ Verfallsprüfung: eine Ausnahme ohne Fundstelle ist Altpapier (`SWR-204`)."""
+    def test_jede_namensausnahme_wird_tatsaechlich_gebraucht(self):
+        """⚠⚠ Die Verfallsprüfung misst ab jetzt, was sie messen soll.
+
+        Die Vorgängerin prüfte, dass es die Einheit und ihren Tag **gibt** — beides ist
+        unabhängig davon wahr, ob die Ausnahme je gebraucht wird. `BASELINE_NAME_ABWEICHEND`
+        ließ sich deshalb leeren, ohne dass etwas rot wurde.
+
+        > **Eine Verfallsprüfung, die etwas anderes misst als das, was die Ausnahme
+        > verfallen ließe, ist keine — sie ist ein zweiter Name für „grün".**
+        """
+        gebraucht = {e for e, _t, _ti in abgenommene_baselines(HAUS)}
+        ueberfluessig = sorted(set(BASELINE_NAME_ABWEICHEND) - gebraucht)
+        self.assertEqual([], ueberfluessig, (
+            "Diese Ausnahmen feuern nie, weil ihre Einheit keine entschiedene "
+            "Projekt-Abnahme hat: " + ", ".join(ueberfluessig) + " — Altpapier, gehört "
+            "gelöscht."))
+
+    def test_der_tag_ist_nicht_juenger_als_seine_abnahme(self):
+        """⚠⚠ Die Auflage „nie auf HEAD" — vorher stand sie nur im FEHLERTEXT.
+
+        Gefunden vom Gegenlesen: `SWR-211` verlangt, dass ein nachgetragener Tag auf dem
+        Abschluss-Commit des damaligen Laufs sitzt. Keine Zusicherung hat das geprüft;
+        der Satz stand in der Meldung einer anderen Prüfung.
+
+        > **Eine Auflage, die nur in einem Fehlertext steht, gilt genau so lange, wie
+        > niemand sie brechen will. Sie ist eine Bitte und keine Schranke.**
+
+        Geprüft wird die **nachprüfbare Hälfte**: der getaggte Commit darf nicht jünger
+        sein als die Entscheidung, die ihn abgenommen hat. „Genau der richtige Commit"
+        ist von hier aus nicht entscheidbar — „nicht aus der Zukunft" sehr wohl.
+        """
         einheiten = dict(board.projekt_pfade(HAUS))
-        for einheit, tag in BASELINE_NAME_ABWEICHEND.items():
-            self.assertIn(einheit, einheiten,
-                          f"Ausnahme für {einheit}, das es nicht mehr gibt")
-            self.assertIn(tag, _tags(_repo_von(einheiten[einheit])),
-                          f"Ausnahme nennt {tag}, den es nicht gibt — dann ist sie keine "
-                          f"Benennung, sondern eine echte Lücke")
+        verletzt = []
+        for einheit, tag, ticket in abgenommene_baselines(HAUS):
+            repo = _repo_von(einheiten[einheit])
+            entschieden = _entscheidungsdatum(einheiten[einheit], ticket)
+            getaggt = _tagdatum(repo, tag)
+            if entschieden and getaggt and getaggt > entschieden:
+                verletzt.append(f"{einheit}/{tag}: getaggt {getaggt}, abgenommen "
+                                f"{entschieden} (lt. {ticket})")
+        self.assertEqual([], verletzt, (
+            "Baseline auf einem Commit, der JÜNGER ist als seine Abnahme: "
+            + "; ".join(verletzt) + ". Ein solcher Tag behauptet, ein Stand sei "
+            "abgenommen worden, den der Entscheider nie gesehen hat."))
+
+    def test_jede_kopie_des_tags_zeigt_auf_denselben_stand(self):
+        """⚠ Ein Tag steht oft in ZWEI Repos (Einheit und `platform`) — die zweite Kopie
+        wurde vorher nie angesehen.
+
+        Geprüft wird nicht die Gleichheit der Commits (die Repos sind verschieden),
+        sondern dass eine vorhandene Zweitkopie **nicht jünger** ist als die Abnahme:
+        dieselbe Frage, dieselbe Antwortform.
+        """
+        einheiten = dict(board.projekt_pfade(HAUS))
+        verletzt = []
+        for einheit, tag, ticket in abgenommene_baselines(HAUS):
+            entschieden = _entscheidungsdatum(einheiten[einheit], ticket)
+            zweit = os.path.join(HAUS, "platform")
+            if not entschieden or tag not in _tags(zweit):
+                continue
+            getaggt = _tagdatum(zweit, tag)
+            if getaggt and getaggt > entschieden:
+                verletzt.append(f"platform/{tag}: getaggt {getaggt}, abgenommen {entschieden}")
+        self.assertEqual([], verletzt, "; ".join(verletzt))
 
 
 class DieSprintAbnahmeIstKeineProjektAbnahme(unittest.TestCase):
