@@ -10,13 +10,7 @@ Stand: 2026-08-21 · Tickets: 49 · davon wiederkehrend: 1
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0049](tickets/T-0049.md) | Der zweite Schreibweg ins Entscheidungslog hat keine Nummernvergabe — zum zweiten Mal weitergereicht, jetzt mit eigenem Termin | change-request | einmalig | cm | Team | mittel | 30 | — |
 
-## in_review (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0047](tickets/T-0047.md) | Entscheidungen werden global zitiert und je Repo vergeben — 1003 Zitatstellen ohne Repo-Präfix gegen 319 mit, gemessen | change-request | einmalig | cm | Team | mittel | 29 | — |
-
-## done (46)
+## done (47)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -65,4 +59,5 @@ Stand: 2026-08-21 · Tickets: 49 · davon wiederkehrend: 1
 | [T-0036](tickets/T-0036.md) | Entscheidungs-IDs sind je Repo vergeben und werden global zitiert — D000 gibt es 17-mal, D005 dreimal in EINER Datei | problem | einmalig | cm | Team | mittel | 29 | — |
 | [T-0040](tickets/T-0040.md) | Folge-CR (Konzept 04 Kap. 6): projektübergreifende Kommunikations-Sicht — alle Briefe/Kommentare/DRs chronologisch, filterbar, live | change-request | einmalig | rm | Team | mittel | 0 | — |
 | [T-0042](tickets/T-0042.md) | SWR-Nachtrag (aus T-0028/T-0037 'Ehrliche Grenzen'): Organisations-Endpunkte, Besetzungs-Resolver, Materialisierung, projekt_setup als Anforderungen | task | einmalig | rm | Team | mittel | 0 | — |
+| [T-0047](tickets/T-0047.md) | Entscheidungen werden global zitiert und je Repo vergeben — 1003 Zitatstellen ohne Repo-Präfix gegen 319 mit, gemessen | change-request | einmalig | cm | Team | mittel | 29 | — |
 | [T-0041](tickets/T-0041.md) | Folge-CR (Konzept 04 Kap. 7): typ-Literale semantisch nachziehen — aspice→plattform, teams→projekte (Backend + Tests, ein Zug) | change-request | einmalig | chg | Team | niedrig | 0 | — |
