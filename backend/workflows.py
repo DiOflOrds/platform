@@ -112,7 +112,7 @@ def _takt_tickets(repo):
     tickets, _ = board.lade_tickets(repo)
     return [{"id": t.get("id", ""), "titel": t.get("titel", ""), "takt": t.get("takt", "")}
             for t in tickets
-            if t.get("takt") and t.get("status") not in ("done", "rejected")]
+            if t.get("takt") and t.get("status") not in board.STATUS_FINAL]  # SWR-205
 
 
 def alle(root):

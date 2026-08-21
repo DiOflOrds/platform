@@ -766,6 +766,99 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
     return fehler
 
 
+# SWR-204 (platform/T-0058): eine Sperre muss auf ein OFFENES Ticket zeigen — und das
+# hat bis Sprint 33 niemand geprüft.
+#
+# ⚠⚠ **Die Messung hat die Frage des Tickets umgestellt.** `T-0058` fragte, ob die
+# Organisation einen **vierten Zustand** braucht („ruht"), weil `pm/D014` = A drei
+# Tickets in einer Lage zurückließ, für die es keinen zulässigen Zustand gibt. Gezählt
+# (2026-08-21, 386 Tickets, beide Ebenen):
+#
+# * **8** `blocked_by`-Verweise in offenen Tickets — nicht 3, wie das Ticket annahm;
+# * davon zeigen **8 auf ein geschlossenes Ticket** und **0 auf ein offenes**. `SWR-193`
+#   verlangt einen Verweis auf ein offenes Ticket — **kein einziges** gesperrte Ticket
+#   des Hauses erfüllte das an diesem Tag;
+# * über den **Gesamtbestand**: 79 `blocked_by`-Verweise, davon **6** je auf einen
+#   `decision-request`, und **5 davon sind zwei Tage alt** (`T-0077`, `T-0081`).
+#
+# > **⚠⚠ Der Befund ist nicht „uns fehlt ein Zustand". Der Befund ist, dass eine Sperre
+# > NIE ZURÜCKGENOMMEN WIRD, weil nichts danach fragt. Vier der acht Verweise waren
+# > schlicht Altpapier: der Blocker war erledigt, der Grund weg, der Verweis geblieben.**
+#
+# Damit ist die Entscheidung aus der Zählung abgeleitet und nicht aus Geschmack:
+#
+# 1. **Kein vierter Zustand.** Gemessen kostet ein neues Statuswort **9** Quelldateien
+#    mit **153** Zustands-Literalen (65 allein in `static/app.js`) — und die Lage, für
+#    die er gebaut würde, ist in 386 Tickets **einmal** vorgekommen. `platform/T-0034`
+#    hat eine Bauform verworfen, die „nur eine weitere Zeile" war; hier wäre es „nur ein
+#    weiteres Wort" bei neunfachem Preis.
+# 2. **Stattdessen die fehlende Prüfung.** Sie verwandelt vier der acht Verweise in einen
+#    gewöhnlichen Befund, der beim Aufräumen verschwindet — ohne neues Vokabular.
+# 3. **Die restlichen vier gehören dem Auftraggeber.** Sie zeigen alle auf `pm/T-0077`,
+#    dessen Antwort A den Wartegrund **bestätigt** statt ihn zu beseitigen. Das ist
+#    wörtlich seine **Option C**, die er nicht gewählt hat (DoD 4) → `pm/T-0084`,
+#    Inbox-DR, **kein Eigenentscheid**.
+#
+# ⚠ Sie stehen bis zu seiner Antwort **namentlich** hier und nicht unter einer Bedingung:
+# eine Ausnahme, die „solange ein DR offen ist" lautet, wäre das offene Tor mit
+# Aufschrift aus `SWR-201`.
+TOTE_SPERREN_BESTAND = {
+    ("pm", "T-0071", "T-0077"),
+    ("pm", "T-0079", "T-0077"),
+    ("promt-team", "T-0003", "pm/T-0077"),
+    ("promt-team", "T-0012", "pm/T-0077"),
+}
+
+
+def _blocker_status(ref, tickets_nach_id, repo):
+    """Status des blocked_by-Ziels — oder `None`, wenn es hier nicht erreichbar ist.
+
+    ⚠ `None` heißt **unerreichbar** und nie **unbekannt**: dieselbe Dreiteilung wie in
+    `_pruefe_fremde_sperre`. Ein Gate, das aus einem fehlenden Nachbarrepo einen Fehler
+    macht, ist die Bauart, die `SWR-166` 83 abgebrochene Läufe gekostet hat.
+    """
+    if not QUALIFIZIERTE_REF.match(ref):
+        t = tickets_nach_id.get(ref)
+        return (t or {}).get("status") if t else None
+    m = QUALIFIZIERTE_REF.match(ref)
+    einheit, tid = m.group(1), m.group(2)
+    wurzel = _org_wurzel(repo)
+    if wurzel is None:
+        return None
+    pfade = dict(projekt_pfade(wurzel))
+    if einheit not in pfade:
+        return None
+    datei = os.path.join(pfade[einheit], "tickets", f"{tid}.md")
+    if not os.path.isfile(datei):
+        return None
+    try:
+        with open(datei, encoding="utf-8") as f:
+            fm, _ = parse_frontmatter(f.read())
+    except OSError:
+        return None
+    return (fm or {}).get("status")
+
+
+def tote_sperren(tickets, repo=None):
+    """SWR-204: Verweise auf ein bereits geschlossenes Ticket. Leer = in Ordnung."""
+    einheit = os.path.basename(os.path.abspath(repo)) if repo else ""
+    nach_id = {t.get("id"): t for t in tickets if t.get("id")}
+    befunde = []
+    for t in tickets:
+        if t.get("status") in STATUS_FINAL:
+            continue  # ein geschlossenes Ticket wird nicht mehr entsperrt
+        for ref in parse_liste(t.get("blocked_by")):
+            if (einheit, t.get("id"), ref) in TOTE_SPERREN_BESTAND:
+                continue
+            st = _blocker_status(ref, nach_id, repo)
+            if st in STATUS_FINAL:
+                befunde.append(
+                    f"{t.get('_datei', '?')}: blocked_by verweist auf ein bereits "
+                    f"geschlossenes Ticket: {ref} (status: {st}) — Sperre zurücknehmen "
+                    f"oder Grund neu benennen (SWR-204)")
+    return befunde
+
+
 def validiere_alle(tickets, repo=None, git_pruefen=True):
     """Alle Tickets validieren (inkl. Duplikat-Check). Gibt Problemliste zurück."""
     probleme = []
@@ -776,6 +869,7 @@ def validiere_alle(tickets, repo=None, git_pruefen=True):
     for t in tickets:
         for e in validiere(t, alle_ids, repo, git_pruefen):
             probleme.append(f"{t.get('_datei', '?')}: {e}")
+    probleme.extend(tote_sperren(tickets, repo))  # SWR-204
     return probleme
 
 
@@ -790,7 +884,35 @@ def verantwortlich_wert(t):
 
 
 ENTSCHEIDUNGSMARKER = "**Entscheidung ("  # SWR-039/SWR-131: die Rumpfzeile der Inbox
+
+# SWR-205 (platform/T-0054): der Endzustand eines Tickets hat ab hier EINEN Namen.
+#
+# ⚠⚠ **Gezählt, nicht vermutet — und die Zahl war groesser als die Frage.** `T-0054`
+# notierte *drei* Namen und *sechs* Literale. Gemessen (2026-08-21, Sprint 33):
+# **vier** Namen (`STATUS_FINAL` hier, `ENDZUSTAENDE` in `aggregation` **und** in
+# `kennzahlen`, `TICKET_GESCHLOSSEN` in `sprint`) und **sieben** Inline-Literale.
+# Der vierte Name stand ausgerechnet in dem Modul, das die STATUS-Liste besitzt.
+#
+# ⚠ **Warum hier und nicht in `backend`:** `backend` importiert `scripts.board`, nicht
+# umgekehrt (DoD-Punkt 3 des Tickets, derselbe Zyklus, den `SWR-198` umgangen hat).
+# Und `board` ist die Stelle, die `STATUS` ueberhaupt festlegt — der Endzustand ist
+# eine Aussage ueber dieses Vokabular und nicht ueber seine Leser.
+#
+# ⚠ **Die uebrigen Namen bleiben als ALIAS bestehen und zeigen per `is` hierher.** Sie zu
+# loeschen waere ein Rueckbau ohne Messung; ein Alias mit Identitaet ist von einer Kopie
+# durch `assertIs` unterscheidbar — genau die Bauform, die `inbox.FINAL` und
+# `dr_benachrichtigung.FINAL` seit `SWR-131` tragen.
 STATUS_FINAL = ("done", "rejected")
+
+# ⚠⚠ **Drei Fundstellen sind BEURTEILT und bewusst NICHT angeschlossen** (DoD 1: „meinen
+# die Stellen dasselbe?" — pauschal ersetzen waere `p11/T-0014` gewesen):
+#
+# * `aktivitaeten._ticket_ereignis` fragt `== "done"` und meint **erledigt**, nicht
+#   **geschlossen**. Ein verworfenes Ticket gehoert nicht in einen Erledigt-Verlauf.
+# * `feedback_route` fragt `!= "done"` an einem Ticket, an das Rueckmeldung angehaengt
+#   wird — dort ist `rejected` heute unentschieden und wird nicht im Vorbeigehen belegt.
+# * `sprint.PLAN_FERTIG` ist deutsches Plan-Vokabular („erledigt", „fertig", …) und ein
+#   anderer Begriff mit zufaelliger Ueberschneidung.
 
 
 def dr_entschieden(t):
@@ -931,9 +1053,19 @@ def gesperrt(t):
 
 
 def offene_blocker(t, tickets_nach_id):
-    """IDs der blocked_by-Tickets, die noch nicht done sind."""
+    """IDs der blocked_by-Tickets, die noch nicht in einem Endzustand sind.
+
+    ⚠⚠ **Bis Sprint 33 stand hier `!= "done"` — und das war ein echter Fehler, kein
+    Schoenheitsproblem.** Ein Blocker, den jemand **verworfen** hat (`rejected`), las
+    sich damit weiterhin als offene Sperre: der Orchestrator (`tick.py`) haette das
+    abhaengige Ticket dauerhaft uebersprungen, obwohl niemand mehr auf etwas wartet.
+    Gefunden beim Zaehlen fuer `T-0054`, nicht von einer Prüfung.
+
+    > **Der Unterschied zwischen „erledigt" und „geschlossen" ist genau ein Wort und
+    > kostet hier eine Aufgabe, die nie wieder angefasst wird.**
+    """
     return [ref for ref in parse_liste(t.get("blocked_by"))
-            if tickets_nach_id.get(ref, {}).get("status") != "done"]
+            if tickets_nach_id.get(ref, {}).get("status") not in STATUS_FINAL]
 
 
 def generiere_board(tickets, stand=None):

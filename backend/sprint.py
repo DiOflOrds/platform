@@ -89,7 +89,8 @@ PLAN_OFFEN = ("offen", "open", "in arbeit", "in_progress", "in bearbeitung",
 # Mengen. Ein Dauerläufer wird nie `done` — er trägt dauerhaft „erfüllt" im Plan und `open`
 # im Ticket, und **beides ist richtig**. Ohne diese Ausnahme meldete die Prüfung an ihrem
 # ersten Tag sechs Fehlalarme.
-TICKET_GESCHLOSSEN = ("done", "rejected")
+# SWR-205 (platform/T-0054): ALIAS auf `board.STATUS_FINAL` — siehe dort.
+TICKET_GESCHLOSSEN = board.STATUS_FINAL
 
 
 
@@ -350,7 +351,7 @@ def offene_tickets(root):
         except (ValueError, OSError):
             continue
         for t in tickets:
-            if t.get("status") in ("done", "rejected"):
+            if t.get("status") in TICKET_GESCHLOSSEN:
                 continue
             treffer.append({"projekt": name, "id": t.get("id", ""),
                             "ref": aggregation.ref(name, t.get("id", "")),

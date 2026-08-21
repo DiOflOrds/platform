@@ -43,6 +43,8 @@ from datetime import datetime
 
 _PLATFORM = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _PLATFORM)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import board  # noqa: E402  — SWR-205: der Endzustand hat EINEN Namen
 
 MARKE_AUF = "<!-- kennzahlen v1"
 MARKE_ZU = "-->"
@@ -130,7 +132,11 @@ def zaehle_briefkasten(root):
 # `kennzahlen.py` entstanden und hat sie nicht übernommen; nicht aus Widerspruch, sondern
 # weil nichts sie vertrat. Das ist wörtlich `SWR-125`: eine Entscheidung, die keine
 # Prüfung mitgeändert hat, ist eine Absichtserklärung.
-ENDZUSTAENDE = ("done", "rejected")
+# ⚠ SWR-205 (platform/T-0054, Sprint 33): der Name bleibt, die MENGE wohnt ab hier
+# in `board.STATUS_FINAL`. `SWR-202` hat diese Konstante angelegt und dabei den
+# vierten Namen fuer dieselbe Sache erzeugt — eine Heilung, die die Bauform des
+# Befunds wiederholt hat.
+ENDZUSTAENDE = board.STATUS_FINAL
 
 
 def zaehle_tickets(root):

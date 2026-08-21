@@ -245,7 +245,10 @@ def navigation(root):
 # Funktion, die sie braucht — lauffaehig, aber ein Leser, der `uebersicht` liest,
 # sah nur ein Literal und musste die Festlegung suchen. Genau dieses Suchen hat
 # `kennzahlen.py` zwanzig Sprints lang nicht getan (SWR-113 -> SWR-202).
-ENDZUSTAENDE = ("done", "rejected")
+# SWR-205 (platform/T-0054): ALIAS auf den einen Namen — `board.STATUS_FINAL`.
+# Der Name bleibt, weil seine Leser ihn tragen; die Menge ist ab hier nicht mehr
+# hier festgelegt, sondern dort. `assertIs` haelt die beiden zusammen.
+ENDZUSTAENDE = board.STATUS_FINAL
 
 
 def uebersicht(root):
@@ -463,7 +466,7 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
         status_zahlen[t.get("status", "?")] = status_zahlen.get(t.get("status", "?"), 0) + 1
     drs = []
     for t in tickets:
-        if t.get("typ") != "decision-request" or t.get("status") in ("done", "rejected"):
+        if t.get("typ") != "decision-request" or t.get("status") in ENDZUSTAENDE:
             continue
         # SWR-131: war bis Sprint 13 eine **dritte** Kopie des Markers (die Zeile stand
         # hier wörtlich). Sie war sachlich richtig — der Cockpit-DR-Block hat
@@ -518,7 +521,7 @@ def cockpit(root, projekt="p0", heute=None, jetzt=None):
             team = {"letzter_digest": digests[-1][:10] if digests else ""}
         else:
             team = {"letzter_digest": None}
-    offene = sorted((t for t in tickets if t.get("status") not in ("done", "rejected")),
+    offene = sorted((t for t in tickets if t.get("status") not in ENDZUSTAENDE),
                     key=lambda t: t.get("id", ""))
     aufgaben = [{"id": t.get("id"), "ref": ref(projekt, t.get("id")),  # SWR-087
                  "titel": t.get("titel", ""), "frist": t.get("frist", ""),  # SWR-091
@@ -672,7 +675,7 @@ def _offene_tickets_roh(root):
             except OSError:
                 continue
             fm = fm or {}
-            if fm.get("status") in ("done", "rejected"):
+            if fm.get("status") in ENDZUSTAENDE:
                 continue
             # Rückfall auf den Dateinamen wie im Vorstand: ein Ticket ohne `id` soll
             # nicht unter leerem Namen gemeldet werden (B038 — ein Befund ohne Ref).
@@ -778,7 +781,7 @@ def wartet_auf_mensch(root):
             except OSError:
                 continue
             fm = fm or {}
-            if fm.get("status") in ("done", "rejected"):
+            if fm.get("status") in ENDZUSTAENDE:
                 continue
             # Die Bedingung steht in `board.wartet_auf_mensch` und NICHT hier: die
             # Board-Spalte (SWR-119) stellt dieselbe Frage, und zwei Formulierungen
@@ -826,7 +829,7 @@ def fuer_dich_handlungen(root):
             except OSError:
                 continue
             fm = fm or {}
-            if fm.get("status") in ("done", "rejected"):
+            if fm.get("status") in ENDZUSTAENDE:
                 continue
             # Dieselbe Bedingung wie in `wartet_auf_mensch`, aus `board` gelesen und nicht
             # hier formuliert: die Board-Spalte (SWR-119), der Kopfblock (SWR-120) und
