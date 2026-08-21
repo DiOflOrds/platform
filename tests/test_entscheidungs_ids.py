@@ -259,6 +259,9 @@ class EchterBestandTest(unittest.TestCase):
     def test_alle_mehrdeutigen_zitate_nennen_eine_der_vierzehn(self):
         """⚠⚠ Der Befund, der die Bauform bestimmt hat — als Zusicherung statt als Satz.
 
+        Vertreter von `L-2026-08-21ck` (*der Mangel war ein Präfix des Nummernraums,
+        keine Eigenschaft des Korpus*).
+
         Ab `D014` ist jede ID organisationsweit einmal vergeben. Dass **alle** mehrdeutigen
         Zitate aus dem unteren Nummernraum stammen, ist der Grund, warum eine Sperrklinke
         an der **Vergabe** genügt und keine an 1030 Zitatstellen nötig ist. Fällt diese

@@ -100,6 +100,9 @@ class FilterStattVetoTest(SyntheticWurzel):
     def test_hinterer_kandidat_wird_gefunden(self):
         """⚠⚠ DIE Gegenprobe: das besetzte Ticket steht HINTER dem unbesetzten.
 
+        Vertreter von `L-2026-08-21cj` (*eine Prüfung nach der Auswahl ist kein Filter,
+        sondern ein Veto gegen genau einen Kandidaten*).
+
         `T-0001` (Rolle CM, prio hoch) gewinnt jede Sortierung; `T-0002` (Rolle PROB,
         prio niedrig) ist das einzige, das diese Besetzung bearbeiten darf. Ein Veto nach
         der Auswahl gäbe hier **nichts** zurück — der Filter findet `T-0002`.
@@ -120,6 +123,9 @@ class FilterStattVetoTest(SyntheticWurzel):
 
     def test_befund_nennt_bestand_statt_exemplar(self):
         """⚠⚠ Der eigentliche Ertrag: die Meldung ist eine Aussage über den BESTAND.
+
+        Vertreter von `L-2026-08-21cl` (*eine wahre, aber zu enge Meldung über einen
+        strukturellen Zustand ist der Zwilling des falschen Befunds*).
 
         Die alte lautete *„… T-0001 bleibt unangetastet"* und las sich wie ein Zufall.
         Diese nennt die **Anzahl** der geprüften Tickets, die **Rollen** im Bestand und

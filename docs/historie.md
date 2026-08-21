@@ -21,6 +21,7 @@
 | 2026-08-21 | Setup-Nachzieh + neue Sichten Work Products/Kommunikation (SWR-181–184) | T-0038–T-0042 |
 | 2026-08-21 | **Sprint 28:** Nachverbuchung des kompletten Projektmodell-Rework (125 Dateien, 16 Repos — in KEINEM Repo committet, obwohl der Befund zweimal „nach abschluss.cmd" meldete); Testdurchlauf über **alle 85** Module statt einer Auswahl fand **drei rote** (SWR-189 Instanzschlüssel, SWR-171-Zusicherung, `projekt_setup` ohne `sichere_ausgabe`); SWR-190 Goldset-Abdeckung als stehende Prüfung; p11-Frontend-Rückbau ausgeführt | Sprint-28-Commits, T-0045, SWR-189/190 |
 | 2026-08-21 | **Sprint 29:** `SWR-191` Commit-Prüfung misst den **Baum** statt den Index (beide falschen Befunde aus Sprint 28 weg, `pm` 1→0); `SWR-192` Kommentare an Aufgaben im Ticket-Rumpf, **auch an erledigten** (vierte Berührung von T-0030 **gebaut**); `SWR-193` repo-übergreifende Sperre ausdrückbar — `promt-team/T-0003`/`T-0012` stehen nach **vier** Terminierungen erstmals ehrlich auf `blocked`; `SWR-194` Lehre ohne Vertreter als **Sperrklinke** (29 von 34 benannt, nicht rot); `SWR-195` keine neue Dublette im Entscheidungslog | T-0030/T-0034/T-0036/T-0045/T-0046, SWR-191–195 |
+| 2026-08-21 | **Sprint 30:** `SWR-196` Besetzung als **Kandidatenfilter** statt Veto nach der Auswahl — der Schnelltakt lief nach `SWR-191` erstmals bis zur Auswahl durch und endete trotzdem **2 von 2** ohne Ergebnis (**0 von 8** offenen Tickets ollama-fähig); die Absage nennt jetzt den **Bestand** statt ein Exemplar. `SWR-197` Sperrklinke am **Nummernraum**: von 1023 praefixlosen Entscheidungs-Zitaten sind **214 (21 %)** echt mehrdeutig, und **alle** nennen eine von **14** IDs (`D000`–`D013`) — gebaut an der Vergabe, nicht am Korpus. ⚠ Befund über die eigene Prüfung aus Sprint 29: `SWR-194` zählt eine **Schreibweise** (34 von 111) und übersieht **76** Lehren — drei Lehren dieses Laufs wären unbemerkt durchgerutscht (`T-0050`) | T-0047/T-0048, T-0049/T-0050, SWR-196/197 |
 
 ## Lessons Learned (Auswahl mit Verbleib — vollständige Lehren in den Rollenkarten v2)
 
@@ -43,9 +44,14 @@
 | 15 | Eine Zitierung kann lügen, ein **Schweigen** kann es nicht — deshalb sucht die Prüfung die FEHLENDE Zusicherung, nicht die schlechte | SWR-194 | Rollenkarte QM |
 | 16 | B033 mit einem **Schreibweg** als vergessener Kopie ist teurer als mit einer Datei: ein zweiter Schreibweg erzeugt Zustände, die der erste für unmöglich hält | SWR-195 | Rollenkarten CM/DEV |
 | 17 | Ein Commit, dessen Erfolg **nicht geprüft** ist, ist kein Commit — ein verschluckter Fehlschlag wird beim nächsten Schreiben zum unzulässigen Statussprung | Sprint 29, zweimal | Rollenkarte CM, Runbook Kap. 16/17 |
+| 18 | Eine Prüfung nach der Auswahl ist kein Filter, sondern ein Veto gegen genau einen Kandidaten — die Gegenprobe braucht einen **hinteren** Treffer | SWR-196 | Rollenkarte DEV, `L-2026-08-21cj` |
+| 19 | Eine **wahre, aber zu enge** Meldung über einen strukturellen Zustand ist der Zwilling des falschen Befunds: sie erneuert bei jedem Lauf die Hoffnung auf eine andere Antwort | SWR-196 | Rollenkarte DEV, `L-2026-08-21cl` |
+| 20 | Der Mangel war ein **Präfix des Nummernraums**, keine Eigenschaft des Korpus — gesichert wird die endliche Ursache, nie der Korpus, der über sie berichtet | SWR-197 | Rollenkarte CM, `L-2026-08-21ck` |
+| 21 | Eine Sperrklinke, die man mit einem anders gesetzten Doppelpunkt umgeht, ist keine — `SWR-194` liest eine Schreibweise (34) und übersieht 76 Lehren | T-0050 | Ticket `platform/T-0050`, Rollenkarte COACH |
 
 ## Offene Fäden
 
-- pm/T-0071 Schritt 3: Wirkungsmessung Schnelltakt wartet auf ersten Tick mit `status: ok` + Artefakt. ⚠ Sprint 29: steht jetzt auf **`blocked`** mit `blocked_by: [T-0077]` statt terminiert — und das war die ganze Zeit möglich, `T-0077` liegt im selben Repo.
-- `platform/T-0047` (Schnitt aus T-0036): 1003 Zitatstellen ohne Repo-Präfix gegen 319 mit — aber die zwei größten Posten sind die Entscheidungslogs selbst, wo die Angabe **nicht** mehrdeutig ist. Die ehrliche Untermenge fehlt noch.
+- pm/T-0071 Schritt 3 bleibt **blocked** (`blocked_by: [T-0077]`). ⚠ **Sprint 30 hat den Grund verschoben, nicht behoben:** der Preflight-Abbruch ist weg (`SWR-191`, gemessen 04:15), aber **0 von 8** offenen Tickets tragen eine ollama-besetzte Rolle. Der Takt kann jetzt laufen und hat nichts zu tun — `SWR-196` sagt das im Log.
+- ⚠⚠ **`platform/T-0050` (neu):** `SWR-194` liest eine **Schreibweise** statt einer Konvention — 34 von 111 Lehren gezählt, **76 übersehen**. Drei Lehren dieses Laufs wären unbemerkt durchgerutscht.
+- ✅ **`platform/T-0047` geschlossen (Sprint 30, `SWR-197`):** die ehrliche Untermenge ist gemessen — **214 von 1023 (21 %)**, und alle nennen eine von **14** IDs. Gebaut an der Vergabe. Offen daraus: `platform/T-0049` (zweiter Schreibweg ins Entscheidungslog, **dritte Berührung**, Sprint 31).
 - T-0039/T-0040 Bau nach Review der SWR-181–184; T-0041 Huckepack; T-0042 Review.
