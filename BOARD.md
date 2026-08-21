@@ -1,13 +1,15 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-21 · Tickets: 51 · davon wiederkehrend: 1
+Stand: 2026-08-21 · Tickets: 53 · davon wiederkehrend: 1
 
 
-## open (1)
+## open (3)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
+| [T-0052](tickets/T-0052.md) | Während eines Sprints ist Statusdrift der NORMALZUSTAND — und sie bricht jeden Schnelltakt ab: 6 Ticks in 46 Minuten, gemessen | problem | einmalig | dev | Team | hoch | 31 | — |
+| [T-0053](tickets/T-0053.md) | Zwei Werkzeuge zaehlen offene Tickets verschieden — 9 gegen 12, und SWR-113 hatte genau das vor vier Sprints entschieden | problem | einmalig | cm | Team | mittel | 31 | — |
 
 ## done (50)
 

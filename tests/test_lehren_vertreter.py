@@ -20,6 +20,10 @@ statt eines Satzes im Runbook, der auf Sorgfalt hofft. Das Ticket sagt ausdrück
 **nicht** die Lösung ist: *„eine weitere Zeile im Runbook … das ist genau die Bauform, die
 hier gerade vierzehn Tage lang versagt hat."*
 
+Lehre: `L-2026-08-21cn` (*eine Zusicherung, die ein Verhältnis meint und eine Ungleichung
+schreibt, bleibt grün, während ihr Gegenstand verschwindet*) — Vertreter ist
+`test_die_regel_konvention_trennt_praktisch_nichts` weiter unten.
+
 Ausführung: python -m unittest discover platform/tests
 """
 import os

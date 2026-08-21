@@ -185,7 +185,21 @@ def parse_frontmatter(text):
 
 
 def parse_liste(wert):
-    """'[A, B]' -> ['A', 'B'] (leere Liste bei '', '[]')."""
+    """'[A, B]' -> ['A', 'B'] (leere Liste bei '', '[]').
+
+    ⚠ **Eine echte Liste ist ebenfalls eine Liste** (SWR-198, Sprint 31). Das
+    Frontmatter dieses Hauses ist Text, deshalb kam hier bis Sprint 30 immer ein String
+    an — und die Funktion brach mit `AttributeError`, sobald ein Aufrufer die Angabe
+    schon zerlegt hatte. Gefunden hat es eine **Zusicherung aus dem Vorsprint**, die ihre
+    Vorrichtung mit `blocked_by: ["pm/T-0077"]` baut, also so, wie ein Mensch die Angabe
+    denkt.
+
+    > **Eine Zerlegefunktion, die an ihrem eigenen Ergebnis scheitert, ist nicht
+    > idempotent — und Idempotenz ist genau das, was ein Aufrufer von ihr erwartet, der
+    > nicht weiß, ob vor ihm schon jemand zerlegt hat.**
+    """
+    if isinstance(wert, (list, tuple)):
+        return [str(r).strip() for r in wert if str(r).strip()]
     return [r.strip() for r in (wert or "").strip("[]").split(",") if r.strip()]
 
 

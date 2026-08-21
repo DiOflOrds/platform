@@ -55,3 +55,44 @@
 - ⚠⚠ **`platform/T-0050` (neu):** `SWR-194` liest eine **Schreibweise** statt einer Konvention — 34 von 111 Lehren gezählt, **76 übersehen**. Drei Lehren dieses Laufs wären unbemerkt durchgerutscht.
 - ✅ **`platform/T-0047` geschlossen (Sprint 30, `SWR-197`):** die ehrliche Untermenge ist gemessen — **214 von 1023 (21 %)**, und alle nennen eine von **14** IDs. Gebaut an der Vergabe. Offen daraus: `platform/T-0049` (zweiter Schreibweg ins Entscheidungslog, **dritte Berührung**, Sprint 31).
 - T-0039/T-0040 Bau nach Review der SWR-181–184; T-0041 Huckepack; T-0042 Review.
+
+## Sprint 31 (2026-08-21) — der Fehler liegt zwischen den Prüfungen, dreimal am selben Tag
+
+**Geschlossen:** `T-0051` (SWR-198), `T-0050` (SWR-199), `T-0049` (SWR-200 — vierte
+Berührung, entschieden). **Neu:** `T-0052`, `T-0053`. **1429 Tests / 95 Dateien,
+Matrix 200/0.**
+
+**Lehre 22 — ein Stellvertreter wird zum Loch, sobald die Sache einen eigenen Namen
+bekommt.** Für ein gesperrtes Ticket gab es **keinen** zulässigen Terminwert: alter
+Sprint → Befund, leer → Befund, Zukunft → still, aber eine Zusage über fremdes Handeln.
+Die Ausnahme existierte längst — an einem **Typ** (`decision-request`) statt an einem
+**Zustand**, weil `blocked` erst seit `SWR-193` existiert, einen Sprint alt. Gebaut ist
+`board.gesperrt` als **eine** Begründung, von beiden Prüfungen aufgerufen; gebunden an
+den `blocked_by`-**Verweis** und nicht an das Wort. Am echten Bestand gemessen:
+`unterminierte_tickets` **3 → 0**. `L-2026-08-21cm`.
+
+**Lehre 23 — eine Zusicherung, die ein Verhältnis meint und eine Ungleichung schreibt,
+bleibt grün, während ihr Gegenstand verschwindet.** Die „ehrliche Untermenge" von
+`SWR-194` war eine **Schreibweise**: Vertreterquote 24 % innerhalb, 15 % außerhalb —
+nahezu gleich. Und zwischen „Muster erweitern" (111 von 112) und „Filter weglassen" (112)
+liegen **null** Lehren. Von zwei gleichwertigen Bauformen ist die mit einem Begriff
+weniger die richtige; der Ausstieg heißt jetzt `**Beobachtung:**` und ist eine Handlung
+statt eines Nebeneffekts der Zeichensetzung. `L-2026-08-21cn`.
+
+**Lehre 24 — die Frage hat ihre eigene Antwort überlebt.** Der „zweite Schreibweg" ins
+Entscheidungslog ist **keine Funktion**, sondern die **Hand** — und mit 103 von 158 Zeilen
+(65 %) die **Mehrheit**. Der Schaden war seit `SWR-195`/`SWR-197` bereits gefangen, von
+Tickets, die **nach** der Frage entstanden. Eine Weiterreichung wurde dreimal auf ihren
+**Grund** geprüft und nie auf ihre **Gültigkeit**. `L-2026-08-21co`.
+
+**Lehre 25 — eine Zerlegefunktion, die an ihrem eigenen Ergebnis scheitert, ist nicht
+idempotent.** `board.parse_liste` brach an einer echten Liste; gefunden hat es eine
+Zusicherung aus dem **Vorsprint**, die ihre Vorrichtung so baut, wie ein Mensch die Angabe
+denkt. Dieselbe Datei hat sich selbst umgedreht, wie ihr Docstring es verlangte —
+**eine Zusicherung, die einen Mangel BENENNT, meldet seine Behebung von allein.**
+`L-2026-08-21cp`.
+
+⚠ **Am laufenden Betrieb gemessen und nicht im Test:** der Schnelltakt war um 06:15
+zweimal `STARTKLAR` und ab 06:30 dreimal blockiert — durch die Statusdrift, die **dieser
+Sprint selbst** erzeugt hat. Der Plan wird laut `pm/D006` am Abschluss geschrieben, also
+ist der Bestand während **jedes** Sprints widersprüchlich. `T-0052`.

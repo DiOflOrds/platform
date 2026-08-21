@@ -220,6 +220,19 @@ class SchreibwegeTest(unittest.TestCase):
         ⚠ Die Schwelle steht bewusst **niedrig** (> 40 %): sie sichert die Aussage
         „nicht die Ausnahme", nicht den Tagesstand. Eine Zusicherung auf 65 % wäre
         beim nächsten Inbox-Klick rot und trainierte das Wegsehen (`SWR-166`).
+
+        ⚠⚠ **Diese Zusicherung ist zugleich der Vertreter von `L-2026-08-21cn`** — *eine
+        Zusicherung über eine Auswahl prüft ihren ANTEIL, nicht ihre bloße Existenz*.
+        Sie steht hier und nicht bei der Lehren-Prüfung selbst, und das ist kein Zufall:
+        `lehren.py` und `test_lehren_vertreter.py` sind aus dem Vertreter-Korpus
+        **ausgeschlossen** (`NICHT_VERTRETER`, gegen die Tautologie aus `SWR-194`).
+
+        > **Eine Lehre, die BEI der Vertreter-Prüfung gelernt wird, kann ihren Vertreter
+        > nicht IN ihr haben. Sie braucht eine zweite Stelle, an der dieselbe Regel
+        > wirklich trägt — und wenn es keine gibt, ist die Regel noch keine.**
+
+        Gefunden hat das die Prüfung selbst, im selben Lauf: `ohne_vertreter` stand
+        kurzzeitig bei 92 statt 91 und nannte `L-2026-08-21cn` beim Namen.
         """
         gesamt = code = 0
         for _, p in _logs():
