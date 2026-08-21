@@ -1183,13 +1183,17 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         else:
             print("[org] Unzulässige Statusübergänge im laufenden Sprint: 0.")
     # SWR-051 (P4): Session-Routine "Briefkasten zuerst" — offene Briefe anzeigen (informativ)
-    for name, pfad in projekte:
-        verz = os.path.join(pfad, "management", "briefkasten")
-        if os.path.isdir(verz):
-            offen = sum(1 for d in os.listdir(verz) if d.endswith(".md") and
-                        "status: offen" in open(os.path.join(verz, d), encoding="utf-8").read(300))
-            if offen:
-                print(f"[{name}] BRIEFKASTEN: {offen} offene(r) Brief(e) — zuerst beantworten!")
+    # SWR-206 (platform/T-0057): dieselbe Auflösung wie die Kennzahlen — EINE Tür.
+    # ⚠ Nicht nur dieselbe Tür, auch dieselbe AUSLEGUNG (`board.brief_offen`): der erste
+    # Bau dieses Sprints hat die Discovery vereinheitlicht und hier weiter 300 Zeichen
+    # nach einem Teilstring durchsucht — zwei Wege zu derselben Frage, eine Ebene tiefer.
+    je_einheit = {}
+    for name, brief in board.briefkasten_dateien(root):
+        if board.brief_offen(brief):
+            je_einheit[name] = je_einheit.get(name, 0) + 1
+    for name in sorted(je_einheit):
+        print(f"[{name}] BRIEFKASTEN: {je_einheit[name]} offene(r) Brief(e) — "
+              f"zuerst beantworten!")
     if skip_tests:
         print("[platform] Unit-Tests übersprungen (--skip-tests)")
         print("[platform] JS-Tests übersprungen (--skip-tests)")

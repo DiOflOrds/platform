@@ -56,13 +56,17 @@ class BriefkastenDiscovery(unittest.TestCase):
         self.assertTrue(tief,
                         "kein Brief auf der zweiten Ebene — die Forderung unten wäre "
                         "folgenlos (SWR-128-Familie)")
-        with open(os.path.join(WURZEL, "scripts", "kennzahlen.py"), encoding="utf-8") as f:
-            quelle = f.read()
-        rumpf = quelle[quelle.index("def zaehle_briefkasten"):]
-        rumpf = rumpf[:rumpf.index("\ndef ")]
-        self.assertEqual(rumpf.count('"management", "briefkasten"'), 2,
-                         "zaehle_briefkasten liest nicht mehr BEIDE Ebenen — ein Brief "
-                         "in einem verschachtelten Repo wäre unsichtbar")
+        # ⚠ SWR-206 (Sprint 33): die Reichweite wohnt nicht mehr in `zaehle_briefkasten`,
+        # sondern in `board.briefkasten_dateien` — die Forderung ist an die neue Tür
+        # umgezogen und **nicht** gelöscht. Geprüft wird sie am ECHTEN Bestand, also
+        # schärfer als vorher: nicht „der Quelltext nennt zwei Ebenen", sondern „die
+        # Auflösung findet den Brief, der auf der zweiten Ebene liegt".
+        import board  # noqa: PLC0415 — lokal, damit die Datei ohne board importierbar bleibt
+        gefunden = {os.path.abspath(p) for _e, p in board.briefkasten_dateien(ORGA)}
+        for brief in tief:
+            self.assertIn(os.path.abspath(brief), gefunden,
+                          "briefkasten_dateien liest die zweite Ebene nicht — ein Brief "
+                          "in einem verschachtelten Repo wäre unsichtbar")
 
     def test_die_zaehlung_liest_das_statusfeld_und_nicht_den_dateinamen(self):
         """SWR-128-Familie: eine leere Grundmenge wäre ebenfalls „0 offen"."""

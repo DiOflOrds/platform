@@ -93,7 +93,43 @@ SAMMEL_REPO = "projects"
 EDITIERBARE_FELDER = ("titel", "typ", "prio", "rolle", "sprint", "status",
                       "takt", "labels", "reviewer", "frist", "zuletzt_erledigt",
                       "geplant_sprint", "verantwortlich")  # SWR-116
-GESCHLOSSEN = ("done", "rejected")  # SWR-077: Archiv — nur Wiedereröffnung
+# SWR-205 (platform/T-0054): der Endzustand eines Tickets hat ab hier EINEN Namen.
+#
+# ⚠⚠ **Gezählt, nicht vermutet — und die Zahl war groesser als die Frage.** `T-0054`
+# notierte *drei* Namen und *sechs* Literale. Gemessen (2026-08-21, Sprint 33):
+# **vier** Namen (`STATUS_FINAL` hier, `ENDZUSTAENDE` in `aggregation` **und** in
+# `kennzahlen`, `TICKET_GESCHLOSSEN` in `sprint`) und **sieben** Inline-Literale.
+# Der vierte Name stand ausgerechnet in dem Modul, das die STATUS-Liste besitzt.
+#
+# ⚠ **Warum hier und nicht in `backend`:** `backend` importiert `scripts.board`, nicht
+# umgekehrt (DoD-Punkt 3 des Tickets, derselbe Zyklus, den `SWR-198` umgangen hat).
+# Und `board` ist die Stelle, die `STATUS` ueberhaupt festlegt — der Endzustand ist
+# eine Aussage ueber dieses Vokabular und nicht ueber seine Leser.
+#
+# ⚠ **Die uebrigen Namen bleiben als ALIAS bestehen und zeigen per `is` hierher.** Sie zu
+# loeschen waere ein Rueckbau ohne Messung; ein Alias mit Identitaet ist von einer Kopie
+# durch `assertIs` unterscheidbar — genau die Bauform, die `inbox.FINAL` und
+# `dr_benachrichtigung.FINAL` seit `SWR-131` tragen.
+STATUS_FINAL = ("done", "rejected")
+
+# ⚠⚠ **Drei Fundstellen sind BEURTEILT und bewusst NICHT angeschlossen** (DoD 1: „meinen
+# die Stellen dasselbe?" — pauschal ersetzen waere `p11/T-0014` gewesen):
+#
+# * `aktivitaeten._ticket_ereignis` fragt `== "done"` und meint **erledigt**, nicht
+#   **geschlossen**. Ein verworfenes Ticket gehoert nicht in einen Erledigt-Verlauf.
+# * `feedback_route` fragt `!= "done"` an einem Ticket, an das Rueckmeldung angehaengt
+#   wird — dort ist `rejected` heute unentschieden und wird nicht im Vorbeigehen belegt.
+# * `sprint.PLAN_FERTIG` ist deutsches Plan-Vokabular („erledigt", „fertig", …) und ein
+#   anderer Begriff mit zufaelliger Ueberschneidung.
+
+
+# ⚠⚠ SWR-205, NACHTRAG aus dem Gegenlesen: das war der FUENFTE Name derselben Menge —
+# im selben Modul, das die STATUS-Liste besitzt, und die Zaehlung dieses Sprints hat ihn
+# uebersehen. Die Zusicherung konnte ihn strukturell nicht finden, weil sie `board.py`
+# PAUSCHAL ausgenommen hat. Eine Ausnahme fuer eine ganze Datei ist keine Ausnahme,
+# sondern ein blinder Fleck. Jetzt Alias, und die Zusicherung nimmt nur noch die EINE
+# Zuweisungszeile aus.
+GESCHLOSSEN = STATUS_FINAL  # SWR-077: Archiv — nur Wiedereröffnung
 
 
 def zeitpunkt(jetzt=None):
@@ -624,6 +660,60 @@ def _org_wurzel(repo):
     return treffer
 
 
+BRIEFKASTEN = os.path.join("management", "briefkasten")
+
+
+def brief_offen(pfad):
+    """SWR-206 (Nachtrag aus dem Gegenlesen): Ist dieser Brief offen? — die EINE Antwort.
+
+    ⚠⚠ **Der erste Bau dieses Sprints hat die DISCOVERY vereinheitlicht und die
+    AUSLEGUNG stehen lassen.** `preflight` las 300 Zeichen und suchte den Teilstring
+    `"status: offen"`; `kennzahlen` zerlegte das Frontmatter und verglich klein
+    geschrieben. Ein Brief mit längerem Kopf oder abweichender Schreibweise wäre von
+    genau einem der beiden gezählt worden.
+
+    > **Zwei Wege zu derselben Frage — eine Ebene tiefer als der Befund, den dieser
+    > Sprint gerade geschlossen hat. Der Umbau hat die Tür vereinheitlicht und den
+    > Schlüssel doppelt gelassen.**
+
+    ⚠ Ein unlesbarer Brief gilt als **offen**, nicht als erledigt: ein Vorgabewert, der
+    eine fehlende Antwort in eine beruhigende verwandelt, ist der Review-Befund aus
+    Sprint 32 — hier fällt er bewusst in die unbequeme Richtung.
+    """
+    try:
+        with open(pfad, encoding="utf-8") as f:
+            fm, _ = parse_frontmatter(f.read())
+    except OSError:
+        return True
+    return ((fm or {}).get("status") or "").strip().lower() == "offen"
+
+
+def briefkasten_dateien(wurzel):
+    """SWR-206 (platform/T-0057): ALLE Briefe der Organisation — die EINE Auflösung.
+
+    ⚠⚠ **Der Anlass ist ein zweiter Discovery-Weg, den ein Mensch von Hand gegangen
+    ist.** `kennzahlen.zaehle_briefkasten` globte bis Sprint 33 selbst über zwei Ebenen,
+    während Preflight, Cockpit und Briefkasten-API `projekt_pfade` benutzen. Am Bestand
+    lieferten beide dieselbe Menge — *„das ist Glück und keine Eigenschaft"* (`T-0057`).
+
+    > **Zwei Wege zu derselben Frage sind kein Redundanzgewinn, sondern eine Verabredung,
+    > dass sie irgendwann auseinanderlaufen. Dieselbe Familie wie `p9/T-0007` (drei Kopien
+    > der Projekt-Auflösung) und `SWR-198` (zwei verschieden weite Grundmengen).**
+
+    Gibt `(einheit, pfad)` je Brief zurück, sortiert — die Einheit gehört dazu, weil ein
+    Brief ohne seine Einheit nicht beantwortbar ist (B038: ein Befund ohne Ref).
+    """
+    treffer = []
+    for name, pfad in projekt_pfade(wurzel):
+        verz = os.path.join(pfad, BRIEFKASTEN)
+        if not os.path.isdir(verz):
+            continue
+        for datei in sorted(os.listdir(verz)):
+            if datei.startswith("N-") and datei.endswith(".md"):
+                treffer.append((name, os.path.join(verz, datei)))
+    return treffer
+
+
 def _pruefe_fremde_sperre(ref, repo):
     """[fehler] für eine qualifizierte `blocked_by`-Kennung. Leer = in Ordnung.
 
@@ -802,12 +892,20 @@ def validiere(t, alle_ids, repo=None, git_pruefen=True):
 # ⚠ Sie stehen bis zu seiner Antwort **namentlich** hier und nicht unter einer Bedingung:
 # eine Ausnahme, die „solange ein DR offen ist" lautet, wäre das offene Tor mit
 # Aufschrift aus `SWR-201`.
-TOTE_SPERREN_BESTAND = {
-    ("pm", "T-0071", "T-0077"),
-    ("pm", "T-0079", "T-0077"),
-    ("promt-team", "T-0003", "pm/T-0077"),
-    ("promt-team", "T-0012", "pm/T-0077"),
-}
+# ⚠⚠ **LEER — und das ist das Ergebnis, nicht der Anfangszustand.** Die Liste trug in
+# diesem Sprint vier Verweise auf `pm/T-0077`. Der Auftraggeber hat `pm/T-0084` noch
+# WÄHREND des Laufs mit **`pm/D029` = C** beantwortet (10:41): die vier zeigen ab jetzt
+# auf eine **offene** Aufgabe (`platform/T-0060`) statt auf ein entschiedenes Ticket.
+#
+# > **Damit ist die Ausnahme nicht abgelaufen, sondern ERLEDIGT — nach vier Stunden. Eine
+# > Ausnahmeliste, die man leer bekommt, war die richtige Bauform; ein vierter
+# > Ticket-Zustand wäre für immer geblieben.**
+#
+# ⚠ Sie bleibt als **leere Menge** stehen und wird nicht gelöscht: `test_ausnahme_greift`
+# verlangt von jedem Eintrag, dass er am echten Bestand noch **beißt**, und macht damit
+# eine künftige Ausnahme von selbst rot, sobald ihr Grund wegfällt. Genau das hat hier
+# gefehlt — das Gegenlesen musste es finden.
+TOTE_SPERREN_BESTAND = set()
 
 
 def _blocker_status(ref, tickets_nach_id, repo):
@@ -884,36 +982,6 @@ def verantwortlich_wert(t):
 
 
 ENTSCHEIDUNGSMARKER = "**Entscheidung ("  # SWR-039/SWR-131: die Rumpfzeile der Inbox
-
-# SWR-205 (platform/T-0054): der Endzustand eines Tickets hat ab hier EINEN Namen.
-#
-# ⚠⚠ **Gezählt, nicht vermutet — und die Zahl war groesser als die Frage.** `T-0054`
-# notierte *drei* Namen und *sechs* Literale. Gemessen (2026-08-21, Sprint 33):
-# **vier** Namen (`STATUS_FINAL` hier, `ENDZUSTAENDE` in `aggregation` **und** in
-# `kennzahlen`, `TICKET_GESCHLOSSEN` in `sprint`) und **sieben** Inline-Literale.
-# Der vierte Name stand ausgerechnet in dem Modul, das die STATUS-Liste besitzt.
-#
-# ⚠ **Warum hier und nicht in `backend`:** `backend` importiert `scripts.board`, nicht
-# umgekehrt (DoD-Punkt 3 des Tickets, derselbe Zyklus, den `SWR-198` umgangen hat).
-# Und `board` ist die Stelle, die `STATUS` ueberhaupt festlegt — der Endzustand ist
-# eine Aussage ueber dieses Vokabular und nicht ueber seine Leser.
-#
-# ⚠ **Die uebrigen Namen bleiben als ALIAS bestehen und zeigen per `is` hierher.** Sie zu
-# loeschen waere ein Rueckbau ohne Messung; ein Alias mit Identitaet ist von einer Kopie
-# durch `assertIs` unterscheidbar — genau die Bauform, die `inbox.FINAL` und
-# `dr_benachrichtigung.FINAL` seit `SWR-131` tragen.
-STATUS_FINAL = ("done", "rejected")
-
-# ⚠⚠ **Drei Fundstellen sind BEURTEILT und bewusst NICHT angeschlossen** (DoD 1: „meinen
-# die Stellen dasselbe?" — pauschal ersetzen waere `p11/T-0014` gewesen):
-#
-# * `aktivitaeten._ticket_ereignis` fragt `== "done"` und meint **erledigt**, nicht
-#   **geschlossen**. Ein verworfenes Ticket gehoert nicht in einen Erledigt-Verlauf.
-# * `feedback_route` fragt `!= "done"` an einem Ticket, an das Rueckmeldung angehaengt
-#   wird — dort ist `rejected` heute unentschieden und wird nicht im Vorbeigehen belegt.
-# * `sprint.PLAN_FERTIG` ist deutsches Plan-Vokabular („erledigt", „fertig", …) und ein
-#   anderer Begriff mit zufaelliger Ueberschneidung.
-
 
 def dr_entschieden(t):
     """SWR-131 (platform/T-0014): Ist dieser DR entschieden? — die **eine** Antwort.

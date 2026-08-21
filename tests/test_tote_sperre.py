@@ -12,12 +12,23 @@ zurückgenommen, weil nichts danach gefragt hat.
 > Statuswort baut, hat das Leck mit Vokabular zugedeckt.**
 
 ⚠ **Zweitens sichert diese Datei die AUSNAHME, und das ist der heiklere Teil.** Vier
-Verweise zeigen auf `pm/T-0077`, dessen Antwort `A` den Wartegrund **bestätigt** hat.
-Sie sind **namentlich** ausgenommen (`TOTE_SPERREN_BESTAND`) und ausdrücklich **nicht**
-über eine Bedingung wie „solange ein DR offen ist" — das wäre wörtlich der Fehler aus
+Verweise zeigten auf `pm/T-0077`, dessen Antwort `A` den Wartegrund **bestätigt** hat.
+Sie standen **namentlich** in `TOTE_SPERREN_BESTAND` und ausdrücklich **nicht** unter
+einer Bedingung wie „solange ein DR offen ist" — das wäre wörtlich der Fehler aus
 `SWR-201`: eine Bedingung, die während der gesamten Arbeitszeit wahr ist, ist ein
-offenes Tor mit einer Aufschrift. Die Zusicherung `test_ausnahme_ist_aufzaehlung`
-unten wird **rot**, wenn jemand die Aufzählung in eine Bedingung verwandelt.
+offenes Tor mit einer Aufschrift.
+
+> **⚠⚠ Die Liste ist inzwischen LEER — der Auftraggeber hat `pm/T-0084` vier Stunden
+> nach ihrer Entstehung mit `D029` = C beantwortet. Eine Ausnahmeliste, die man leer
+> bekommt, war die richtige Bauform; ein vierter Ticket-Zustand wäre geblieben.**
+
+Deshalb prüft `test_ausnahme_greift_oder_ist_weg`, dass **jeder** Eintrag am echten
+Bestand noch beißt — diese Verfallsprüfung fehlte in der ersten Fassung und hat das
+unabhängige Gegenlesen gebraucht. Der Mechanismus selbst wird an einer **vorübergehend
+gesetzten** Ausnahme geprüft, damit die leere Liste ihn nicht unbeobachtet lässt.
+
+Lehren dieses Baus: `L-2026-08-21cx` (eine Ausnahme braucht eine Verfallsprüfung) und
+`L-2026-08-21cz` (eine pauschal ausgenommene Datei ist ein blinder Fleck).
 
 ⚠ **Drittens** hält `NurEinName` den Endzustand auf **einer** Festlegung (SWR-205) —
 über `assertIs`, nicht über Gleichheit: zwei gleiche Tupel sind von einer Kopie nicht
@@ -98,15 +109,55 @@ class ToteSperreWirdGemeldet(unittest.TestCase):
 class AusnahmeIstEineAufzaehlung(unittest.TestCase):
     """SWR-204, Richtung 2: die Ausnahme hat Namen und keine Bedingung."""
 
-    def test_bestand_ist_still(self):
-        tickets = [_t("T-0077", "done"), _t("T-0071", "blocked", "[T-0077]")]
-        self.assertEqual(board.tote_sperren(tickets, repo=os.path.join(ORGA, "pm")), [])
+    def test_bestand_ist_heute_leer(self):
+        """⚠ Der Zustand selbst ist die Aussage — und er ist ERREICHT, nicht Ausgangslage.
 
-    def test_bestand_gilt_nur_fuer_die_genannten(self):
-        """⚠ Ein anderes Ticket derselben Einheit mit demselben Blocker wird gemeldet."""
-        tickets = [_t("T-0077", "done"), _t("T-0099", "blocked", "[T-0077]")]
-        befunde = board.tote_sperren(tickets, repo=os.path.join(ORGA, "pm"))
-        self.assertEqual(len(befunde), 1, befunde)
+        Wächst die Liste wieder, wird diese Zusicherung rot und verlangt, dass jemand
+        den Grund in den Bericht schreibt, statt ihn nebenbei einzutragen.
+        """
+        self.assertEqual(board.TOTE_SPERREN_BESTAND, set(),
+                         "Neue Ausnahme — gehoert benannt und begruendet, nicht "
+                         "stillschweigend eingetragen (pm/D029 hat die letzte geloest)")
+
+    def test_der_mechanismus_greift_an_einer_gesetzten_ausnahme(self):
+        """⚠ Die leere Liste darf den Mechanismus nicht unbeobachtet lassen.
+
+        Eine Zusicherung, die nur den heutigen (leeren) Bestand prüft, sagt nichts über
+        das Verhalten — sie wäre die Vakuum-Grün-Bauform, die das Gegenlesen an der
+        Schwester-Zusicherung gefunden hat.
+        """
+        alt = board.TOTE_SPERREN_BESTAND
+        board.TOTE_SPERREN_BESTAND = {("pm", "T-0071", "T-0077")}
+        try:
+            still = [_t("T-0077", "done"), _t("T-0071", "blocked", "[T-0077]")]
+            self.assertEqual(board.tote_sperren(still, repo=os.path.join(ORGA, "pm")), [])
+            # ⚠ und die Ausnahme gilt NUR fuer den genannten Eintrag
+            laut = [_t("T-0077", "done"), _t("T-0099", "blocked", "[T-0077]")]
+            self.assertEqual(
+                len(board.tote_sperren(laut, repo=os.path.join(ORGA, "pm"))), 1)
+        finally:
+            board.TOTE_SPERREN_BESTAND = alt
+
+    def test_ausnahme_greift_oder_ist_weg(self):
+        """⚠⚠ Nachtrag aus dem Gegenlesen: eine Ausnahme muss noch BEISSEN.
+
+        Die erste Fassung hatte kein Gegenstück zu `test_uhrenprobe`: die Liste wäre
+        stehen geblieben, nachdem ihr Grund entfallen ist, und niemand hätte es gemerkt.
+        Genau das ist noch im selben Sprint eingetreten — `pm/D029` hat die vier
+        Verweise umgehängt, vier Stunden nachdem die Liste entstand.
+
+        > **Eine Ausnahme ohne Verfallsprüfung ist ein Dauerbefund mit umgekehrtem
+        > Vorzeichen: sie meldet nicht zu viel, sondern für immer zu wenig.**
+        """
+        for einheit, tid, ref in board.TOTE_SPERREN_BESTAND:
+            pfade = dict(board.projekt_pfade(ORGA))
+            self.assertIn(einheit, pfade, f"Ausnahme nennt unbekannte Einheit: {einheit}")
+            datei = os.path.join(pfade[einheit], "tickets", f"{tid}.md")
+            self.assertTrue(os.path.isfile(datei), f"Ausnahme zeigt ins Leere: {tid}")
+            with open(datei, encoding="utf-8") as f:
+                fm, _ = board.parse_frontmatter(f.read())
+            self.assertIn(ref, board.parse_liste((fm or {}).get("blocked_by")),
+                          f"{einheit}/{tid} traegt {ref} nicht mehr — Ausnahme ist tot")
 
     def test_ausnahme_ist_aufzaehlung(self):
         """⚠⚠ Wird rot, wenn jemand die Aufzählung durch eine Bedingung ersetzt.
@@ -121,25 +172,51 @@ class AusnahmeIstEineAufzaehlung(unittest.TestCase):
                 self.assertIsInstance(teil, str)
         quelle = inspect.getsource(board.tote_sperren)
         self.assertIn("TOTE_SPERREN_BESTAND", quelle)
-        for verboten in ("typ", "decision-request", "sprint"):
-            self.assertNotIn(f'"{verboten}"', quelle,
-                             "Die Ausnahme haengt an einer Eigenschaft statt an "
-                             "einer Aufzaehlung — das ist SWR-201 in neu.")
+        # ⚠⚠ Nachtrag aus dem Gegenlesen: die erste Fassung suchte Textliterale mit
+        # DOPPELTEN Anfuehrungszeichen — einfache Anfuehrungszeichen oder eine
+        # Hilfsfunktion waeren glatt durchgegangen. Geprueft wird jetzt der Syntaxbaum:
+        # im Rumpf darf es genau EINE `continue`-Ausnahme geben, und ihre Bedingung muss
+        # die Mitgliedschaft in der Aufzaehlung sein.
+        baum = ast.parse(inspect.getsource(board.tote_sperren).lstrip())
+        ausnahmen = [k for k in ast.walk(baum)
+                     if isinstance(k, ast.If)
+                     and any(isinstance(x, ast.Continue) for x in ast.walk(k))]
+        self.assertEqual(len(ausnahmen), 2,
+                         "Zahl der Ausstiege im Rumpf veraendert — jede weitere "
+                         "Bedingung ist eine potenzielle SWR-201-Zange")
+        vergleiche = [k for a in ausnahmen for k in ast.walk(a)
+                      if isinstance(k, ast.Compare)
+                      and any(isinstance(o, ast.In) for o in k.ops)]
+        quellen = {ast.unparse(k.comparators[0]) for k in vergleiche}
+        self.assertEqual(quellen, {"TOTE_SPERREN_BESTAND", "STATUS_FINAL"},
+                         f"unerwartete Ausnahmebedingung: {quellen}")
 
 
 class BestandIstSauber(unittest.TestCase):
     """SWR-204 am ECHTEN Bestand — nicht in einer Vorrichtung."""
 
     def test_keine_toten_sperren_ausser_dem_bestand(self):
-        gefunden = []
-        for name, pfad in board.projekt_pfade(ORGA):
+        """⚠ Mit unterer Schranke — sonst ist die Zusicherung vakuum-gruen.
+
+        Das Gegenlesen hat gezeigt: ohne Schranke vergleicht sie `[] == []`, sobald der
+        Bestand keine Sperren mehr traegt, und ein `except Exception` haette sogar ein
+        komplett unladbares Haus gruen gemacht. Dieselbe Schranke traegt die
+        Schwester-Zusicherung `test_deckt_beide_ebenen_ab` seit ihrer ersten Fassung.
+        """
+        gefunden, geprueft, verweise = [], 0, 0
+        for _name, pfad in board.projekt_pfade(ORGA):
             if not os.path.isdir(os.path.join(pfad, "tickets")):
                 continue
-            try:
-                tickets, _ = board.lade_tickets(pfad)
-            except Exception:  # noqa: BLE001 — ein unlesbares Repo ist nicht der Gegenstand
-                continue
+            tickets, ladefehler = board.lade_tickets(pfad)
+            self.assertEqual(ladefehler, [], f"{pfad} nicht ladbar: {ladefehler}")
+            geprueft += 1
+            for t in tickets:
+                if t.get("status") not in board.STATUS_FINAL:
+                    verweise += len(board.parse_liste(t.get("blocked_by")))
             gefunden.extend(board.tote_sperren(tickets, repo=pfad))
+        self.assertGreater(geprueft, 10, "zu wenige Einheiten geprueft — Discovery kaputt?")
+        self.assertGreater(verweise, 0, "kein einziger blocked_by-Verweis im Bestand — "
+                                        "diese Zusicherung sagt dann nichts")
         self.assertEqual(gefunden, [], "\n".join(gefunden))
 
 
@@ -150,6 +227,11 @@ class NurEinName(unittest.TestCase):
         self.assertIs(aggregation.ENDZUSTAENDE, board.STATUS_FINAL)
         self.assertIs(kennzahlen.ENDZUSTAENDE, board.STATUS_FINAL)
         self.assertIs(sprint.TICKET_GESCHLOSSEN, board.STATUS_FINAL)
+        # ⚠⚠ Der FUENFTE Name, den die Zaehlung dieses Sprints uebersehen hat und den
+        # die erste Fassung dieser Zusicherung strukturell nicht finden konnte:
+        # sie nahm `board.py` PAUSCHAL aus. Eine Ausnahme fuer eine ganze Datei ist
+        # keine Ausnahme, sondern ein blinder Fleck.
+        self.assertIs(board.GESCHLOSSEN, board.STATUS_FINAL)
 
     def test_kein_literal_ausserhalb_von_board(self):
         """⚠ Geprüft wird der SYNTAXBAUM, nicht der Text.
@@ -166,8 +248,6 @@ class NurEinName(unittest.TestCase):
                 dateien.extend(os.path.join(wurzel, n) for n in namen if n.endswith(".py"))
         treffer = []
         for datei in dateien:
-            if os.path.basename(datei) == "board.py":
-                continue  # die eine Stelle, an der die Menge wohnt
             with open(datei, encoding="utf-8") as f:
                 baum = ast.parse(f.read(), filename=datei)
             for knoten in ast.walk(baum):
@@ -177,8 +257,17 @@ class NurEinName(unittest.TestCase):
                          if isinstance(e, ast.Constant) and isinstance(e.value, str)]
                 if set(werte) == {"done", "rejected"}:
                     treffer.append(f"{os.path.relpath(datei, WURZEL)}:{knoten.lineno}")
-        self.assertEqual(treffer, [], "Endzustands-Literal ausserhalb board.py: "
-                                      + ", ".join(treffer))
+        # ⚠ Ausgenommen ist die EINE Zuweisungszeile, an der die Menge wohnt — nicht die
+        # ganze Datei. Genau diese pauschale Ausnahme hat `board.GESCHLOSSEN` verdeckt.
+        with open(os.path.join(WURZEL, "scripts", "board.py"), encoding="utf-8") as f:
+            zeilen = f.read().split("\n")
+        heimat = [i + 1 for i, z in enumerate(zeilen)
+                  if z.startswith("STATUS_FINAL = ")]
+        self.assertEqual(len(heimat), 1, "STATUS_FINAL steht nicht genau einmal")
+        erlaubt = {f"scripts/board.py:{heimat[0]}"}
+        uebrig = [t for t in treffer if t.replace("\\", "/") not in erlaubt]
+        self.assertEqual(uebrig, [], "Endzustands-Literal ausserhalb der einen Heimat: "
+                                     + ", ".join(uebrig))
 
     def test_verworfener_blocker_sperrt_nicht_mehr(self):
         """Der Nebenbefund von SWR-205, an `offene_blocker` selbst gemessen."""

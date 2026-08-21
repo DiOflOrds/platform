@@ -54,7 +54,7 @@ PLAN = os.path.join("pm", "management", "sprint-aktuell.md")
 # er ist eine Momentaufnahme und wächst zwischen Messung und Lesen weiter (der neunte
 # Beleg von T-0027). Er wird trotzdem gemessen und ausgegeben — mit Zeitstempel.
 VERGLEICHSFELDER = ("tests", "testdateien", "swr", "luecken", "briefkasten_offen",
-                    "tickets_offen", "wartet_auf_mensch")
+                    "tickets_offen", "wartet_auf_mensch", "briefe_im_lauf")
 
 
 def zaehle_tests(root):
@@ -116,13 +116,96 @@ def _frontmatter(pfad):
 
 
 def zaehle_briefkasten(root):
-    """Offene Briefe über ALLE Repos — der Brief ist das Erste, was eine Session anfasst."""
-    offen = 0
-    for pfad in glob.glob(os.path.join(root, "*", "management", "briefkasten", "N-*.md")) + \
-            glob.glob(os.path.join(root, "*", "*", "management", "briefkasten", "N-*.md")):
-        if (_frontmatter(pfad).get("status") or "").lower() == "offen":
-            offen += 1
-    return offen
+    """Offene Briefe über ALLE Einheiten — der Brief ist das Erste, was eine Session anfasst.
+
+    ⚠ SWR-206 (platform/T-0057): die Auflösung steht ab hier in `board.briefkasten_dateien`
+    und nicht mehr als eigener Glob. Bis Sprint 33 waren es zwei Wege zu derselben Frage.
+    """
+    return sum(1 for _e, pfad in board.briefkasten_dateien(root)
+               if board.brief_offen(pfad))
+
+
+def zaehle_briefe_im_lauf(root, seit=None):
+    """SWR-206: Wie viele Briefe sind seit `seit` (Default: Start des laufenden Sprints)
+    eingegangen — **unabhängig davon, ob sie noch offen sind**.
+
+    ⚠⚠ **Diese Größe existiert, weil ihr Fehlen einen falschen Satz möglich gemacht hat.**
+    Der Abschlussbericht von Sprint 31 sagt wörtlich *„Briefkasten: 0 offen, keiner
+    eingegangen"* — gemessen am **Anfang**. Im Fenster dieses Sprints (06:13–07:23) sind
+    **sieben** Briefe eingegangen; Sprint 31 endete 20 Minuten nach dem letzten, ohne
+    einen davon gesehen zu haben, und Sprint 32 hat sie am nächsten Morgen gefunden und
+    dem **eigenen** Lauf zugeschrieben.
+
+    > **„0 offen" ist eine Aussage über einen Zeitpunkt. „Keiner eingegangen" ist eine
+    > Aussage über ein Zeitfenster. Der Bericht hat die erste gemessen und die zweite
+    > behauptet — und dieselbe Zahl trug beide Sätze.**
+
+    Gemessen über alle 21 Briefe seit Registerbeginn: **16** (76 %) kamen, während ein
+    Sprint lief. Der späte Brief ist damit **die Regel und nicht die Ausnahme** — das ist
+    die Antwort auf DoD 1 des Tickets, und sie hat den Bau bestimmt: eine Nachprüfung am
+    Ende genügt nicht als Empfehlung, die Größe gehört in den Kennzahlenblock.
+    """
+    if seit is None:
+        seit = _sprint_start(root)
+    if seit is None:
+        return None
+    anzahl = 0
+    for _e, pfad in board.briefkasten_dateien(root):
+        zeit = (_frontmatter(pfad).get("zeit") or "").strip()
+        if not zeit:
+            continue
+        try:
+            wert = datetime.fromisoformat(zeit.replace("Z", "+00:00"))
+        except ValueError:
+            continue  # ein unlesbarer Zeitstempel ist kein Ereignis, das wir erfinden
+        # ⚠⚠ **Der teuerste Fehler dieses Sprints saß in dieser einen Zeile.** Briefe
+        # tragen ihre Zeit in **UTC** (`briefkasten.py`: `datetime.now(timezone.utc)`),
+        # das Sprintregister in **Wanduhrzeit** (`sprint_register.py`: `datetime.now()`).
+        # Der erste Bau hat `.replace(tzinfo=None)` benutzt — das wirft den Offset weg
+        # statt umzurechnen — und damit einen UTC-Wert gegen einen Ortszeit-Wert
+        # verglichen. Bei CEST sind das zwei Stunden; bei Sprintlängen von ein bis zwei
+        # Stunden hätte die Kennzahl **immer 0** gemeldet.
+        #
+        # > **Eine Größe, die den Satz „keiner eingegangen" verhindern sollte, hätte ihn
+        # > maschinell erzeugt. Und sie hat, bevor das Gegenlesen sie fand, bereits eine
+        # > ANFORDERUNG mit einer falschen Aussage gefüllt (SWR-206, erste Fassung).**
+        if wert.tzinfo is not None:
+            wert = wert.astimezone().replace(tzinfo=None)
+        if wert >= seit:
+            anzahl += 1
+    return anzahl
+
+
+def _sprint_start(root):
+    """Startzeitpunkt des laufenden Sprints — oder `None`, wenn keiner läuft.
+
+    ⚠ `None` heißt **unbekannt** und nie **null**: eine fehlende Antwort in eine
+    beruhigende zu verwandeln ist der Vorgabewert-Fehler aus Sprint 32.
+    """
+    datei = os.path.join(root, "pm", "management", "sprints.jsonl")
+    if not os.path.isfile(datei):
+        return None
+    import json
+    sprints = {}
+    try:
+        with open(datei, encoding="utf-8") as f:
+            for zeile in f:
+                zeile = zeile.strip()
+                if not zeile:
+                    continue
+                eintrag = json.loads(zeile)
+                sprints.setdefault(eintrag["kennung"], {}).update(eintrag)
+    except (OSError, ValueError, KeyError):
+        return None
+    laufend = [s for s in sprints.values()
+               if s.get("nr") and s.get("start") and not s.get("ende")]
+    if not laufend:
+        return None
+    neuester = max(laufend, key=lambda s: s["nr"])
+    try:
+        return datetime.strptime(neuester["start"], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
 
 
 # SWR-202 (platform/T-0053): „nicht geschlossen" steht ab hier an EINER Stelle.
@@ -207,6 +290,8 @@ def miss(root):
         "swr": swr,
         "luecken": luecken,
         "briefkasten_offen": zaehle_briefkasten(root),
+        # SWR-206: die Aussage ueber das FENSTER, nicht ueber den Zeitpunkt.
+        "briefe_im_lauf": zaehle_briefe_im_lauf(root),
         "tickets_offen": offen,
         "wartet_auf_mensch": warten,
         "parkplatz": zaehle_parkplatz(root),

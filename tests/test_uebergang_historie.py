@@ -6,6 +6,10 @@ durchgekommen. Das Ergebnis der Pruefung hing an der REIHENFOLGE der Session.
 
 Diese Tests bauen echte Git-Repos, weil die Pruefung eine echte Historie liest — ein
 Mock haette genau die Eigenschaft nicht, um die es geht.
+
+⚠ Vertreter von `L-2026-08-21cv` (Sprint 32): `in_progress` muss in einem EIGENEN
+Commit stehen — diese Prüfung liest Commits und nicht Arbeitsspeicher, und Sprint 32 hat
+viermal `open -> done` committet, während sein eigener Bericht den Fehler beschrieb.
 """
 import os
 import subprocess
