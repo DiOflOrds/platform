@@ -297,11 +297,11 @@ class RollenFilterTest(unittest.TestCase):
                  "blocked_by": []}]
 
     def test_ohne_filter_gewinnt_die_prio(self):
-        t = tick_mod.waehle_ticket(self._tickets(), self.REGISTRY_DICT)
+        t, _ = tick_mod.waehle_ticket(self._tickets(), self.REGISTRY_DICT)
         self.assertEqual(t["id"], "T-0001")
 
     def test_mit_filter_wird_die_besetzte_rolle_gezogen(self):
-        t = tick_mod.waehle_ticket(self._tickets(), self.REGISTRY_DICT, nur_rolle="PROB")
+        t, _ = tick_mod.waehle_ticket(self._tickets(), self.REGISTRY_DICT, nur_rolle="PROB")
         self.assertEqual(t["id"], "T-0002")
 
     def test_filter_ohne_treffer_liefert_nichts_statt_irgendetwas(self):
@@ -311,7 +311,7 @@ class RollenFilterTest(unittest.TestCase):
         wäre genau der Fehler, gegen den dieses Ticket gebaut ist.
         """
         self.assertIsNone(
-            tick_mod.waehle_ticket(self._tickets(), self.REGISTRY_DICT, nur_rolle="ARCH"))
+            tick_mod.waehle_ticket(self._tickets(), self.REGISTRY_DICT, nur_rolle="ARCH")[0])
 
     def test_der_schalter_ist_gebaut_und_nicht_umgelegt(self):
         """⚠⚠ `ollama-schnelltakt.cmd` bleibt unverändert, bis der Auftraggeber entschieden

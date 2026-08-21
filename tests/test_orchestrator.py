@@ -37,32 +37,32 @@ class AuswahlTest(unittest.TestCase):
     def test_waehlt_hoechste_prio(self):
         """Ticketwahl folgt der Prioritaet. Verifiziert: SWR-016."""
         ts = [ticket("T-0002", prio="mittel"), ticket("T-0001", prio="kritisch")]
-        self.assertEqual(orch.waehle_ticket(ts, REGISTRY)["id"], "T-0001")
+        self.assertEqual(orch.waehle_ticket(ts, REGISTRY)[0]["id"], "T-0001")
 
     def test_ignoriert_nicht_open(self):
         """Nur offene Tickets werden gewaehlt. Verifiziert: SWR-016."""
         ts = [ticket("T-0001", status="done"), ticket("T-0002", status="in_review")]
-        self.assertIsNone(orch.waehle_ticket(ts, REGISTRY))
+        self.assertIsNone(orch.waehle_ticket(ts, REGISTRY)[0])
 
     def test_ignoriert_blockierte(self):
         """Blockierte Tickets werden uebersprungen. Verifiziert: SWR-016."""
         ts = [ticket("T-0001", status="open", bb="[T-0002]"), ticket("T-0002", status="in_progress")]
-        self.assertIsNone(orch.waehle_ticket(ts, REGISTRY))
+        self.assertIsNone(orch.waehle_ticket(ts, REGISTRY)[0])
 
     def test_blocker_done_gibt_frei(self):
         """Erledigte Blocker geben das Ticket frei. Verifiziert: SWR-016."""
         ts = [ticket("T-0001", bb="[T-0002]"), ticket("T-0002", status="done")]
-        self.assertEqual(orch.waehle_ticket(ts, REGISTRY)["id"], "T-0001")
+        self.assertEqual(orch.waehle_ticket(ts, REGISTRY)[0]["id"], "T-0001")
 
     def test_ignoriert_inaktive_und_mensch_rollen(self):
         """Inaktive und Mensch-Rollen werden nicht gezogen. Verifiziert: SWR-016."""
         ts = [ticket("T-0001", rolle="dev"), ticket("T-0002", rolle="mensch")]
-        self.assertIsNone(orch.waehle_ticket(ts, REGISTRY))
+        self.assertIsNone(orch.waehle_ticket(ts, REGISTRY)[0])
 
     def test_nur_ticket_filter(self):
         """--ticket beschraenkt die Auswahl (kontrollierter Lauf). Verifiziert: SWR-018."""
         ts = [ticket("T-0001", prio="kritisch"), ticket("T-0002")]
-        self.assertEqual(orch.waehle_ticket(ts, REGISTRY, nur_ticket="T-0002")["id"], "T-0002")
+        self.assertEqual(orch.waehle_ticket(ts, REGISTRY, nur_ticket="T-0002")[0]["id"], "T-0002")
 
 
 class RoutingTest(unittest.TestCase):

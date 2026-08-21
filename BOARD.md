@@ -10,7 +10,7 @@ Stand: 2026-08-21 · Tickets: 48 · davon wiederkehrend: 1
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0047](tickets/T-0047.md) | Entscheidungen werden global zitiert und je Repo vergeben — 1003 Zitatstellen ohne Repo-Präfix gegen 319 mit, gemessen | change-request | einmalig | cm | Team | mittel | 29 | — |
 
-## in_progress (1)
+## in_review (1)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|

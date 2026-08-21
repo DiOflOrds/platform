@@ -102,22 +102,43 @@ def lade_registry(prozess_repo):
         return yaml.safe_load(f)["roles"]
 
 
-def waehle_ticket(tickets, registry, nur_ticket=None, nur_rolle=None):
-    """Nächstes bearbeitbares Ticket: open, Blocker done, Rolle aktiv+ki, nach Prio/ID.
+def waehle_ticket(tickets, registry, nur_ticket=None, nur_rolle=None,
+                  repos=None, einheit=None, provider=None):
+    """Nächstes bearbeitbares Ticket: open, Blocker done, Rolle aktiv+ki, Besetzung, Prio/ID.
+
+    Rückgabe: `(ticket_oder_None, befund)` — `befund` ist '' oder der Satz über den
+    **Bestand**, mit dem der Aufrufer erklären kann, warum nichts gewählt wurde.
 
     ⚠ SWR-172: `nur_rolle` schränkt die Auswahl auf **eine** Rolle ein. `pm/D010` hat den
     Schnelltakt je **Besetzung** entschieden (`platform/PROB`, `team-mail/MAIL-RED`) —
     ausdrückbar war bisher nur die Einheit, und deshalb ist die Rolle auf dem Weg von der
     Entscheidung zum Aufruf verloren gegangen (`platform/T-0033`).
 
-    ⚠ Der Schalter ist gebaut und **nicht umgelegt**: `ollama-schnelltakt.cmd` bleibt
-    unverändert, bis der Auftraggeber entschieden hat (`platform/T-0035`). Gemessen am
-    Bestand vom 2026-08-20 trägt **kein einziges** der 14 offenen Tickets eine Rolle mit
-    ollama-Besetzung — die Einschränkung wäre heute eine Abschaltung, und das ist eine
-    Aussage über seine Automatik, nicht über unseren Code.
+    ⚠⚠ SWR-196 (`platform/T-0048`): die **Besetzung** ist ein Kandidaten-Kriterium und
+    kein Nachtrag. Bis Sprint 29 gab diese Funktion `kandidaten[0]` zurück, und
+    `besetzungsbefund()` im Rumpf von `tick()` brach danach ab.
+
+    > **Eine Prüfung nach der Auswahl ist kein Filter, sondern ein Veto gegen genau einen
+    > Kandidaten: trägt der oberste keine passende Besetzung, endet der Lauf, und die
+    > Zweitplatzierten werden nie angesehen.**
+
+    Gemessen am 2026-08-21 um 04:15 — dem ersten Lauf, den `SWR-191` überhaupt bis zur
+    Auswahl kommen ließ: **2 von 2** Ticks endeten so (`CM@platform`, `DEV@team-mail`),
+    obwohl der Preflight `STARTKLAR` meldete.
+
+    ⚠ `besetzungsbefund()` bleibt, wo es steht, und wird **nicht** hierher verschoben: es
+    deckt die **erzwungene** Auswahl (`--ticket`) ab, die dieser Filter nie sieht. Zwei
+    Stellen, zwei Fragen — *„welche Kandidaten kommen infrage"* gegen *„darf dieser eine
+    bearbeitet werden"*. Kein B033: beide rufen `organisation.besetzung_mit_motor`, der
+    Ausdruck existiert **einmal**.
+
+    ⚠ Ohne `--provider` greift der Filter nicht — dann gilt die Provider-Kette der Rolle
+    aus `registry.yaml`, und über die hat das Besetzungsregister nichts zu sagen
+    (dieselbe Grenze, die `besetzungsbefund` benennt). `repos`/`einheit` fehlen: ebenso.
     """
+    motor = organisation.MOTOR_JE_PROVIDER.get(provider or "") if (repos and einheit) else ""
     nach_id = {t["id"]: t for t in tickets if t.get("id")}
-    kandidaten = []
+    kandidaten, verworfen_besetzung = [], []
     for t in tickets:
         if t.get("status") != "open":
             continue
@@ -131,9 +152,47 @@ def waehle_ticket(tickets, registry, nur_ticket=None, nur_rolle=None):
             continue
         if board.offene_blocker(t, nach_id):
             continue
+        # SWR-196: VOR der Sortierung, also für JEDEN Kandidaten — nicht nur den obersten.
+        if motor and not organisation.besetzung_mit_motor(repos, rolle, einheit, motor):
+            verworfen_besetzung.append(rolle)
+            continue
         kandidaten.append(t)
     kandidaten.sort(key=lambda t: (PRIO_RANG.get(t.get("prio"), 99), t["id"]))
-    return kandidaten[0] if kandidaten else None
+    if kandidaten:
+        return kandidaten[0], ""
+    return None, bestandsbefund(repos, einheit, motor, verworfen_besetzung)
+
+
+def bestandsbefund(repos, einheit, motor, verworfene_rollen):
+    """SWR-196/SWR-167: der Satz über den **Bestand**, wenn der Filter nichts übrig lässt.
+
+    ⚠⚠ Die alte Meldung war wahr und zu eng — und genau das ist teuer. *„Rolle CM hat in
+    Einheit 'platform' keine Besetzung … T-0001 bleibt unangetastet"* liest sich wie ein
+    **Zufall**: dieses eine Ticket passte nicht. Gemessen ist ein **Zustand**: am
+    2026-08-21 trug **kein einziges** der 8 offenen Tickets der Organisation eine
+    ollama-besetzte Rolle.
+
+    > **Die erste Aussage lädt zum Wiederkommen in 15 Minuten ein, und der Takt hat das
+    > 90-mal getan. Die zweite sagt, dass Warten die falsche Handlung ist.**
+
+    Zwilling von `L-2026-08-21ce` (*ein falscher Befund ist teurer als kein Befund*): eine
+    **wahre, aber zu enge** Meldung über einen strukturellen Zustand erneuert bei jedem
+    Lauf die Hoffnung auf eine andere Antwort — dasselbe Wegsehen mit besserem Gewissen.
+
+    ⚠ Der Satz nennt die **Anzahl** und die **Rollen** und nicht nur ein Beispiel: sonst
+    wäre er wieder eine Aussage über ein Exemplar. Und er nennt die besetzten Instanzen
+    **dieser Einheit**, weil das die Handlung ist, die ihn abstellt (`SWR-167`).
+    """
+    if not verworfene_rollen:
+        return ""
+    rollen = sorted(set(verworfene_rollen))
+    hier = [i for i in organisation.besetzungen_mit_motor(repos, motor)
+            if i.endswith("@" + (einheit or ""))]
+    return (f"{len(verworfene_rollen)} offene(s) Ticket(s) geprüft, keines trägt eine Rolle "
+            f"mit motor '{motor}' in Einheit '{einheit}' — Rollen im Bestand: "
+            f"{', '.join(rollen)}; mit motor '{motor}' besetzt in dieser Einheit: "
+            f"{', '.join(hier) or 'keine'} (process/roles/besetzungen.yaml). "
+            f"Der Bestand hat für diese Besetzung nichts — ein weiterer Lauf ändert das nicht.")
 
 
 def warte_lauf_phase1(t, route, kette, projekt_repo):
@@ -295,11 +354,18 @@ def tick(repos, projekt="p0", dry_run=False, nur_ticket=None, provider=None, nur
         print("ABBRUCH — Board invalide:", *probleme, sep="\n  ")
         return 1
 
-    t = waehle_ticket(tickets, registry, nur_ticket, nur_rolle)
+    t, bestand = waehle_ticket(tickets, registry, nur_ticket, nur_rolle,
+                               repos=repos, einheit=projekt, provider=provider)
     if not t:
+        # SWR-196: der Grund steht im Ergebniswort. Fand der Besetzungsfilter Kandidaten
+        # und hat sie alle verworfen, ist das eine Aussage über den BESTAND und keine
+        # über ein Exemplar — sonst bliebe es beim allgemeinen Satz von SWR-167.
         zusatz = f", Rolle {nur_rolle.upper()}" if nur_rolle else ""
-        print(f"Kein bearbeitbares Ticket (open, Blocker erledigt, Rolle aktiv{zusatz}). "
-              f"Tick beendet.")
+        if bestand:
+            print(f"Kein bearbeitbares Ticket (Besetzung): {bestand} Tick beendet.")
+        else:
+            print(f"Kein bearbeitbares Ticket (open, Blocker erledigt, Rolle aktiv{zusatz}). "
+                  f"Tick beendet.")
         return 0
 
     rolle = t["rolle"].upper()
