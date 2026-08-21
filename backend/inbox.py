@@ -145,6 +145,52 @@ def _naechste_d_id(log_pfad):
     return f"D{(max(ids) + 1 if ids else 0):03d}"
 
 
+#: SWR-195 (platform/T-0036): eine ID-Zeile im Entscheidungslog. `D` = Klasse-A-Antwort
+#: des Menschen, `B` = Klasse-B-Beschluss des Teams — **beide** aus derselben Tabelle und
+#: deshalb aus demselben Muster.
+LOG_ID_ZEILE = re.compile(r"^\|\s*([DB]\d{3})\s*\|", re.M)
+#: ⚠⚠ **Der Altbestand, benannt statt gezählt** (Stand 2026-08-21, `platform/T-0036`).
+#:
+#: Diese fünf Zeilen kann `_naechste_d_id` **gar nicht erzeugt haben**: es bildet
+#: `max + 1`. Sie sind von Hand geschrieben — es gibt also einen **zweiten Schreibweg**
+#: ins Entscheidungslog, und der hat keine Nummernvergabe. Das ist B033 mit einem
+#: *Schreibweg* als vergessener Kopie.
+#:
+#: ⚠ Sie werden **nicht repariert**: das Log ist append-only und Historie wird in diesem
+#: Haus nicht umgeschrieben (Playbook Kap. 16). Sie stehen damit in derselben Kategorie
+#: wie die vier fortgeschriebenen Statusübergänge — **gemeldet, namentlich, nicht
+#: blockierend** (`SWR-166`). Das ist eine Entscheidung und keine Selbstverständlichkeit.
+DUBLETTEN_ALTBESTAND = {"pm": {"D005": 3, "D006": 2}}
+
+
+def log_dubletten(root):
+    """{einheit: {id: anzahl}} — mehrfach vergebene IDs je Entscheidungslog.
+
+    ⚠ Die Grundmenge sind **alle** Logs der Discovery und nicht die, die jemand im Ticket
+    aufgezählt hat (`SWR-128`-Familie, in drei Sprints dreimal dieselbe Stelle).
+    """
+    import sys as _sys
+    _skripte = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "scripts")
+    if _skripte not in _sys.path:
+        _sys.path.insert(0, _skripte)
+    import board as _board
+    gefunden = {}
+    for name, pfad in _board.projekt_pfade(root):
+        log = os.path.join(pfad, "management", "decisions", "decision-log.md")
+        if not os.path.isfile(log):
+            continue
+        with open(log, encoding="utf-8", errors="replace") as f:
+            ids = LOG_ID_ZEILE.findall(f.read())
+        mehrfach = {}
+        for i in ids:
+            mehrfach[i] = mehrfach.get(i, 0) + 1
+        mehrfach = {k: v for k, v in mehrfach.items() if v > 1}
+        if mehrfach:
+            gefunden[name] = mehrfach
+    return gefunden
+
+
 def _log_sicherstellen(log_pfad, projekt):
     """Das Entscheidungslog anlegen, wenn es fehlt — SWR-152 (platform/T-0022).
 
