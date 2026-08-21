@@ -64,8 +64,26 @@ AUSGESCHLOSSEN = {".git", "node_modules", "verwaiste-locks", "__pycache__"}
 #:
 #: ⚠ Als **Menge** geführt und nicht als Zahl (`L-2026-08-20by`): eine Zahl sagt nicht,
 #: welche verschwunden ist.
+#: ⚠⚠ **Sprint 32: die Menge ist von 14 auf 17 GEWACHSEN, und das ist der Befund.**
+#:
+#: `SWR-197` hat in Sprint 30 gemessen, dass **alle** mehrdeutigen Zitate aus `D000`–`D013`
+#: stammen und ab `D014` jede ID organisationsweit einmal vergeben ist. Am **2026-08-21**
+#: hat der Auftraggeber drei Entscheidungsanfragen über die Inbox beantwortet
+#: (`pm/T-0077`, `pm/T-0081`, `pm/T-0078`). `pm` stand bei `D013`, also vergab
+#: `_naechste_d_id` **`D014`, `D015`, `D016`** — die es in `p0` seit dem 06.08. gab.
+#:
+#: > **Die ersten drei Vergaben nach der Sperrklinke haben sie gebrochen. Sie hat die
+#: > Vergabe BEOBACHTET und nicht angefasst — und eine Prüfung, die neben der Vergabe
+#: > steht, ist kein Riegel, sondern ein Zeuge.**
+#:
+#: ⚠ Diese drei Zeilen werden **nicht umgeschrieben** (append-only, Kap. 16) und die
+#: Menge deshalb ehrlich fortgeschrieben. ⚠⚠ **Das Fortschreiben allein wäre die bequeme
+#: Handlung** — die Bauart, gegen die `SWR-166` gebaut wurde. Es geschieht deshalb
+#: ausschließlich **zusammen mit** der Reparatur der Vergabe (`SWR-203`,
+#: `inbox._naechste_d_id` liest ab jetzt **alle** Logs) und mit einer Zusicherung, die rot
+#: wird, wenn jemand die Vergabe wieder auf ein einzelnes Log zurückstellt.
 ALTBESTAND_MEHRDEUTIG = frozenset(
-    "D%03d" % n for n in range(14)  # D000 … D013
+    "D%03d" % n for n in range(17)  # D000 … D013 (SWR-197) + D014–D016 (SWR-203)
 )
 
 

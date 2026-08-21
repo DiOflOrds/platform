@@ -2,6 +2,7 @@
 Entscheidungen annehmen — Decision-Log-Zeile + Ticket-Notiz + sofortiger
 Git-Commit (nur die eigenen Schreibziele, Lesson T-0014).
 """
+import glob
 import os
 import re
 import subprocess
@@ -139,9 +140,41 @@ def historie(root, projekt=None):
     return {"historie": eintraege}
 
 
-def _naechste_d_id(log_pfad):
-    text = open(log_pfad, encoding="utf-8").read() if os.path.exists(log_pfad) else ""
-    ids = [int(m) for m in re.findall(r"\|\s*D(\d{3})\s*\|", text)]
+def _naechste_d_id(log_pfad, wurzel=None):
+    """Die nächste freie `D`-Nummer — **organisationsweit**, nicht je Log (SWR-203).
+
+    ⚠⚠ **Bis Sprint 32 las diese Funktion GENAU EIN Log und bildete `max + 1`.** Damit
+    vergab sie in jeder Einheit unabhängig, und `SWR-197` hatte drei Sprints zuvor
+    festgestellt, dass **alle** mehrdeutigen Zitate aus genau diesem Muster stammen:
+    `D000`–`D013` waren mehrfach vergeben, ab `D014` war jede ID organisationsweit
+    eindeutig — und die Sperrklinke sollte es dabei belassen.
+
+    **Gemessen am 2026-08-21: die ersten drei Vergaben nach dieser Sperrklinke haben sie
+    gebrochen.** Der Mensch entschied `pm/T-0077`, `pm/T-0081` und `pm/T-0078`; `pm` stand
+    bei `D013`, also vergab die Inbox `D014`, `D015`, `D016` — die es in `p0` seit dem
+    06.08. bereits gab. Die mehrdeutige Menge wuchs an einem Tag von **14 auf 17**.
+
+    > **`SWR-197` hat eine Sperrklinke gebaut, die die Vergabe BEOBACHTET, und ihre
+    > eigene Begründung sagte, sie sei „an der Vergabe" gebaut. Eine Prüfung, die neben
+    > der Vergabe steht und sie nicht anfasst, ist kein Riegel, sondern ein Zeuge.**
+
+    Gelesen werden ab jetzt **alle** Entscheidungslogs der Organisation. ⚠ Bei
+    unbekannter Wurzel (Aufrufer ohne Organisationskontext) fällt die Funktion auf das
+    einzelne Log zurück — das ist das alte Verhalten und bewusst **nicht** ein Fehler:
+    ein einzeln ausgechecktes Repo darf weiterhin entscheiden können (dieselbe Auflage
+    wie in `SWR-193`: „unbekannt" und „unerreichbar" sind zwei Antworten).
+    """
+    ids = []
+    logs = [log_pfad]
+    if wurzel is None:
+        wurzel = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    if os.path.isdir(wurzel):
+        for muster in (os.path.join(wurzel, "*", "management", "decisions", "*.md"),
+                       os.path.join(wurzel, "*", "*", "management", "decisions", "*.md")):
+            logs.extend(glob.glob(muster))
+    for pfad in set(os.path.realpath(p) for p in logs if os.path.exists(p)):
+        with open(pfad, encoding="utf-8", errors="replace") as f:
+            ids.extend(int(m) for m in re.findall(r"\|\s*D(\d{3})\s*\|", f.read()))
     return f"D{(max(ids) + 1 if ids else 0):03d}"
 
 

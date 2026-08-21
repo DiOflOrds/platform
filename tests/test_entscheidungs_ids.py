@@ -35,7 +35,7 @@ class SynthetischeWurzel(unittest.TestCase):
 
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="swr197-")
-        self.schreibe("alpha", log("D001", "D002", "D014"))
+        self.schreibe("alpha", log("D001", "D002", "D020"))
         self.schreibe("beta", log("D001", "D015"))
 
     def tearDown(self):
@@ -66,7 +66,7 @@ class GrundmengeTest(SynthetischeWurzel):
     def test_vergabe_nennt_die_einheiten_je_id(self):
         v = eids.vergabe(self.root)
         self.assertEqual(v["D001"], {"alpha", "beta"})
-        self.assertEqual(v["D014"], {"alpha"})
+        self.assertEqual(v["D020"], {"alpha"})
         self.assertEqual(v["D015"], {"beta"})
 
     def test_mehrdeutig_ist_genau_die_doppelt_vergebene(self):
@@ -81,19 +81,24 @@ class SperrklinkeTest(SynthetischeWurzel):
         self.assertEqual([b for b in eids.befund(self.root) if b.startswith("NEU")], [])
 
     def test_neue_mehrdeutige_id_wird_gemeldet(self):
-        """⚠⚠ Der eigentliche Zweck: ein zweites Repo vergibt `D014` erneut.
+        """⚠⚠ Der eigentliche Zweck: ein zweites Repo vergibt `D020` erneut.
+
+        ⚠ Die synthetische ID lag bis Sprint 32 bei `D014` und ist auf `D020` gehoben
+        worden, weil `D014`–`D016` seit dem 2026-08-21 zum benannten Altbestand gehören.
+        **Eine Prüfung, deren Beispiel in den Altbestand rutscht, meldet nichts mehr und
+        bleibt grün** — sie muss oberhalb der Menge liegen, die sie nicht sehen soll.
 
         Das ist **eine Zeile** — und sie kostet, unbemerkt, wieder zweihundert
         Zitatstellen. Genau hier ist sie noch billig.
         """
-        self.schreibe("beta", log("D001", "D014", "D015"))
+        self.schreibe("beta", log("D001", "D020", "D021"))
         b = eids.befund(self.root)
         neu = [x for x in b if x.startswith("NEU")]
         self.assertEqual(len(neu), 1)
-        self.assertIn("D014", neu[0])
+        self.assertIn("D020", neu[0])
         self.assertIn("alpha", neu[0])
         self.assertIn("beta", neu[0])
-        self.assertIn("<einheit>/D014", neu[0], "die Absage nennt die Pflichtform (SWR-167)")
+        self.assertIn("<einheit>/D020", neu[0], "die Absage nennt die Pflichtform (SWR-167)")
 
     def test_verschwundener_altbestand_wird_gemeldet(self):
         """⚠ Die Gegenrichtung. Entscheidungslogs sind append-only: eine Zeile
@@ -108,9 +113,14 @@ class SperrklinkeTest(SynthetischeWurzel):
 
     def test_der_altbestand_ist_eine_menge_und_keine_zahl(self):
         """`L-2026-08-20by`: eine Zahl sagt nicht, welche verschwunden ist."""
-        self.assertEqual(len(eids.ALTBESTAND_MEHRDEUTIG), 14)
+        # ⚠⚠ Sprint 32: 14 -> 17. Am 2026-08-21 hat die Inbox `D014`–`D016` in `pm`
+        # vergeben, obwohl `p0` sie seit dem 06.08. trug — die ersten drei Vergaben nach
+        # dieser Sperrklinke haben sie gebrochen. Die Zeilen sind append-only Historie
+        # und bleiben; repariert ist die VERGABE (`SWR-203`, organisationsweit), und
+        # `test_d_id_vergabe` wird rot, wenn jemand sie zurückstellt.
+        self.assertEqual(len(eids.ALTBESTAND_MEHRDEUTIG), 17)
         self.assertEqual(min(eids.ALTBESTAND_MEHRDEUTIG), "D000")
-        self.assertEqual(max(eids.ALTBESTAND_MEHRDEUTIG), "D013")
+        self.assertEqual(max(eids.ALTBESTAND_MEHRDEUTIG), "D016")
 
 
 class ZitatBerichtTest(SynthetischeWurzel):
@@ -187,7 +197,7 @@ class ZitatBerichtTest(SynthetischeWurzel):
         Teile nicht dieselbe Grundmenge haben. Hier hält die Zusicherung sie zusammen.
         """
         self.md("alpha/a.md", "D002 D015 D001 D999\n")
-        self.md("beta/b.md", "D001 D014\n")
+        self.md("beta/b.md", "D001 D020\n")
         z = eids.zitat_bericht(self.root)
         self.assertEqual(z["gesamt"],
                          z["im_eigenen"] + z["aufloesbar"] + z["mehrdeutig"] + z["unbekannt"])
@@ -256,7 +266,7 @@ class EchterBestandTest(unittest.TestCase):
         """⚠⚠ **Der Zweck dieser Datei.** Vierzehn IDs, und keine fünfzehnte."""
         self.assertEqual(eids.befund(self.WURZEL), [])
 
-    def test_alle_mehrdeutigen_zitate_nennen_eine_der_vierzehn(self):
+    def test_alle_mehrdeutigen_zitate_nennen_eine_der_siebzehn(self):
         """⚠⚠ Der Befund, der die Bauform bestimmt hat — als Zusicherung statt als Satz.
 
         Vertreter von `L-2026-08-21ck` (*der Mangel war ein Präfix des Nummernraums,
@@ -270,8 +280,8 @@ class EchterBestandTest(unittest.TestCase):
         mehrdeutig = set(eids.mehrdeutige(self.WURZEL))
         self.assertTrue(mehrdeutig)
         self.assertTrue(mehrdeutig <= set(eids.ALTBESTAND_MEHRDEUTIG))
-        self.assertTrue(all(i < "D014" for i in mehrdeutig),
-                        "eine mehrdeutige ID oberhalb von D013 — der Nummernraum ist "
+        self.assertTrue(all(i < "D017" for i in mehrdeutig),
+                        "eine mehrdeutige ID oberhalb von D016 — der Nummernraum ist "
                         "nicht mehr sauber getrennt")
 
     def test_die_lagen_ergeben_zusammen_die_gesamtzahl(self):
