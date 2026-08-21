@@ -1963,6 +1963,25 @@ function widgetKarte(w) {
     // Der Grund macht den Unterschied zwischen „kannst du ändern" und „musst du abwarten".
     if (z.grund) dd.appendChild(el("small", { "class": "grund" }, " — " + z.grund));
     dl.appendChild(dd);
+    // SWR-210 (Brief N-0004): das 2×2-Raster der Design-Vorlage — IN/Reaktion oben,
+    // Rechnung/SPAM unten. ⚠ Die Zeile darüber bleibt stehen: sie trägt Datum und Takt,
+    // und ein Raster ohne Datum wäre eine Zahl ohne Zeitpunkt.
+    var raster = Regeln.widgetRaster(e);
+    if (raster.length) {
+      var gitter = el("div", { "class": "widget-raster" });
+      raster.forEach(function (k) {
+        var zelle = el("div", { "class": k.unbekannt ? "wkachel leer" : "wkachel" });
+        zelle.appendChild(el("span", { "class": "wk-titel" }, k.beschriftung));
+        zelle.appendChild(el("span", { "class": "wk-wert" }, k.text));
+        // ⚠ Der Grund steht AN der Kachel und nicht in einer Fußnote: eine Kachel ohne
+        // Zahl, der niemand ansieht warum, ist von einem Fehler nicht zu unterscheiden.
+        if (k.grund) zelle.appendChild(el("small", { "class": "grund" }, k.grund));
+        if (k.klappbar) zelle.appendChild(el("small", { "class": "wk-klapp" },
+          "Zusammenfassung: tippen (PIN)"));
+        gitter.appendChild(zelle);
+      });
+      dl.appendChild(el("dd", {}, gitter));
+    }
   });
   karte.appendChild(dl);
   if (w.digests_ohne_takt) {

@@ -132,6 +132,88 @@ def takt_aus_dateiname(name):
     return m.group(1) if m else ""
 
 
+#: Die Rubrik der Rechnungs-Kachel. ⚠ Wortgleich zur Überschrift im Digest — dieselbe
+#: Bauform wie `RUBRIK_REAKTION` und **keine** zweite Auswahlregel (`SWR-210`).
+RUBRIK_RECHNUNG = "Rechnungen/Zahlungen"
+#: ⚠⚠ **Für `SPAM` gibt es im Digest KEINE Rubrik — und das steht hier als benannte
+#: Abwesenheit statt als stille Null** (`SWR-210`, `team-dashboard/T-0005`).
+#:
+#: Die Design-Vorlage des Auftraggebers (`projects/p11/design/widget_design_mail.png`)
+#: verlangt vier Kacheln: `IN`, `Reaktion`, `Rechnung`, `SPAM`. Gemessen am Bestand liefert
+#: `team-mail` die ersten drei; eine SPAM-Rubrik erzeugt es nicht.
+#:
+#: > **Die Vorlage fragt nach einer Zahl, die die Quelle nicht herstellt. `0` anzuzeigen
+#: > hieße „kein Spam" behaupten — die Verwechslung von „echte Null" und „nicht erhoben",
+#: > gegen die `SWR-108` gebaut wurde. Die Kachel steht deshalb da und sagt, dass sie
+#: > nichts weiß.**
+#:
+#: Der Weg dahin ist ein CR an `team-mail` (`team-mail/T-0007`), nicht eine Zahl hier.
+RUBRIK_SPAM = None
+#: Die vier Kacheln der Vorlage, in ihrer Reihenfolge: (Schlüssel, Beschriftung, Rubrik).
+#: `None` als Rubrik heißt „diese Kachel hat heute keine Quelle" — siehe `RUBRIK_SPAM`.
+#: ⚠ `in` kommt nicht aus einer Rubrik, sondern aus der Mailzahl der Digest-Überschrift;
+#: es steht deshalb nicht in dieser Tabelle, sondern wird in `post_widget` gesetzt.
+KACHEL_RUBRIKEN = (("reaktion", "Reaktion", RUBRIK_REAKTION),
+                   ("rechnung", "Rechnung", RUBRIK_RECHNUNG),
+                   ("spam", "SPAM", RUBRIK_SPAM))
+#: ⚠ **Entscheidung des Auftraggebers, nicht Vorschlag des Teams.** Die Vorlage trug einen
+#: Platzhalter („max. zwei Zeilen und x Zeichen"); auf die Rückfrage in
+#: `team-dashboard/N-0004` hat er am 2026-08-21 geantwortet: *„1. 180 Zeichen ok.
+#: 2. Aufklappen 3. die eine Reaktion verlangen"*. Die Zahl steht hier als benannte
+#: Konstante, damit sie eine Festlegung bleibt und keine Gewohnheit wird.
+ZUSAMMENFASSUNG_ZEICHEN = 180
+ZUSAMMENFASSUNG_ZEILEN = 2
+
+
+def _rubrikpunkte(text, rubrik):
+    """Die Listenpunkte unter einer Rubrik im **Wortlaut** — `None`, wenn sie fehlt.
+
+    ⚠⚠ **Die eine Auswahlregel dieses Moduls.** `reaktionspunkte` (zählt) und
+    `reaktionspunkte_text` (zitiert) hatten bis `SWR-210` je einen eigenen, wortgleichen
+    Rumpf; die Doppelung war im Docstring von `reaktionspunkte_text` sogar ausdrücklich
+    als Risiko benannt (*„Zwei Auswahlregeln über dieselbe Rubrik wären B033"*). Mit der
+    dritten und vierten Kachel wären es vier Kopien geworden.
+
+    `rubrik is None` heißt **„für diese Kachel gibt es keine Quelle"** und ist etwas
+    anderes als „Rubrik fehlt in diesem Digest" — beide antworten `None`, aber der Grund
+    unterscheidet sich, und den trägt der Aufrufer.
+    """
+    if not rubrik or not text or rubrik not in text:
+        return None
+    zeilen = text.splitlines()
+    start = next(i for i, z in enumerate(zeilen) if rubrik in z)
+    punkte = []
+    for z in zeilen[start + 1:]:
+        if z.lstrip().startswith("#"):
+            break
+        if _ZAHLPUNKT.match(z):
+            punkte.append(z.strip())
+    return punkte
+
+
+def zusammenfassung(punkte, zeichen=ZUSAMMENFASSUNG_ZEICHEN, zeilen=ZUSAMMENFASSUNG_ZEILEN):
+    """Die Reaktions-Punkte als kurze Zusammenfassung — `None`, wenn es keine gibt.
+
+    ⚠⚠ **Diese Funktion gehört hinter das PIN-Lesegate** und wird ausschließlich aus
+    `widget_inhalt` aufgerufen. Die Design-Vorlage zeigt die Zusammenfassung in der
+    Kachel; ihr **Wortlaut** sind aber Betreffzeilen, Absender und Mail-Links — genau das,
+    was `SWR-160` hinter das Gate gestellt hat.
+
+    > **Der Wunsch und die Schranke widersprechen sich nur scheinbar: der Auftraggeber hat
+    > „wenn man auf Reaktion klickt" geschrieben. Ein Klick ist genau die Stelle, an der
+    > ein Lesegate hingehört. Die Kachel zeigt die ZAHL, das Aufklappen den WORTLAUT.**
+
+    `None` bleibt `None`: fehlt die Rubrik, gibt es keine Zusammenfassung — `""` wäre die
+    Behauptung, es sei nichts zu berichten.
+    """
+    if punkte is None:
+        return None
+    text = " · ".join(re.sub(r"^\s*(?:\d+[.)]|[-*+])\s+", "", p) for p in punkte[:zeilen])
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # Mail-Links raus, Text bleibt
+    text = re.sub(r"\s+", " ", text).strip()
+    return text if len(text) <= zeichen else text[:zeichen - 1].rstrip() + "…"
+
+
 def reaktionspunkte(text):
     """Wie viele Punkte stehen unter „Braucht Blick oder Reaktion"? — `None`, wenn die
     Rubrik fehlt.
@@ -146,17 +228,8 @@ def reaktionspunkte(text):
     Gezählt werden Listenpunkte bis zur nächsten Überschrift — nicht Zeilen, nicht Wörter.
     Der Digest vom 16.08. (Tag) hat vier numerierte Punkte, der Wochendigest mehr.
     """
-    if not text or RUBRIK_REAKTION not in text:
-        return None
-    zeilen = text.splitlines()
-    start = next(i for i, z in enumerate(zeilen) if RUBRIK_REAKTION in z)
-    punkte = 0
-    for z in zeilen[start + 1:]:
-        if z.lstrip().startswith("#"):
-            break
-        if _ZAHLPUNKT.match(z):
-            punkte += 1
-    return punkte
+    punkte = _rubrikpunkte(text, RUBRIK_REAKTION)
+    return None if punkte is None else len(punkte)
 
 
 def reaktionspunkte_text(text):
@@ -177,17 +250,7 @@ def reaktionspunkte_text(text):
     dieselbe Rubrik wären B033, und dann zählte die Kachel andere Punkte, als der Leser
     hinter dem Gate zu sehen bekäme.
     """
-    if not text or RUBRIK_REAKTION not in text:
-        return None
-    zeilen = text.splitlines()
-    start = next(i for i, z in enumerate(zeilen) if RUBRIK_REAKTION in z)
-    punkte = []
-    for z in zeilen[start + 1:]:
-        if z.lstrip().startswith("#"):
-            break
-        if _ZAHLPUNKT.match(z):
-            punkte.append(z.strip())
-    return punkte
+    return _rubrikpunkte(text, RUBRIK_REAKTION)
 
 
 def widget_inhalt(root, projekt, takt=""):
@@ -223,6 +286,13 @@ def widget_inhalt(root, projekt, takt=""):
     return {"id": zusage["id"], "projekt": projekt,
             "takt": takt or takt_aus_dateiname(eintrag["name"]),
             "datum": eintrag["datum"], "punkte": punkte,
+            # SWR-210: die kurze Fassung für das Aufklappen der Reaktions-Kachel.
+            # ⚠ Sie steht HIER und nicht im Payload der Kachel — ihr Wortlaut ist
+            # derselbe geschützte Inhalt wie `punkte`, nur kürzer. Eine Kürzung macht
+            # aus einer Betreffzeile keine Kennzahl.
+            "zusammenfassung": zusammenfassung(punkte),
+            "zusammenfassung_grenze": {"zeichen": ZUSAMMENFASSUNG_ZEICHEN,
+                                       "zeilen": ZUSAMMENFASSUNG_ZEILEN},
             "grund": "" if punkte is not None else
                      f"Rubrik '{RUBRIK_REAKTION}' fehlt in diesem Digest"}
 
@@ -231,6 +301,46 @@ def _mailzahl(titel):
     """`… (89 Mail(s))` → `89`; ohne Angabe `None` — **nicht** `0` (B038)."""
     m = _MAILZAHL.search(titel or "")
     return int(m.group(1)) if m else None
+
+
+def _zustand(wert):
+    """Ein Wert → sein Vertragszustand. Die **eine** Stelle, die das entscheidet.
+
+    ⚠ Kein vierter Zustand (`SWR-096`/`SWR-108`): `None` ist `nicht_geliefert`, `0` ist
+    `echte_null`, alles andere `wert`. Diese drei Zeilen standen vor `SWR-210` inline im
+    Payload und wären mit vier Kacheln viermal dagestanden.
+    """
+    return (ZUSTAND_NICHT_GELIEFERT if wert is None
+            else ZUSTAND_ECHTE_NULL if wert == 0 else ZUSTAND_WERT)
+
+
+def _kacheln(inhalt, mails):
+    """Das 2×2-Raster der Design-Vorlage: `IN` / `Reaktion` / `Rechnung` / `SPAM`.
+
+    ⚠⚠ **Jede Kachel trägt ihren eigenen Zustand — und `SPAM` trägt einen GRUND.** Die
+    Vorlage des Auftraggebers verlangt vier Zahlen; `team-mail` erzeugt drei. Für die
+    vierte gibt es keine Rubrik, und `0` wäre die Behauptung „kein Spam".
+
+    > **Eine Kachel, die nichts weiß, sagt das. Eine Kachel, die stattdessen `0` zeigt,
+    > lügt in einer Zahl — und niemand sieht einer `0` an, dass sie erfunden ist.**
+    """
+    raus = [{"schluessel": "in", "beschriftung": "IN", "wert": mails,
+             "zustand": _zustand(mails),
+             "grund": "" if mails is not None
+                      else "Mailzahl fehlt in der Digest-Überschrift"}]
+    for schluessel, beschriftung, rubrik in KACHEL_RUBRIKEN:
+        punkte = _rubrikpunkte(inhalt, rubrik)
+        wert = None if punkte is None else len(punkte)
+        if rubrik is None:
+            grund = ("keine Quelle: der Digest führt keine SPAM-Rubrik "
+                     "(CR an team-mail, team-mail/T-0007)")
+        elif punkte is None:
+            grund = f"Rubrik '{rubrik}' fehlt in diesem Digest"
+        else:
+            grund = ""
+        raus.append({"schluessel": schluessel, "beschriftung": beschriftung,
+                     "wert": wert, "zustand": _zustand(wert), "grund": grund})
+    return raus
 
 
 def post_widget(root, projekt):
@@ -270,23 +380,39 @@ def post_widget(root, projekt):
                 grund = "nicht eingerichtet — Takt fehlt in konfiguration.yaml"
             else:
                 grund = "noch keiner erstellt"
+            # ⚠ SWR-210: dieselben Schlüssel wie im Wert-Fall. Ein Eintrag, dem Felder
+            # FEHLEN, zwingt jeden Leser zu `.get()` mit Vorgabewert — und ein
+            # Vorgabewert ist genau die erfundene Auskunft, gegen die der Vertrag
+            # `nicht_geliefert` führt. Die vier Kacheln stehen also da und sagen, dass
+            # es diesen Digest nicht gibt.
             eintraege.append({"takt": takt, "zustand": ZUSTAND_NICHT_GELIEFERT,
                               "grund": grund, "datum": None, "mails": None,
-                              "reaktion": None})
+                              "reaktion": None,
+                              "reaktion_zustand": ZUSTAND_NICHT_GELIEFERT,
+                              "kacheln": _kacheln("", None),
+                              "zusammenfassung_verfuegbar": False})
             continue
         inhalt = teams.digest_inhalt(root, projekt, eintrag["name"])["inhalt"]
         punkte = reaktionspunkte(inhalt)
+        mails = _mailzahl(eintrag["titel"])
         eintraege.append({
             "takt": takt,
             "zustand": ZUSTAND_WERT,
             "grund": "",
             "datum": eintrag["datum"],
-            "mails": _mailzahl(eintrag["titel"]),
+            "mails": mails,
             # `None` bleibt `None`: fehlt die Rubrik, wissen wir es nicht.
             "reaktion": punkte,
             "reaktion_zustand": (ZUSTAND_NICHT_GELIEFERT if punkte is None
                                  else ZUSTAND_ECHTE_NULL if punkte == 0
                                  else ZUSTAND_WERT),
+            # SWR-210 (team-dashboard/T-0005, Brief N-0004): das 2×2-Raster der
+            # Design-Vorlage. ⚠ `mails`/`reaktion` bleiben unverändert daneben stehen —
+            # wer sie heute liest, liest sie weiter (Unterversion des Vertrags, keine 3).
+            "kacheln": _kacheln(inhalt, mails),
+            # ⚠ NUR die Auskunft, DASS es eine Zusammenfassung gibt. Ihr Wortlaut sind
+            # Betreffzeilen und Absender und liegt hinter dem PIN-Lesegate (SWR-160).
+            "zusammenfassung_verfuegbar": punkte is not None and punkte > 0,
         })
     return {"id": zusage["id"], "projekt": projekt, "titel": zusage["titel"],
             "auftrag": zusage["auftrag"], "ziel": zusage["ziel"],

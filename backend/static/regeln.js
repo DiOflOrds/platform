@@ -531,6 +531,33 @@ var Regeln = (function () {
              zustand: eintrag.zustand, grund: eintrag.grund || "" };
   }
 
+  /** SWR-210 (team-dashboard/T-0005, Brief N-0004): das 2x2-Raster der Design-Vorlage.
+   *
+   * ⚠⚠ **Die Uebersetzung Zustand -> Text steht HIER und nicht im Renderer.** `app.js`
+   * fragt nur, was dazustehen hat. Eine zweite Stelle, die `nicht_geliefert` in Worte
+   * fasst, waere die Familie, die dieses Haus in 34 Sprints zwoelfmal gefunden hat — und
+   * sie faengt immer als eine Zeile im Renderer an.
+   *
+   * ⚠ `keine Daten` und `0` sind verschiedene Antworten: `KEINE_DATEN` heisst „nicht
+   * erhoben", `0` heisst „nichts vorgefallen". Die SPAM-Kachel traegt heute IMMER das
+   * erste, weil der Digest keine solche Rubrik fuehrt.
+   */
+  function widgetRaster(eintrag) {
+    eintrag = eintrag || {};
+    var kacheln = eintrag.kacheln || [];
+    return kacheln.map(function (k) {
+      var unbekannt = k.zustand === "nicht_geliefert";
+      return { schluessel: k.schluessel, beschriftung: k.beschriftung,
+               text: unbekannt ? KEINE_DATEN : String(k.wert),
+               unbekannt: unbekannt, grund: k.grund || "",
+               // Nur die Reaktions-Kachel klappt auf, und nur wenn es etwas zu zeigen
+               // gibt. ⚠ Der Wortlaut liegt hinter dem PIN-Lesegate (SWR-160) — diese
+               // Marke sagt, DASS geklickt werden kann, und nicht, WAS dann kommt.
+               klappbar: k.schluessel === "reaktion"
+                         && eintrag.zusammenfassung_verfuegbar === true };
+    });
+  }
+
   /** Ist dieses Widget vollstaendig genug, um angezeigt zu werden?
    *
    * ⚠ **`auftrag` ist Pflicht.** Der Wunsch lautete: *„jedes widget soll eine beschreibung
@@ -682,7 +709,8 @@ var Regeln = (function () {
       : n + " Widgets sind durch deine Auswahl ausgeblendet.";
   }
 
-  return { widgetZeile: widgetZeile, widgetVollstaendig: widgetVollstaendig,
+  return { widgetZeile: widgetZeile, widgetRaster: widgetRaster,
+           widgetVollstaendig: widgetVollstaendig,
            widgetMaengel: widgetMaengel, TOUCH_MIN_PX: TOUCH_MIN_PX,
            feldText: feldText,
            terminierKnopf: terminierKnopf,
