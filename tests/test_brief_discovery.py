@@ -27,7 +27,8 @@ Registerbeginn kamen **17 (81 %)**, während ein Sprint lief. Der späte Brief i
 **Regel**. Deshalb ist `briefe_im_lauf` eine Kennzahl und keine Empfehlung.
 
 Lehren dieses Baus: `L-2026-08-21cw` (Zeitzone), `L-2026-08-21cy` (eine Tür, ein
-Schlüssel), `L-2026-08-21cz` (Anwesenheit ist nicht Verwendung).
+Schlüssel), `L-2026-08-21cz` (Anwesenheit ist nicht Verwendung), `L-2026-08-21da`
+(„kein Ende" heißt abgebrochen, nicht aktiv).
 
 DoD 3 („wer merkt es, wenn niemand die Kennzahlen zieht?"): die Größe steht im
 Kennzahlenblock, den `preflight` und der Abschluss ohnehin ziehen — und Preflight liest
@@ -211,6 +212,37 @@ class AussageUeberDasFenster(unittest.TestCase):
         with tempfile.TemporaryDirectory() as leer:
             self.assertIsNone(kennzahlen.zaehle_briefe_im_lauf(leer))
 
+    def test_nur_der_NEUESTE_sprint_kann_laufen(self):
+        """⚠⚠ Beim Sprint-Abschluss gefunden: 15 von 33 Sprints haben nie ein `ende`.
+
+        Die erste Fassung nahm den hoechstnummerierten Sprint **ohne** `ende` und griff
+        damit, sobald der laufende beendet war, auf ein altes abgebrochenes Fenster
+        zurueck — gemeldet wurden 14 Briefe statt 0.
+
+        > **„Kein Ende" heisst abgebrochen und nicht aktiv.**
+        """
+        import json
+        datei = os.path.join(ORGA, "pm", "management", "sprints.jsonl")
+        sprints = {}
+        with open(datei, encoding="utf-8") as f:
+            for zeile in f:
+                if zeile.strip():
+                    e = json.loads(zeile)
+                    sprints.setdefault(e["kennung"], {}).update(e)
+        ohne_ende = [s for s in sprints.values() if s.get("nr") and not s.get("ende")]
+        self.assertGreater(len(ohne_ende), 1,
+                           "ohne mehrere offen gebliebene Sprints sagt diese Zusicherung "
+                           "nichts — der Befund war genau ihre Existenz")
+        neuester = max((s for s in sprints.values() if s.get("nr")),
+                       key=lambda s: s["nr"])
+        erwartet = None if neuester.get("ende") else neuester["start"]
+        ist = kennzahlen._sprint_start(ORGA)
+        if erwartet is None:
+            self.assertIsNone(ist, "ein beendeter neuester Sprint darf kein altes, "
+                                   "abgebrochenes Fenster zurueckgeben")
+        else:
+            self.assertEqual(ist.strftime("%Y-%m-%d %H:%M"), erwartet)
+
     def test_kennzahlenblock_traegt_die_groesse(self):
         """⚠ Geprüft wird der BLOCK, nicht der Dict-Schlüssel.
 
@@ -219,8 +251,19 @@ class AussageUeberDasFenster(unittest.TestCase):
         aus dem Bericht verschwinden können, ohne dass diese Zusicherung es merkt.
         Genau das behauptet ihr Name aber.
         """
-        text = kennzahlen.block(kennzahlen.miss(ORGA))
-        self.assertIn("briefe_im_lauf=", text)
+        werte = kennzahlen.miss(ORGA)
+        text = kennzahlen.block(werte)
+        if werte["briefe_im_lauf"] is None:
+            # ⚠ Zwischen zwei Sprints ist die Groesse **unbekannt**, nicht null. Sie
+            # faellt dann aus dem Block — und `vergleiche` darf das ausdruecklich NICHT
+            # als Abweichung melden, sonst waere jeder Bericht zwischen zwei Laeufen rot.
+            self.assertNotIn("briefe_im_lauf=", text)
+            self.assertEqual(
+                [a for a in kennzahlen.vergleiche({}, werte)
+                 if a[0] == "briefe_im_lauf"], [],
+                "unbekannt darf keine Abweichung sein (konnte nicht messen != 0)")
+        else:
+            self.assertIn(f"briefe_im_lauf={werte['briefe_im_lauf']}", text)
 
     def test_groesse_steht_in_den_vergleichsfeldern(self):
         """Sonst darf der Bericht dazu behaupten, was er will.

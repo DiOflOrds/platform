@@ -197,11 +197,24 @@ def _sprint_start(root):
                 sprints.setdefault(eintrag["kennung"], {}).update(eintrag)
     except (OSError, ValueError, KeyError):
         return None
-    laufend = [s for s in sprints.values()
-               if s.get("nr") and s.get("start") and not s.get("ende")]
-    if not laufend:
+    # ⚠⚠ **Beim Sprint-ABSCHLUSS gefunden, nicht beim Bau.** Die erste Fassung nahm den
+    # hoechstnummerierten Sprint OHNE `ende` — und 15 der 33 Sprints haben nie eine
+    # Endezeile bekommen (abgebrochene Laeufe). Sobald der laufende Sprint beendet war,
+    # griff die Funktion auf ein **altes, offen gebliebenes** Fenster zurueck und meldete
+    # 14 statt 0.
+    #
+    # > **Ein Lauf, der nie zu Ende gemeldet wurde, ist nicht derselbe wie einer, der
+    # > laeuft. „Kein Ende" heisst abgebrochen und nicht aktiv — `sprint_register` fuehrt
+    # > dafuer eigens `abgebrochen`, und diese Funktion hat es nicht gelesen.**
+    #
+    # Richtig ist: **nur der neueste Sprint ueberhaupt** kann laufen. Traegt er ein
+    # `ende`, laeuft keiner — und die Antwort ist `None` (unbekannt), nicht `0`.
+    nummeriert = [s for s in sprints.values() if s.get("nr") and s.get("start")]
+    if not nummeriert:
         return None
-    neuester = max(laufend, key=lambda s: s["nr"])
+    neuester = max(nummeriert, key=lambda s: s["nr"])
+    if neuester.get("ende"):
+        return None
     try:
         return datetime.strptime(neuester["start"], "%Y-%m-%d %H:%M")
     except ValueError:
