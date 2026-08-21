@@ -15,17 +15,12 @@ Stand: 2026-08-21 · Tickets: 70 · davon wiederkehrend: 1
 | [T-0068](tickets/T-0068.md) | Der Schutz gegen Belege außerhalb des Bestands ist auf dem Rechner des Auftraggebers AUS — os.path.isabs beantwortet auf Windows eine andere Frage | problem | einmalig | dev | Team | hoch | 35 | — |
 | [T-0070](tickets/T-0070.md) | Acht Lehren ohne Vertreter — sechs davon aus Sprint 35, der im selben Bericht 1551 Tests als Verifikation führte | problem | einmalig | coach | Team | hoch | 35 | — |
 
-## in_progress (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0069](tickets/T-0069.md) | Zwei Zusicherungen messen, ob auf dem Rechner gerade ein anderer Git-Prozess läuft — grün in der Sandbox, rot auf dem Host, und beide Male sagt der Code nichts dazu | problem | einmalig | prob | Team | mittel | 35 | — |
-
-## in_review (1)
+## in_review (2)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0060](tickets/T-0060.md) | Ollama-Takt: EIN echter Lauf mit dem tatsaechlich vorhandenen Modell — die 11 Fehlschlaege liegen alle VOR der Reparatur | task | einmalig | dev | Team | hoch | 33 | — |
+| [T-0069](tickets/T-0069.md) | Zwei Zusicherungen messen, ob auf dem Rechner gerade ein anderer Git-Prozess läuft — grün in der Sandbox, rot auf dem Host, und beide Male sagt der Code nichts dazu | problem | einmalig | prob | Team | mittel | 35 | — |
 
 ## done (61)
 
