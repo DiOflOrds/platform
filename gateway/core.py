@@ -51,6 +51,11 @@ class Ergebnis:
     # Fall, den der Bestand siebenmal als `kosten_eur: 0.0` trägt.
     token_statisch: int = None
     token_dynamisch: int = None
+    # SWR-212 (platform/T-0060): die Provider, die WIRKLICH aufgerufen wurden — in der
+    # Reihenfolge des Versuchs. ⚠ Nicht die `provider_kette`: die sagt, was versucht
+    # werden SOLLTE. Ein Kettenglied ohne Executor wird übersprungen und darf hier nicht
+    # stehen, sonst behauptet die Registry einen Versuch, den es nie gab.
+    versuchte_provider: list = field(default_factory=list)
 
 
 def _geaenderte_dateien(verzeichnis):
@@ -81,29 +86,41 @@ def execute(rolle, aufgabe, kontext):
 
     vorher = _geaenderte_dateien(kontext["arbeitsverzeichnis"])
     letzter_fehler = "kein Provider in der Kette verfügbar"
+    # SWR-212: mitgeführt, weil der Fehlerausgang sonst NICHTS über den Versuch weiß.
+    versuchte = []
+    letztes_modell = ""
     for provider in kette:
         executor = EXECUTORS.get(provider)
         if executor is None:
             letzter_fehler = f"unbekannter Provider: {provider}"
             continue
+        versuchte.append(provider)
         try:
             roh = executor(rolle, aufgabe, kontext, cfg)
         except NotImplementedError as e:
             letzter_fehler = str(e)
+            # SWR-212: das Modell kommt vom Executor, der es aufgelöst hat — es hier ein
+            # zweites Mal aus Register und Guardrails zu bilden wäre B033 mit der
+            # Modellauflösung als vergessener Kopie (SWR-169 hat genau diese Kopie
+            # bereits einmal gekostet).
+            letztes_modell = getattr(e, "modell", "") or letztes_modell
             continue  # on_unavailable: next_in_chain
         except Exception as e:  # Executor-Fehler: nächste Stufe versuchen
             letzter_fehler = f"{provider}: {type(e).__name__}: {e}"
+            letztes_modell = getattr(e, "modell", "") or letztes_modell
             continue
 
         if roh.get("wartet"):
             # Zweiphasiger Provider (session): Prompt erzeugt, Antwort steht aus.
             erg = Ergebnis(status="wartet", provider=provider, modell=roh.get("modell", ""),
                            log=roh.get("log", ""), meldung=roh.get("log", ""),
+                           versuchte_provider=list(versuchte),
                            dauer_s=time.time() - start)
             _protokolliere(registry_pfad, rolle, aufgabe, kontext, erg)
             return erg
 
         erg = Ergebnis(status="ok", provider=provider, modell=roh.get("modell", ""),
+                       versuchte_provider=list(versuchte),
                        log=roh.get("log", ""), meldung=roh.get("log", ""),  # BB-1: Log in die
                        kosten_eur=float(roh.get("kosten_eur", 0.0)),        # Registry (Diagnose)
                        dauer_s=time.time() - start,
@@ -124,7 +141,28 @@ def execute(rolle, aufgabe, kontext):
         _protokolliere(registry_pfad, rolle, aufgabe, kontext, erg)
         return erg
 
-    erg = Ergebnis(status="fehler", meldung=letzter_fehler, dauer_s=time.time() - start)
+    # ⚠⚠ SWR-212 (platform/T-0060). Bis Sprint 35 stand hier ein Ergebnis OHNE `provider`
+    # und OHNE `modell` — und damit trug jeder gescheiterte Lauf in der Run-Registry
+    # `"provider": "", "modell": ""`. Gemessen an den drei Registries des Hauses: 9 von 9
+    # ollama-Einträgen sind so geschrieben.
+    #
+    # Der Preis war nicht theoretisch: DREI Sprints in Folge haben aus dieser Registry
+    # eine falsche Ollama-Diagnose gezogen (Sprint 32/33 „Modell fehlt" bzw. „kein
+    # Versuch", Sprint 34 „aus der Sandbox unerreichbar"), weil sie `provider`/`modell`
+    # lesen und dort nichts stand. Die Wahrheit lag nur in `meldung` — dem Feld, das
+    # keine Auswertung liest.
+    #
+    # > Ein Fehlereintrag, der nicht sagt, WAS gescheitert ist, unterscheidet nicht
+    # > zwischen „nichts wurde versucht" und „ollama hat mit 404 geantwortet". Beide
+    # > sehen aus wie der erste Fall, und der erste Fall lädt zum Warten ein.
+    #
+    # ⚠ Leer bleibt es weiterhin, wenn wirklich kein Executor gerufen wurde — dann ist
+    # die Leere eine Aussage und keine Lücke.
+    erg = Ergebnis(status="fehler", meldung=letzter_fehler,
+                   provider=(versuchte[-1] if versuchte else ""),
+                   modell=letztes_modell,
+                   versuchte_provider=list(versuchte),
+                   dauer_s=time.time() - start)
     _protokolliere(registry_pfad, rolle, aufgabe, kontext, erg)
     return erg
 
@@ -139,6 +177,10 @@ def _protokolliere(registry_pfad, rolle, aufgabe, kontext, erg):
             "aufgabe": (aufgabe or "")[:200],
             "geraet": kontext.get("geraet") or _platform.node(),
             "provider": erg.provider,
+            # SWR-212: die Kette, die WIRKLICH gelaufen ist. `provider` nennt den
+            # letzten Versuch, dieses Feld alle — bei einer Kette [ollama, claude] ist
+            # der Unterschied die halbe Diagnose.
+            "versuchte_provider": erg.versuchte_provider,
             "modell": erg.modell,
             "status": erg.status,
             "kosten_eur": round(erg.kosten_eur, 4),

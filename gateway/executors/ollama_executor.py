@@ -65,6 +65,20 @@ def messe_statisch(host, modell, systemtext, timeout_s=60):
     return wert if isinstance(wert, int) else None
 
 
+def _mit_modell(fehler, modell):
+    """SWR-212: das aufgelöste Modell an den Fehler heften, damit der Kern es NICHT
+    ein zweites Mal auflösen muss.
+
+    ⚠ Die Rangfolge aus `SWR-169` (``OLLAMA_MODEL`` > Besetzungsregister > guardrails >
+    Default) steht an genau einer Stelle — hier. Sie im Gateway-Kern für den Fehlerfall
+    nachzubilden wäre B033 mit der Modellauflösung als vergessener Kopie, und genau die
+    Kopie hat am 2026-08-20 sechs Ticks an ``404: model 'llama3.1:8b' not found``
+    sterben lassen, während das Register `gemma3:27b` trug.
+    """
+    fehler.modell = modell
+    return fehler
+
+
 def fuehre_aus(rolle, aufgabe, kontext, cfg):
     host = _host()
     p_cfg = (cfg.get("providers", {}).get("ollama", {}) or {})
@@ -80,7 +94,8 @@ def fuehre_aus(rolle, aufgabe, kontext, cfg):
         with urllib.request.urlopen(host + "/api/tags", timeout=3) as r:
             json.loads(r.read().decode("utf-8"))
     except (urllib.error.URLError, OSError, ValueError) as e:
-        raise NotImplementedError(f"ollama: nicht erreichbar unter {host} ({e})")
+        raise _mit_modell(
+            NotImplementedError(f"ollama: nicht erreichbar unter {host} ({e})"), modell)
 
     systemtext = kontext.get("systemprompt", "") + "\n\n" + AUSGABE_ANWEISUNG
     nutzlast = {
@@ -96,8 +111,9 @@ def fuehre_aus(rolle, aufgabe, kontext, cfg):
         antwort = _chat(host, nutzlast, int(kontext.get("timeout_s", 900)))
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:300]
-        raise NotImplementedError(f"ollama: Anfrage fehlgeschlagen ({e.code}): {detail} "
-                                  f"— Modell installiert? (ollama pull {modell})")
+        raise _mit_modell(
+            NotImplementedError(f"ollama: Anfrage fehlgeschlagen ({e.code}): {detail} "
+                                f"— Modell installiert? (ollama pull {modell})"), modell)
 
     text = (antwort.get("message") or {}).get("content", "")
     dateien = schreibe_dateibloecke(text, kontext["arbeitsverzeichnis"])
