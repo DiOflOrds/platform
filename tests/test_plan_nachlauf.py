@@ -81,7 +81,7 @@ class PlanNachlauf(unittest.TestCase):
         Das ist exakt der DoD-Punkt „Wirkung von `SWR-115` für VERGANGENE Sprints
         nachweislich unverändert". `test_ohne_laufenden_sprint_ist_alles_befund` allein
         hat ihn NICHT gedeckt — er prüft einen Zustand, der während der Arbeit nie
-        eintritt.
+        eintritt. Vertreter von `L-2026-08-21cq`.
         """
         alt = _zeile("ticket_zu_frueh_fertig", plan_sprint=7)
         befund, nachlauf = sprint.plan_nachlauf([alt], LAEUFT)
@@ -102,6 +102,8 @@ class PlanNachlauf(unittest.TestCase):
 
         > **Ein verworfenes Ticket ist kein „fertig, der Plan hinkt nach". Es ist eine
         > Entscheidung, und der Plan, der sie nicht kennt, ist ein Befund.**
+
+        Zweiter Vertreter von `L-2026-08-21cq`.
         """
         z = _zeile("ticket_zu_frueh_fertig", ticket="rejected")
         befund, nachlauf = sprint.plan_nachlauf([z], LAEUFT)
@@ -120,6 +122,8 @@ class PlanNachlauf(unittest.TestCase):
         > jemals gerufen wird.** Das ist die Lehre aus `SWR-171` an einer neuen Stelle:
         > eine Gegenprobe, die die Funktion prüft und nicht ihren Aufrufer, misst die
         > Hälfte, die man selbst geschrieben hat.
+
+        Vertreter von `L-2026-08-21ct`.
         """
         with open(os.path.join(WURZEL, "backend", "sprint.py"), encoding="utf-8") as f:
             quelle = f.read()

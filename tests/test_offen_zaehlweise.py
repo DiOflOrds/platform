@@ -12,6 +12,8 @@ widersprochen; es hat sie nur niemand vertreten.
 > (`SWR-125`). Ohne diese Datei wiederholt sich der Vorgang in zwanzig Sprints wieder —
 > das ist die DoD-Auflage von `platform/T-0053` im Wortlaut.**
 
+Diese Datei ist der Vertreter von `L-2026-08-21cr`.
+
 ⚠ Geprüft wird **das Verhältnis der Erzeuger zueinander**, nicht eine Festzahl. Eine
 Zusicherung auf „12" wäre beim nächsten geschlossenen Ticket rot und würde damit genau
 das Wegsehen trainieren, gegen das `SWR-166` gebaut wurde (die Lehre aus `SWR-164`:

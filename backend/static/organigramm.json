@@ -167,6 +167,17 @@
    "typ": "projekt"
   },
   {
+   "anzeigename": "p13",
+   "beschreibung": "Produkt-Architekturbilder",
+   "datenklasse": "intern",
+   "einheit": "p13",
+   "profil": "entwicklung",
+   "rollen": [],
+   "status": "ohne Status",
+   "team": null,
+   "typ": "projekt"
+  },
+  {
    "anzeigename": "p2",
    "beschreibung": "Betriebshaertung: Frist-Warnmails, Katalog-Gate, Nutzer-Registry, Inbox-Haertung, Aufwandsschaetzung",
    "datenklasse": "intern",
