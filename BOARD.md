@@ -10,13 +10,7 @@ Stand: 2026-08-21 · Tickets: 51 · davon wiederkehrend: 1
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
 | [T-0049](tickets/T-0049.md) | Der zweite Schreibweg ins Entscheidungslog hat keine Nummernvergabe — zum zweiten Mal weitergereicht, jetzt mit eigenem Termin | change-request | einmalig | cm | Team | mittel | 30 | — |
 
-## in_review (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0050](tickets/T-0050.md) | SWR-194 liest eine Schreibweise, nicht eine Konvention — 34 von 111 Lehren gezählt, 110 tragen eine Regel | problem | einmalig | coach | Team | hoch | 30 | — |
-
-## done (48)
+## done (49)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -57,6 +51,7 @@ Stand: 2026-08-21 · Tickets: 51 · davon wiederkehrend: 1
 | [T-0045](tickets/T-0045.md) | Eine repo-übergreifende Sperre ist in diesem Haus nicht ausdrückbar — und vier Terminierungen sahen wie eine Beurteilung aus, waren aber der einzige erlaubte Status | change-request | einmalig | dev | Team | hoch | 29 | — |
 | [T-0046](tickets/T-0046.md) | Die Commit-Prüfung des Preflight vergleicht den INDEX mit HEAD statt den BAUM mit HEAD — ein stehengebliebenes index.lock erzeugt damit einen Befund über Arbeit, die committet ist | change-request | einmalig | dev | Team | hoch | 29 | — |
 | [T-0048](tickets/T-0048.md) | Der Schnelltakt prüft die Besetzung ERST NACH der Auswahl — 2 von 2 Ticks im ersten startklaren Lauf ohne Ergebnis, obwohl der Preflight repariert ist | problem | einmalig | dev | Team | hoch | 30 | — |
+| [T-0050](tickets/T-0050.md) | SWR-194 liest eine Schreibweise, nicht eine Konvention — 34 von 111 Lehren gezählt, 110 tragen eine Regel | problem | einmalig | coach | Team | hoch | 30 | — |
 | [T-0051](tickets/T-0051.md) | Ein gesperrtes Ticket hat KEINEN zulässigen Terminwert — zwei Prüfungen bilden eine Zange, jeder Wert erzeugt einen Befund | problem | einmalig | dev | Team | hoch | 30 | — |
 | [T-0008](tickets/T-0008.md) | Problem: In verschachtelten Repos (p10/p11/p12 in `projects`) läuft die Status-Übergangsprüfung seit jeher ins Leere — lautlos | problem | einmalig | cm | Team | mittel | 0 | — |
 | [T-0015](tickets/T-0015.md) | SWR-123 räumt Git-Locks per unlink — auf dem Cowork-Mount ist das verboten, rename gelingt | problem | einmalig | cm | Team | mittel | 0 | — |
