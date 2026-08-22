@@ -827,6 +827,29 @@ WAECHTER_TAKT_S = 30          # waechter.Waechter(takt_sekunden=30) — die Quel
 WAECHTER_GEDULD = 10          # Takte, bevor „still" zu „tot" wird
 
 
+def motor_zeilen(root):
+    """Die Meldezeilen zur Motor-Verteilung je Rolle — SWR-220. Gibt NIE einen Befund.
+
+    Eigene Funktion und nicht vier Zeilen im Rumpf des Preflights: so kann eine
+    Zusicherung die **Meldung** prüfen, ohne den ganzen Lauf zu fahren (der in dieser
+    Sandbox über die Zeitgrenze geht), und der Preflight klassifiziert nicht selbst —
+    dieselbe Trennung, die `SWR-201` erzwungen hat.
+    """
+    try:
+        abw = organisation.motor_abweichungen(root)
+    except Exception as fehler:                          # pragma: no cover — Registerdefekt
+        return [f"[org] Motor je Rolle: nicht prüfbar ({fehler})."]
+    if not abw:
+        return ["[org] Motor je Rolle: einheitlich über alle Instanzen."]
+    zeilen = []
+    for rolle, motoren in abw.items():
+        teile = ", ".join(f"{m}: {', '.join(inst)}" for m, inst in motoren.items())
+        zeilen.append(f"[org] Motor je Rolle — {rolle} uneinheitlich ({teile}). "
+                      f"Zulässig nach pm/B061 (Definition gleich, Besetzung je Instanz); "
+                      f"kein Befund.")
+    return zeilen
+
+
 def waechter_herzschlag(root, jetzt=None):
     """SWR-215 (platform/T-0055): eine Zeile über den Wächter — für den Preflight-Leser.
 
@@ -1308,6 +1331,11 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
             print(f"[org] Ollama-Takt: {len(tb['treffer'])} von {tb['offen']} offenen "
                   f"Tickets wählbar ({', '.join(tb['treffer'][:5])}"
                   f"{' …' if len(tb['treffer']) > 5 else ''}).")
+    # SWR-220 (pm/T-0079, Brief N-0045 des Auftraggebers, entschieden als pm/B061):
+    # Die Besetzung darf je Instanz abweichen — sie darf es nur nicht STILL tun.
+    # ⚠ Kein Befundzähler: die Abweichung ist erlaubt und gewollt (SWR-166).
+    for zeile in motor_zeilen(root):
+        print(zeile)
     # SWR-215 (platform/T-0055, Teil A — Frage 4 des Tickets: „Wer bewacht den Wächter?").
     #
     # ⚠⚠ Der Wächter beantwortet diese Frage in seinem eigenen Kopfkommentar:

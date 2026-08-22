@@ -213,6 +213,40 @@ def besetzungen_mit_motor(root, motor):
     return sorted(i for i, b in besetzungen.items() if ((b or {}).get("motor") or "") == motor)
 
 
+def motor_abweichungen(root):
+    """Rollen, deren Instanzen NICHT denselben Motor tragen — je Rolle namentlich. SWR-220.
+
+    ⚠⚠ **Herkunft: `pm/N-0045` des Auftraggebers** — *„alle rollen im CoreTeam sollen
+    gleich sein: z.B. der Prob Role in Plattform ist auf Ollama, alle anderen Prob-Rollen
+    sind CoWork."* Entschieden als `pm/B061` (Klasse B, vierte Berührung von `pm/T-0079`):
+    **die Rollen-DEFINITION ist organisationsweit eine, die BESETZUNG ist je Instanz
+    konfigurierbar** (Konzept 04; `pm/D010` lebt davon, dass der Ollama-Versuch an EINER
+    Stelle läuft). Was fehlte, war nicht die Gleichheit, sondern ihre **Sichtbarkeit**.
+
+    > **Eine zulässige Abweichung, die niemand sehen kann, ist von einem Versehen nicht
+    > zu unterscheiden — und der Auftraggeber hat sie vor jedem Werkzeug dieses Hauses
+    > gefunden.**
+
+    ⚠ **Ausdrücklich KEIN Befund** (`SWR-166`): die Abweichung ist erlaubt und gewollt.
+    Sie wird **genannt**, nicht gezählt — eine Dauermeldung ohne Weg nach vorn ist die
+    Bauart, die 83 abgebrochene Läufe gekostet hat.
+
+    ⚠ Eine Rolle mit nur EINER Instanz kann nicht abweichen; sie taucht nie auf. Das ist
+    der Grund, warum `MAIL-RED@team-mail` (ebenfalls `ollama`) hier fehlt und fehlen
+    muss: eine projektspezifische Rolle hat niemanden, mit dem sie uneinheitlich sein
+    könnte. **Sie stattdessen zu melden hieße, „einzig" als „abweichend" zu lesen.**
+
+    Rückgabe: `{rolle: {motor: [instanz, …], …}, …}`, nur für Rollen mit ≥ 2 Motoren.
+    """
+    proRolle = {}
+    for instanz, b in organigramm.effektive_besetzungen(root).items():
+        d = b or {}
+        proRolle.setdefault(d.get("rolle") or "?", {}).setdefault(
+            d.get("motor") or "?", []).append(instanz)
+    return {r: {m: sorted(i) for m, i in sorted(motoren.items())}
+            for r, motoren in sorted(proRolle.items()) if len(motoren) > 1}
+
+
 def katalog(root):
     """Auswahllisten fürs Formular: Rollen (Bauplan-Registry), Motoren, Takte, Stati."""
     rollen = _lade_yaml(os.path.join(root, "process", "roles", "registry.yaml")).get("roles", {})
