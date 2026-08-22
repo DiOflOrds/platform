@@ -449,5 +449,55 @@ class AblaufdatumTest(unittest.TestCase):
             globals()["_HIER"] = hier
 
 
+class SichtTakt(unittest.TestCase):
+    """Vertrag v2.9 (team-dashboard/T-0001, Brief p0/N-0002): EIN Takt ist sichtbar.
+
+    ⚠⚠ Gemessen am 2026-08-22 am laufenden Renderweg, nicht am Screenshot des
+    Auftraggebers: `post_widget(".", "team-mail")` lieferte **3 Eintraege mit 12
+    Kacheln** in ein Raster, das fuer EINE Zeitreihe gebaut ist.
+    """
+
+    def test_juengster_takt_gewinnt(self):
+        """tag vor woche vor monat — der juengste Stand zuerst (Wunsch aus p0/N-0002)."""
+        self.assertEqual(widgets._sicht_takt(
+            [{"takt": "monat"}, {"takt": "tag"}, {"takt": "woche"}]), "tag")
+        self.assertEqual(widgets._sicht_takt([{"takt": "monat"}, {"takt": "woche"}]),
+                         "woche")
+
+    def test_nicht_die_reihenfolge_der_zusage(self):
+        """⚠ Die Reihenfolge der Liste stammt aus der Zusage und sagt nichts ueber Alter.
+
+        Gegen eine Umsetzung, die einfach `eintraege[0]["takt"]` nimmt, wird das rot.
+        """
+        self.assertEqual(widgets._sicht_takt([{"takt": "monat"}, {"takt": "tag"}]), "tag")
+
+    def test_leere_liste_gibt_leeren_takt(self):
+        """Ein Team ohne versprochenen Takt zeigt nichts — und behauptet nichts."""
+        self.assertEqual(widgets._sicht_takt([]), "")
+
+    def test_sicht_takt_kommt_immer_aus_den_eintraegen(self):
+        """⚠ Nie ein Takt, den es nicht gibt — sonst entscheidet wieder der Renderer."""
+        for eintraege in ([{"takt": "woche"}],
+                          [{"takt": "monat"}, {"takt": "woche"}],
+                          [{"takt": "tag"}, {"takt": "monat"}]):
+            self.assertIn(widgets._sicht_takt(eintraege),
+                          [e["takt"] for e in eintraege])
+
+    def test_unbekannter_takt_draengt_sich_nicht_vor(self):
+        """Ein Takt ohne Zahl darf nicht durch Zufall der juengste werden."""
+        self.assertEqual(widgets._sicht_takt([{"takt": "quartal"}, {"takt": "woche"}]),
+                         "woche")
+        self.assertEqual(widgets._sicht_takt([{"takt": "quartal"}]), "quartal")
+
+    def test_payload_traegt_den_schluessel(self):
+        """Ein Vertragsfeld ohne Lieferung ist eine Zusage ohne Leser (SWR-131)."""
+        wurzel = os.path.abspath(os.path.join(_HIER, "..", ".."))
+        w = widgets.post_widget(wurzel, "team-mail")
+        if w is None:
+            self.skipTest("team-mail liegt hier nicht vor")
+        self.assertIn("sicht_takt", w)
+        self.assertIn(w["sicht_takt"], [e["takt"] for e in w["eintraege"]])
+
+
 if __name__ == "__main__":
     unittest.main()

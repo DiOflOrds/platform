@@ -343,6 +343,27 @@ def _kacheln(inhalt, mails):
     return raus
 
 
+def _sicht_takt(eintraege):
+    """Der EINE Takt, den das Widget zeigt — Vertrag v2.9, `team-dashboard/T-0001`.
+
+    Vorgabe ist der **kleinste** versprochene Takt (`tag` vor `woche` vor `monat`): der
+    jüngste Stand zuerst, wörtlich der Wunsch aus `p0/N-0002`. Die übrigen Einträge
+    bleiben im Payload und sind umschaltbar — sie werden nur nicht gleichzeitig gezeigt.
+
+    ⚠ Der Rückgabewert kommt **aus** `eintraege` und ist nie ein Takt, den es dort nicht
+    gibt: eine Anweisung, etwas zu zeigen, das nicht geliefert wird, zwänge den Renderer
+    zu einer eigenen Entscheidung — also genau zu der zweiten Stelle, gegen die dieser
+    Vertrag geschrieben ist.
+
+    ⚠ Sortiert wird über `_TAKT_ZAHL` und nicht über die Reihenfolge der Liste: die
+    Reihenfolge stammt aus der Zusage des Teams und ist keine Aussage über das Alter.
+    """
+    if not eintraege:
+        return ""
+    return min(eintraege,
+               key=lambda e: _TAKT_ZAHL.get(e.get("takt"), 10**6))["takt"]
+
+
 def post_widget(root, projekt):
     """Das Widget eines Teams: Auftrag + je versprochenem Takt der jüngste Digest.
 
@@ -417,6 +438,17 @@ def post_widget(root, projekt):
     return {"id": zusage["id"], "projekt": projekt, "titel": zusage["titel"],
             "auftrag": zusage["auftrag"], "ziel": zusage["ziel"],
             "eintraege": eintraege,
+            # ⚠⚠ Vertrag v2.9 (team-dashboard/T-0001, Brief p0/N-0002 „viel zu groß"):
+            # die Liste darf jeden versprochenen Takt tragen — SICHTBAR ist genau EINER.
+            # Gemessen am 2026-08-22 lieferte dieses Widget 3 Einträge mit 12 Kacheln in
+            # ein Raster, das für EINE Zeitreihe gebaut ist.
+            #
+            #   Das Widget rendert nicht zu viel, weil jemand zu viel gebaut hat, sondern
+            #   weil der Vertrag nie gesagt hat, wie viel genug ist.
+            #
+            # Die Auswahl steht HIER und nicht im Renderer: eine zweite Stelle, die
+            # entscheidet, welcher Takt der jüngste ist, ist die Familie aus B033.
+            "sicht_takt": _sicht_takt(eintraege),
             # SWR-160 (projects/p11/T-0013): die Kachel sagt, DASS es einen Inhalt gibt
             # und WO er liegt — sie liefert ihn nicht.
             #
