@@ -664,6 +664,49 @@ def unit_tests(platform_repo):
     return out.returncode == 0, tail
 
 
+LOCK_GNADENFRIST_S = 90
+"""Alter, ab dem ein Lock-Artefakt nicht mehr zu einem laufenden Git-Aufruf gehören kann.
+
+Git hält `index.lock` für die Dauer eines Index-Schreibvorgangs — Millisekunden bis
+wenige Sekunden. 90 s ist drei Größenordnungen darüber und liegt zugleich weit unter
+dem 15-Minuten-Takt der beiden Dienste dieses Hauses; beide Enden sind zugesichert
+(`test_gnadenfrist_liegt_zwischen_aufruf_und_takt`), damit die Zahl nicht still in
+eine der beiden Nachbarschaften rutscht. ⚠ Kein abgeleiteter Zwilling einer
+vorhandenen Konstante (`SWR-156`): es gibt keine Quelle, aus der sich das ableiten
+ließe. Deshalb steht sie EINMAL, mit ihrer Begründung, und die Zusicherung hält die
+Grenzen — nicht ein Kommentar, der Gleichheit behauptet.
+"""
+
+
+def lock_ist_verwaist(pfad, jetzt=None, gnadenfrist_s=LOCK_GNADENFRIST_S):
+    """True, wenn das Artefakt älter als die Gnadenfrist ist — SWR-217.
+
+    ⚠ **Die Frage, die hier gestellt wird, ist nicht dieselbe wie bisher.**
+    `git_prozess_aktiv()` fragt das GANZE GERÄT: „läuft hier irgendwo ein git?" Die
+    Entscheidung, die daraus abgeleitet wurde, betrifft aber EINE Datei in EINEM Repo.
+    Auf dem Rechner des Auftraggebers laufen ein Wächter im 30-Sekunden-Takt, ein
+    Ollama-Schnelltakt und ein Auto-Abschluss im 15-Minuten-Takt sowie Mission Control
+    — die Geräte-Frage lautet dort praktisch immer „ja".
+
+    > **Eine Frage über das Gerät kann eine Frage über eine Datei nicht beantworten,
+    > und wo sie es doch tut, lautet die Antwort immer „Finger weg".**
+
+    Ein Artefakt, das älter ist als jeder denkbare Git-Aufruf, gehört keinem laufenden
+    Aufruf mehr — unabhängig davon, wie viele git-Prozesse das Gerät sonst noch trägt.
+
+    ⚠ **Grenze, benannt statt verschwiegen:** ein Aufruf, der den Lock länger als die
+    Gnadenfrist hält OHNE hineinzuschreiben (ein sehr großes `gc`/`repack`), würde
+    hier fälschlich als verwaist gelten. Der Fall ist nie beobachtet worden; die
+    Gegenrichtung ist es 23-mal (siehe `raeume_locks`). ⚠ Ein Artefakt ohne lesbares
+    `mtime` gilt als FRISCH — Nichtwissen darf nicht in Richtung Löschen entscheiden.
+    """
+    try:
+        alter = (jetzt if jetzt is not None else time.time()) - os.path.getmtime(pfad)
+    except OSError:
+        return False
+    return alter > gnadenfrist_s
+
+
 def raeume_locks(root, keep_locks=False, still=False):
     """Lock-Artefakte in allen Repos beseitigen. Rückgabe: Anzahl echter Befunde.
 
@@ -672,6 +715,26 @@ def raeume_locks(root, keep_locks=False, still=False):
     JEDEM Aufruf (auch `git status`) einen index.lock anlegt und ihn auf einem
     Mount ohne unlink-Recht nicht mehr wegbekommt. Ohne den Schlusslauf hinterlässt
     Preflight genau die Sperre, die es gerade aufgehoben hat.
+
+    ⚠⚠ **SWR-217 (platform/T-0073): ein nicht geräumter Lock ist ein HINWEIS, kein
+    Befund — und geräumt wird nach dem ALTER des Artefakts, nicht nach der
+    Prozessliste des Geräts.** Gemessen an 77 Auto-Abschlüssen des Auftraggebers
+    (2026-08-21 20:44 bis 2026-08-22 16:10): **kein einziger** hat je `PREFLIGHT: 0`
+    erreicht, 23 davon brachen an genau dieser Zeile ab.
+
+    > **Und 160 Zeilen weiter unten beurteilt `repo_status` dasselbe Artefakt im
+    > selben Lauf ausdrücklich als „kein Befund" — mit ausgeschriebener Begründung
+    > (`SWR-166`). Zwei Pfade, ein Artefakt, entgegengesetzte Urteile; abgebrochen hat
+    > der Lauf an dem Pfad OHNE die Begründung.**
+
+    Dass es ein Falschbefund war, steht in demselben Protokoll: alle 7 betroffenen
+    Repos meldeten in derselben Sekunde `sauber`. Die Sperre hat nichts gesperrt.
+
+    ⚠ Die Schutzwirkung wird dabei nicht schwächer, sondern in einem Punkt STÄRKER:
+    bisher wurde bei unauffälliger Prozessliste JEDER Lock entfernt, auch ein fünf
+    Millisekunden alter. Jetzt ist ein frisches Artefakt in BEIDEN Fällen unantastbar.
+    Befund bleibt allein, was weder gelöscht noch weggeräumt werden konnte (`kaputt`) —
+    das ist der Fall, der Commits wirklich blockiert und eine Handlung kennt.
     """
     befunde = 0
     for name in repos_im_root(root):
@@ -681,14 +744,27 @@ def raeume_locks(root, keep_locks=False, still=False):
         locks = finde_lock_artefakte(repo)
         if not locks:
             continue
-        if keep_locks or git_prozess_aktiv():
+        if keep_locks:
+            # Ausdrücklich KEIN Befund: `--keep-locks` ist eine Anweisung des Aufrufers,
+            # kein Zustand des Hauses. Einen befolgten Auftrag als Störung zu zählen
+            # hieße, den Aufrufer für seine eigene Wahl abzustrafen.
             print(f"[{name}] {len(locks)} Lock-Artefakt(e) gefunden — NICHT entfernt "
-                  f"({'--keep-locks' if keep_locks else 'Git-Prozess aktiv'}):")
+                  f"(--keep-locks); kein Befund:")
             for p in locks:
                 print(f"    {p}")
-            befunde += 1
             continue
-        entfernt, geparkt, kaputt = entferne_artefakte(locks)
+        frisch = [p for p in locks if not lock_ist_verwaist(p)]
+        verwaist = [p for p in locks if lock_ist_verwaist(p)]
+        if frisch and not still:
+            git_laeuft = git_prozess_aktiv()
+            print(f"[{name}] {len(frisch)} Lock-Artefakt(e) jünger als "
+                  f"{LOCK_GNADENFRIST_S} s — nicht angefasst"
+                  f"{' (und ein Git-Prozess läuft)' if git_laeuft else ''}; kein Befund:")
+            for p in frisch:
+                print(f"    {os.path.relpath(p, repo)}")
+        if not verwaist:
+            continue
+        entfernt, geparkt, kaputt = entferne_artefakte(verwaist)
         if not still:
             for p in entfernt:
                 print(f"[{name}] Lock-Artefakt entfernt: {os.path.relpath(p, repo)}")
