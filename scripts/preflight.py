@@ -711,6 +711,63 @@ def raeume_locks(root, keep_locks=False, still=False):
     return befunde
 
 
+WAECHTER_STATUS = "waechter-status.json"
+WAECHTER_TAKT_S = 30          # waechter.Waechter(takt_sekunden=30) — die Quelle, nicht geraten
+WAECHTER_GEDULD = 10          # Takte, bevor „still" zu „tot" wird
+
+
+def waechter_herzschlag(root, jetzt=None):
+    """SWR-215 (platform/T-0055): eine Zeile über den Wächter — für den Preflight-Leser.
+
+    **Die Lücke ist nicht, dass der Herzschlag fehlt, sondern dass ihn niemand liest.**
+    `waechter.py` schreibt `herzschlag` alle 30 Sekunden nach `waechter-status.json` und
+    begründet damit im eigenen Kopf, warum Frage 4 des Tickets beantwortet sei: *„sein
+    Ausbleiben ist für jeden Leser messbar"*. Am 2026-08-21 um 23:25 setzte er aus und
+    blieb **14 Stunden** aus, während `abschluss-auto` und `ollama-schnelltakt` im
+    15-Minuten-Takt weiterschrieben. Gemeldet hat es kein Werkzeug, sondern der
+    Sprint-36-Abschluss beim Nachsehen von Hand.
+
+    > **Ein Messwert ohne Messer ist eine Absichtserklärung mit Zeitstempel.**
+
+    ⚠ Die Toleranz ist **abgeleitet, nicht gesetzt**: `WAECHTER_TAKT_S` ist der Vorgabewert
+    aus `waechter.Waechter.__init__`, `WAECHTER_GEDULD` die Zahl der Takte. Eine freie
+    Minutenkonstante wäre der Zwilling, den `SWR-156` schon einmal hatte: zwei Zahlen,
+    beide plausibel, keine belegt.
+
+    ⚠ **Drei Fälle, drei Sätze** — „keine Datei", „unlesbar" und „still" sind nicht
+    dasselbe (DoD 2 des Tickets: ein Dienst, dessen Lauf sich nicht belegen lässt, darf
+    nicht als „läuft" durchgehen). Der interessanteste Fall ist der unlesbare Status:
+    genau er sähe bei einer schlichteren Prüfung aus wie ein toter Wächter.
+    """
+    import datetime as _dt
+    import json as _json
+    pfad = os.path.join(root, WAECHTER_STATUS)
+    if not os.path.isfile(pfad):
+        return (f"[org] Wächter: kein {WAECHTER_STATUS} — nicht belegbar, also nicht "
+                f"als laufend gezählt (waechter.cmd / waechter-einrichten.cmd).")
+    try:
+        with open(pfad, encoding="utf-8") as f:
+            status = _json.load(f)
+    except (OSError, ValueError) as fehler:
+        return f"[org] Wächter: {WAECHTER_STATUS} unlesbar ({fehler}) — nicht belegbar."
+    roh = (status or {}).get("herzschlag") or ""
+    try:
+        schlag = _dt.datetime.strptime(roh.strip(), "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return (f"[org] Wächter: Herzschlag unlesbar ({roh!r}) — nicht belegbar.")
+    jetzt = jetzt or _dt.datetime.now()
+    alter_s = (jetzt - schlag).total_seconds()
+    grenze = WAECHTER_TAKT_S * WAECHTER_GEDULD
+    pid = (status or {}).get("waechter_pid")
+    if alter_s > grenze:
+        return (f"[org] ⚠ Wächter STILL: letzter Herzschlag {roh} "
+                f"(vor {alter_s / 60:.0f} Min, Soll alle {WAECHTER_TAKT_S} s). "
+                f"Sein Statusbericht friert ein und sieht weiter aus wie eine Messung — "
+                f"neu starten mit waechter.cmd (platform/T-0055).")
+    return (f"[org] Wächter: lebt (Herzschlag vor {alter_s:.0f} s"
+            f"{f', PID {pid}' if pid else ''}).")
+
+
 def parkplatz_stand(root):
     """SWR-164: wie viele weggeräumte Sperren liegen auf dem Parkplatz? `(gesamt, (repo, n))`.
 
@@ -1140,6 +1197,20 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
             print(f"[org] Ollama-Takt: {len(tb['treffer'])} von {tb['offen']} offenen "
                   f"Tickets wählbar ({', '.join(tb['treffer'][:5])}"
                   f"{' …' if len(tb['treffer']) > 5 else ''}).")
+    # SWR-215 (platform/T-0055, Teil A — Frage 4 des Tickets: „Wer bewacht den Wächter?").
+    #
+    # ⚠⚠ Der Wächter beantwortet diese Frage in seinem eigenen Kopfkommentar:
+    #     „Wer bewacht den Waechter (Frage 4): die Aufgabenplanung (ONLOGON-Task) plus
+    #      der Herzschlag in waechter-status.json — sein Ausbleiben ist fuer jeden Leser
+    #      messbar."
+    # Am 21.08. um 23:25 hörte der Herzschlag auf. Er blieb **14 Stunden** aus, während
+    # die bewachten Dienste im 15-Minuten-Takt weiterschrieben, und niemand hat es
+    # bemerkt. Die Antwort war die ganze Zeit richtig — **„für jeden Leser messbar" hat
+    # nur keinen Leser bekommen.** Das hier ist der Leser.
+    #
+    # ⚠ Kein Befund, aus demselben Grund wie SWR-214: ein toter Wächter darf den Push
+    # nicht anhalten. Er meldet Zustände; er ist keiner.
+    print(waechter_herzschlag(root))
     vergangen = sprintvergangen(root)
     if vergangen is None:
         print("[org] Offen auf vergangenem Sprint: nicht prüfbar (Sprintsicht nicht ladbar).")
