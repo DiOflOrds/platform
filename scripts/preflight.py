@@ -683,10 +683,16 @@ def test_cache_umgebung(env=None):
 
 def unit_tests(platform_repo):
     """Unit-Tests wie in CI (python -m unittest discover tests). (ok, letzte Zeilen)."""
+    # ⚠ Beide Zusagen stehen ABSICHTLICH an der Aufrufstelle: die feste Ausgabekodierung
+    # (`konsole.kind_umgebung`, platform/T-0009) und der Cache außerhalb des Mounts
+    # (`SWR-218`). `test_konsole` liest den Aufruf als TEXT und sieht keine Indirektion —
+    # eine Verkürzung auf `test_cache_umgebung()` allein macht die Prüfung rot, und zwar
+    # zu Recht: sie kann nicht wissen, dass der Wrapper die Kodierung weiterreicht.
     out = subprocess.run([sys.executable, "-m", "unittest", "discover", "tests"],
                          capture_output=True,
                              text=True, encoding="utf-8", errors="replace",
-                         env=test_cache_umgebung(), cwd=platform_repo)
+                         env=test_cache_umgebung(konsole.kind_umgebung()),
+                         cwd=platform_repo)
     tail = "\n".join((out.stdout + out.stderr).strip().splitlines()[-3:])
     return out.returncode == 0, tail
 
