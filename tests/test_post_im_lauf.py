@@ -89,17 +89,30 @@ class ZerlegerBehaeltDieUhrzeit(unittest.TestCase):
         Gemessen am Bestand vom 2026-08-21: **69** Briefe, **74** Folgebeiträge.
         Wächst der Bestand, ist die Zahl hier nachzuziehen — das ist Absicht: eine
         Schranke, die mitwächst, hält nichts fest.
+
+        ⚠ **Sprint 36 (2026-08-22): 69 -> 70.** Der Zuwachs ist `p0/N-0002`, ein Brief des
+        Auftraggebers, der **während** des laufenden Sprints eingegangen ist (12:51, Bug am
+        Post-Widget). Die Folgebeiträge gehen **74 -> 75**: die Antwort des Teams steht
+        als `## Antwort (PL, 2026-08-22, Sprint 36)`-Abschnitt im selben Brief und IST für
+        `briefkasten.beitraege` ein eigener Beitrag. ⚠ Die Erstfassung dieser Zeile
+        behauptete „bleiben bei 74" — die Zusicherung hat es widerlegt, bevor ein Mensch
+        es gelesen hatte. Ein beantworteter Brief kostet hier also **zwei** Zahlen.
+
+        > **Und genau dafür steht diese Zahl hier.** Der Lauf hat den Briefkasten zu Beginn
+        > mit „0 offen, 69 Briefe" gemessen und wäre ohne diese rote Zusicherung mit
+        > derselben Zahl in den Abschluss gegangen — der Brief war da, gelesen hatte ihn
+        > niemand (PL-Lehre 7: am ENDE nachmessen).
         """
         briefe = folgen = 0
         for _e, pfad in _briefe():
             briefe += 1
             folgen += sum(1 for b in briefkasten.beitraege(_body(pfad))
                           if not b["ist_erstbeitrag"])
-        self.assertEqual((briefe, folgen), (69, 74),
+        self.assertEqual((briefe, folgen), (70, 75),
                          "die Zerlegung des Bestands darf sich durch die Erweiterung "
                          "von DATUM_IM_KOPF NICHT verschieben")
         self.assertGreater(folgen, briefe,
-                           "Beitraege sind die MEHRHEIT der Post (74 > 69), "
+                           "Beitraege sind die MEHRHEIT der Post (75 > 70), "
                            "nicht 'mehr als 90 Prozent von'")
 
 
@@ -147,9 +160,28 @@ class PostImLauf(unittest.TestCase):
                                 "der Beitrag von 12:26 MUSS im Fenster von Sprint 34 liegen")
 
     def test_ein_beitrag_von_danach_faellt_heraus(self):
-        """Die zweite Hälfte des Paares: ein späterer Start sieht ihn NICHT mehr."""
-        p = kennzahlen.zaehle_post_im_lauf(_WURZEL, datetime(2026, 8, 21, 23, 59))
-        self.assertEqual(p["beitraege"], 0)
+        """Die zweite Hälfte des Paares: ein späterer Start sieht ihn NICHT mehr.
+
+        ⚠⚠ **Sprint 36: diese Zusicherung war an ein Kalenderdatum genagelt und ist genau
+        daran zerbrochen.** Sie las `zaehle_post_im_lauf(23:59 am 21.08.)` und verlangte
+        **0** — was nicht „der Beitrag von 12:26 liegt draußen" bedeutet, sondern *„nach
+        dem 21.08. 23:59 ist im ganzen Haus nie wieder Post eingegangen"*. Am 22.08. um
+        12:51 schrieb der Auftraggeber (`p0/N-0002`), das Team antwortete — und die
+        Zusicherung wurde rot, **ohne dass irgendetwas kaputt war**.
+
+        > **Dieselbe Familie wie der Zeitzonen-Befund über dieser Klasse, eine Ebene
+        > weiter: dort hing das Grün an der Uhr des Läufers, hier am Kalender. Beide Male
+        > misst die Zusicherung nicht den Gegenstand, sondern die Umstände ihres Laufs.**
+
+        Gefragt ist deshalb, was das Paar wirklich behaupten will: **ein späterer Start
+        sieht WENIGER** — der Beitrag von 12:26 fällt aus dem Fenster. Das bleibt wahr,
+        wie viel Post auch noch eingeht.
+        """
+        frueh = kennzahlen.zaehle_post_im_lauf(_WURZEL, datetime(2026, 8, 21, 12, 7))
+        spaet = kennzahlen.zaehle_post_im_lauf(_WURZEL, datetime(2026, 8, 21, 23, 59))
+        self.assertLess(spaet["beitraege"], frueh["beitraege"],
+                        "ein spaeterer Start MUSS den Beitrag von 12:26 verlieren "
+                        "(frueh=%s, spaet=%s)" % (frueh["beitraege"], spaet["beitraege"]))
 
     def test_drei_zahlen_und_keine_summe(self):
         p = kennzahlen.zaehle_post_im_lauf(_WURZEL, datetime(2026, 8, 20, 0, 0))

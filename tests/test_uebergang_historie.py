@@ -268,6 +268,9 @@ class AltbestandRegisterTest(unittest.TestCase):
         kann. Der Nachbartest darunter haelt fest, dass die vier alten Faelle damit
         nicht verschwinden — ohne ihn waere diese Verschiebung ein Glaetten.
         """
+        # Vertreter von `L-2026-08-22d`: eine Validierung, die NEBEN dem Commit laeuft,
+        # ist kein Tor. Diese Zusicherung hat in Sprint 36 den eigenen Verstoss des Laufs
+        # gemeldet (`platform/T-0068`, open -> in_review, Commit 04da965).
         neue, _weiter, _alt, _register = self._messung(self.wurzel)
         self.assertEqual(neue, [], "unzulaessige Uebergaenge im laufenden Sprint: %s"
                          % neue)

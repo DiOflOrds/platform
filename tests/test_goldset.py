@@ -165,6 +165,9 @@ class HerkunftTest(unittest.TestCase):
     def test_auch_in_WINDOWS_schreibweise_abgelehnt(self):
         """Dieselbe Schranke, in der Schreibweise des anderen Betriebssystems.
 
+        Vertreter von `L-2026-08-22b` (eine Reparatur, die neue Zweige baut, braucht
+        eigene Zusicherungen).
+
         ⚠ Warum diese Zusicherung getrennt steht (T-0068, Sprint 36): die Reparatur hat
         `goldset._maengel_herkunft_form` um drei Formen erweitert — fuehrender Backslash,
         Laufwerksbuchstabe und `..` in Backslash-Schreibweise. **Keine davon hatte eine

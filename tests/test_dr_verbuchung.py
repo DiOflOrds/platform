@@ -249,6 +249,13 @@ class BestandTest(unittest.TestCase):
     """
 
     def test_kein_entschiedener_dr_ist_unverbucht(self):
+        """Vertreter von `L-2026-08-22c` (eine Entscheidung ist erst angekommen, wenn ein
+        Ticket sie traegt) und von `L-2026-08-22a` (ein maschinell erzeugter Beleg ist
+        erst gefuehrt, wenn ihn jemand abholt).
+
+        ⚠ In Sprint 36 hat genau diese Zusicherung `pm/D030` gefunden: 13 Stunden
+        entschieden, unverbucht, und `wartet_auf_mensch` zaehlte den DR weiter mit.
+        """
         root = os.path.dirname(os.path.dirname(_HIER))
         if not os.path.isdir(os.path.join(root, "pm", "tickets")):
             self.skipTest("Bestand nicht vorhanden (isolierte Testumgebung)")
