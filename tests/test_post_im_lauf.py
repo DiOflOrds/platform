@@ -108,11 +108,28 @@ class ZerlegerBehaeltDieUhrzeit(unittest.TestCase):
             briefe += 1
             folgen += sum(1 for b in briefkasten.beitraege(_body(pfad))
                           if not b["ist_erstbeitrag"])
-        self.assertEqual((briefe, folgen), (70, 75),
+        # Sprint 37 (2026-08-22): 70 -> 71 / 75 -> 76.
+        #
+        # ⚠⚠ Der Zuwachs ist EIN Brief, und sein Zeitstempel ist der Befund:
+        # `platform/N-0010` (Auftraggeber) ist am 2026-08-22 um **14:13:59** committet
+        # worden — **12 Minuten NACH dem Ende von Sprint 36 (14:01) und 9 Minuten VOR dem
+        # Beginn von Sprint 37 (14:23)**. Er ist im selben Zug beantwortet worden
+        # (`platform/T-0071`, `T-0072`), der Briefkasten war beim Start von Sprint 37
+        # also zu Recht „0 offen". **Bemerkt, dass sich der BESTAND bewegt hat, hat
+        # trotzdem nur diese Zusicherung** — zum dritten Lauf in Folge.
+        #
+        # ⚠ Und sie kostet dafür etwas, das hier nicht verschwiegen wird: **eine
+        # festgenagelte Bestandszahl wird bei JEDEM neuen Brief rot.** Derselbe Lauf hat
+        # in `test_takt_bestand` bewusst KEINEN Sollwert festgenagelt, weil die dortige
+        # Zahl sich ändern *soll*. Hier ist der Sollwert richtig — die Zerlegung eines
+        # UNVERÄNDERTEN Bestands darf sich nicht verschieben —, aber der Preis ist eine
+        # Pflege je Brief. **Wer die Zahl anhebt, ohne den Zuwachs zu benennen, hat die
+        # Zusicherung abgeschaltet, nicht gepflegt** (Beleg: Commit-Zeile oben).
+        self.assertEqual((briefe, folgen), (71, 76),
                          "die Zerlegung des Bestands darf sich durch die Erweiterung "
                          "von DATUM_IM_KOPF NICHT verschieben")
         self.assertGreater(folgen, briefe,
-                           "Beitraege sind die MEHRHEIT der Post (75 > 70), "
+                           "Beitraege sind die MEHRHEIT der Post (76 > 71), "
                            "nicht 'mehr als 90 Prozent von'")
 
 
