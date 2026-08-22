@@ -3,7 +3,7 @@
 Stand: 2026-08-22 · Tickets: 75 · davon wiederkehrend: 1
 
 
-## open (9)
+## open (8)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -14,8 +14,13 @@ Stand: 2026-08-22 · Tickets: 75 · davon wiederkehrend: 1
 | [T-0070](tickets/T-0070.md) | Acht Lehren ohne Vertreter — sechs davon aus Sprint 35, der im selben Bericht 1551 Tests als Verifikation führte | problem | einmalig | coach | Team | hoch | 35 | — |
 | [T-0071](tickets/T-0071.md) | Alle Script-Aufrufe in Mission Control - und der Waechter live sichtbar (laeuft / laeuft nicht / Stand veraltet) | task | einmalig | dev | Team | hoch | 37 | — |
 | [T-0075](tickets/T-0075.md) | Die Betriebsschicht dieses Hauses liegt in KEINEM Repo — 27 Dateien, 88 kB, darunter der Waechter und der Auto-Abschluss | problem | einmalig | cm | Team | hoch | 39 | — |
-| [T-0069](tickets/T-0069.md) | Zwei Zusicherungen messen, ob auf dem Rechner gerade ein anderer Git-Prozess läuft — grün in der Sandbox, rot auf dem Host, und beide Male sagt der Code nichts dazu | problem | einmalig | prob | Team | mittel | 35 | — |
 | [T-0072](tickets/T-0072.md) | start_genesis: EIN Startpunkt fuer alle notwendigen Skripte (Mission Control, Waechter, Takt-Aufgaben) | task | einmalig | dev | Team | mittel | 37 | — |
+
+## in_progress (1)
+
+| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|---|
+| [T-0069](tickets/T-0069.md) | Zwei Zusicherungen messen, ob auf dem Rechner gerade ein anderer Git-Prozess läuft — grün in der Sandbox, rot auf dem Host, und beide Male sagt der Code nichts dazu | problem | einmalig | prob | Team | mittel | 35 | — |
 
 ## in_review (1)
 
