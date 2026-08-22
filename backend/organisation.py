@@ -430,3 +430,103 @@ def entfernen(root, instanz, verbuchen=True):
     _schreib_und_verbuche(root, zeilen,
                           f"Besetzung {instanz} entfernt ({HERKUNFT}, Konzept Kap. 7)", verbuchen)
     return {"ok": True, "instanz": instanz}
+
+
+# ---------------------------------------------------------------------------
+# SWR-214 (platform/T-0066): der Bestand, auf den ein Motor-Takt zugreifen kann.
+# ---------------------------------------------------------------------------
+
+def takt_bestand(root, motor, einheit=None):
+    """SWR-214: Wie viele offene Tickets kann ein Takt mit diesem Motor überhaupt wählen?
+
+    **Der Anlass ist eine Zahl, die 87 Läufe lang dieselbe war.** `ollama-schnelltakt.log`
+    meldete seit Sprint 26 wörtlich *„Kein bearbeitbares Ticket (Besetzung)"* — einmal je
+    Lauf, im Protokoll eines Dienstes, das niemand liest. Die Aussage war jedes Mal
+    richtig und jedes Mal folgenlos.
+
+    ⚠⚠ **Die maßgebliche Auflösung ist die BESETZUNG, und das ist gemessen, nicht
+    gewählt.** Drei Register beantworten die Frage „wer darf auf Ollama":
+
+    | Register | Was es sagt | Wirkt es auf die Ticketwahl? |
+    |---|---|---|
+    | `process/roles/besetzungen.yaml` (via `organigramm.effektive_besetzungen`) | welche **Instanz** welchen `motor` hat | **JA** — `tick.waehle_ticket` verwirft jedes Ticket, dessen Rolle in dieser Einheit keine Besetzung mit dem Motor hat |
+    | `process/roles/registry.yaml` | welche **Kette** ein `aufgaben_typ` nimmt | nein — sie wird erst gelesen, **nachdem** ein Ticket gewählt ist |
+    | `--projekt <einheit>` am Aufruf | in welcher **Einheit** gesucht wird | Aufrufargument, kein Register |
+
+    Damit ist die Antwort auf die B033-Frage des Tickets („welche der drei ist
+    maßgeblich?") keine Abwägung: **nur eine davon steht im Pfad, der ein Ticket
+    verwirft.** Die anderen beiden können übereinstimmen oder nicht, ohne dass sich am
+    Bestand etwas ändert — genau deshalb konnte die Schnittmenge seit Sprint 26 leer sein,
+    während `registry.yaml` neun ollama-Ketten führte.
+
+    Rückgabe (nie eine gefaltete Zahl — `T-0027`-Familie):
+
+    * `besetzungen`  Instanzen mit diesem Motor (leer = das Register kennt den Motor nicht)
+    * `offen`        offene Tickets in der Grundmenge
+    * `treffer`      die Referenzen, die ein Takt wählen könnte
+    * `leer`         True, wenn `besetzungen` nicht leer ist und `treffer` es ist —
+                     **der Zustand, der 87 Läufe lang gemeldet und nie behandelt wurde.**
+
+    ⚠ `besetzungen == []` und `treffer == []` sind **nicht** dasselbe: das erste heißt
+    „kein Register-Eintrag", das zweite „Einträge vorhanden, aber kein Ticket dazu".
+    Ohne die Unterscheidung wäre ein nie konfigurierter Motor von einem konfigurierten
+    ohne Arbeit nicht zu trennen (dieselbe Grenze, die `SWR-128/165` für
+    `besetzungen_mit_motor` gezogen hat).
+    """
+    besetzungen = besetzungen_mit_motor(root, motor)
+    offene = _offene_tickets(root)
+    if einheit:
+        offene = [t for t in offene if t["einheit"] == einheit]
+    treffer = [t["ref"] for t in offene
+               if besetzung_mit_motor(root, t["rolle"], t["einheit"], motor)]
+    return {"motor": motor,
+            "einheit": einheit or "",
+            "besetzungen": besetzungen,
+            "offen": len(offene),
+            "treffer": sorted(treffer),
+            "leer": bool(besetzungen) and not treffer}
+
+
+def _offene_tickets(root):
+    """Offene Tickets mit Rolle und Einheit — die Grundmenge von `takt_bestand`.
+
+    ⚠ Gelesen wird `status: open` und nicht „alles außer done": `tick.waehle_ticket`
+    wählt ausschließlich `open`. Ein `in_review`-Ticket mitzuzählen würde einen Bestand
+    behaupten, den der Takt nicht anfassen kann — und wäre damit eine zweite Antwort auf
+    „was kann der Takt tun" (B033). Am Bestand belegt: `platform/T-0069` trägt die
+    ollama-besetzte Rolle `PROB@platform` und steht auf `in_review`; eine großzügigere
+    Grundmenge hätte hier `1 Treffer` gemeldet, und der Takt hätte trotzdem nichts
+    gefunden.
+
+    ⚠ Verschachtelte Einheiten (`projects/<p>/tickets/`) zählen mit — `pl.md` Lehre 6.
+    """
+    import glob
+    treffer = []
+    muster = [os.path.join(root, "*", "tickets", "T-*.md"),
+              os.path.join(root, "projects", "*", "tickets", "T-*.md")]
+    for m in muster:
+        for pfad in glob.glob(m):
+            try:
+                with open(pfad, encoding="utf-8", errors="replace") as f:
+                    txt = f.read()
+            except OSError:
+                continue
+            def feld(name, _t=txt):
+                m2 = re.search(r"(?m)^%s:\s*(.*)$" % name, _t)
+                return m2.group(1).strip().strip('"') if m2 else ""
+            if feld("status") != "open":
+                continue
+            rel = os.path.relpath(pfad, root).replace("\\", "/")
+            teile = rel.split("/")
+            einheit = "/".join(teile[:2]) if teile[0] == "projects" else teile[0]
+            tid = feld("id") or os.path.basename(pfad)[:-3]
+            treffer.append({"ref": f"{einheit}/{tid}", "rolle": feld("rolle").upper(),
+                            "einheit": einheit})
+    # Ein Ticket kann über beide Muster gefunden werden (projects/* matcht auch */*).
+    gesehen, eindeutig = set(), []
+    for t in treffer:
+        if t["ref"] in gesehen:
+            continue
+        gesehen.add(t["ref"])
+        eindeutig.append(t)
+    return sorted(eindeutig, key=lambda t: t["ref"])

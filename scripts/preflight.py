@@ -1110,6 +1110,36 @@ def preflight(root, skip_tests=False, keep_locks=False, nur_locks=False):
         befunde += 1
     else:
         print("[org] Plan-Drift Sprintnummer: 0.")
+    # SWR-214 (platform/T-0066): der Bestand, den ein Motor-Takt wählen kann.
+    #
+    # ⚠ Die Zeile steht hier und nicht im Takt-Protokoll, und das ist der ganze Punkt des
+    # Tickets: `ollama-schnelltakt.log` hat „Kein bearbeitbares Ticket (Besetzung)" **87
+    # Läufe lang** gemeldet — im Protokoll eines Dienstes, den niemand öffnet. Dieselbe
+    # Tatsache im Preflight wird alle 15 Minuten vom CM-Review gelesen.
+    #
+    # ⚠⚠ **Sie zählt bewusst NICHT als Befund.** Ein leerer Takt-Bestand ist kein Fehler
+    # der Buchführung, sondern eine offene Konfigurationsfrage des PM (Klasse B) — sie
+    # hier blockierend zu machen hieße, den Betrieb des Auftraggebers für eine
+    # Entscheidung anzuhalten, die er selbst treffen muss. Das ist genau die Bauform, die
+    # `SWR-166` 83 abgebrochene Läufe gekostet hat: ein Dauerbefund ohne Weg nach vorn.
+    # Die Zeile nennt deshalb den **Weg** (das Ticket) statt nur den Zustand.
+    try:
+        tb = organisation.takt_bestand(root, "ollama")
+    except Exception as fehler:                          # pragma: no cover — Registerdefekt
+        print(f"[org] Ollama-Takt: nicht prüfbar ({fehler}).")
+    else:
+        if not tb["besetzungen"]:
+            print("[org] Ollama-Takt: keine Instanz mit motor 'ollama' im Register "
+                  "(process/roles/besetzungen.yaml) — der Takt ist nicht konfiguriert.")
+        elif tb["leer"]:
+            print(f"[org] ⚠ Ollama-Takt ohne Arbeit: {len(tb['besetzungen'])} Besetzung(en) "
+                  f"({', '.join(tb['besetzungen'])}), aber 0 von {tb['offen']} offenen "
+                  f"Tickets tragen eine davon. Der Takt läuft und findet nichts — "
+                  f"Besetzung ist Klasse B des PM, siehe platform/T-0066.")
+        else:
+            print(f"[org] Ollama-Takt: {len(tb['treffer'])} von {tb['offen']} offenen "
+                  f"Tickets wählbar ({', '.join(tb['treffer'][:5])}"
+                  f"{' …' if len(tb['treffer']) > 5 else ''}).")
     vergangen = sprintvergangen(root)
     if vergangen is None:
         print("[org] Offen auf vergangenem Sprint: nicht prüfbar (Sprintsicht nicht ladbar).")
