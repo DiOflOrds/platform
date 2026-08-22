@@ -1,25 +1,31 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-22 · Tickets: 72 · davon wiederkehrend: 1
+Stand: 2026-08-22 · Tickets: 73 · davon wiederkehrend: 1
 
 
-## open (8)
+## open (6)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0001](tickets/T-0001.md) | Takt: Werkzeug- und Plattformpflege (dauerhaft — Tools, Skripte, Mission Control) | task | je Session | cm | Team | hoch | 0 | — |
-| [T-0055](tickets/T-0055.md) | Wächter über die regelmäßigen Skripte — wer prüft, ob sie überhaupt gelaufen sind? (Brief N-0008) | problem | einmalig | dev | Team | hoch | 32 | — |
 | [T-0064](tickets/T-0064.md) | Kein Waechter verhindert das UEBERSCHREIBEN einer Anhaenge-Datei — SWR-209 meldet den Verlust erst danach | problem | einmalig | cm | Team | hoch | 34 | — |
-| [T-0066](tickets/T-0066.md) | Der Ollama-Takt hat NICHTS ZU TUN: zwei Register beantworten die Frage 'wer darf auf Ollama' verschieden | problem | einmalig | pl | Team | hoch | 35 | — |
 | [T-0067](tickets/T-0067.md) | Der Befund war seit dem 20.08. maschinell benannt und wurde drei Sprints nicht gelesen — wer liest die Blocker-Liste? | problem | einmalig | coach | Team | hoch | 35 | — |
 | [T-0070](tickets/T-0070.md) | Acht Lehren ohne Vertreter — sechs davon aus Sprint 35, der im selben Bericht 1551 Tests als Verifikation führte | problem | einmalig | coach | Team | hoch | 35 | — |
 | [T-0071](tickets/T-0071.md) | Alle Script-Aufrufe in Mission Control - und der Waechter live sichtbar (laeuft / laeuft nicht / Stand veraltet) | task | einmalig | dev | Team | hoch | 37 | — |
 | [T-0072](tickets/T-0072.md) | start_genesis: EIN Startpunkt fuer alle notwendigen Skripte (Mission Control, Waechter, Takt-Aufgaben) | task | einmalig | dev | Team | mittel | 37 | — |
 
-## in_review (2)
+## in_progress (1)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
+| [T-0073](tickets/T-0073.md) | Sandbox und Host sind sich uneinig, ob eine Datei existiert — 7 index.lock blockieren den Auto-Abschluss, und aus der Sandbox sind sie unsichtbar | problem | einmalig | dev | Team | hoch | 38 | — |
+
+## in_review (4)
+
+| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
+|---|---|---|---|---|---|---|---|---|
+| [T-0055](tickets/T-0055.md) | Wächter über die regelmäßigen Skripte — wer prüft, ob sie überhaupt gelaufen sind? (Brief N-0008) | problem | einmalig | dev | Team | hoch | 32 | — |
+| [T-0066](tickets/T-0066.md) | Der Ollama-Takt hat NICHTS ZU TUN: zwei Register beantworten die Frage 'wer darf auf Ollama' verschieden | problem | einmalig | pl | Team | hoch | 35 | — |
 | [T-0068](tickets/T-0068.md) | Der Schutz gegen Belege außerhalb des Bestands ist auf dem Rechner des Auftraggebers AUS — os.path.isabs beantwortet auf Windows eine andere Frage | problem | einmalig | dev | Team | hoch | 35 | — |
 | [T-0069](tickets/T-0069.md) | Zwei Zusicherungen messen, ob auf dem Rechner gerade ein anderer Git-Prozess läuft — grün in der Sandbox, rot auf dem Host, und beide Male sagt der Code nichts dazu | problem | einmalig | prob | Team | mittel | 35 | — |
 

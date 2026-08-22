@@ -4,6 +4,7 @@ import io
 import os
 import sys
 import tempfile
+import time
 import types
 import unittest
 
@@ -225,19 +226,207 @@ class TestProzessAbfrage(unittest.TestCase):
         self.assertTrue(aktiv)
         self.assertIn("Prozess-Abfrage nicht auswertbar", puffer.getvalue())
 
-    def test_laufender_git_prozess_schuetzt_den_lock_weiterhin(self):
-        """Die Schutzfunktion bleibt: solange Git läuft, wird kein Lock angefasst."""
+    def test_laufender_git_prozess_schuetzt_den_frischen_lock_weiterhin(self):
+        """Die SCHUTZWIRKUNG bleibt — der BEFUND fällt weg (SWR-217, Paarform SWR-148).
+
+        Vorher zählte diese Lage einen Befund und brach damit den Auto-Abschluss ab.
+        Geschützt wird das frische Artefakt weiterhin: es ist nach dem Lauf noch da.
+        """
         echt = preflight.git_prozess_aktiv
         preflight.git_prozess_aktiv = lambda: True
         try:
             with tempfile.TemporaryDirectory() as d:
                 _fake_git(os.path.join(d, "p0"), "index.lock")
-                befunde = preflight.raeume_locks(d)
-                self.assertEqual(befunde, 1)
+                puffer = io.StringIO()
+                with contextlib.redirect_stdout(puffer):
+                    befunde = preflight.raeume_locks(d)
+                self.assertEqual(befunde, 0, "ein geschützter Lock ist kein Befund")
                 self.assertTrue(os.path.exists(
-                    os.path.join(d, "p0", ".git", "index.lock")))
+                    os.path.join(d, "p0", ".git", "index.lock")),
+                    "der Schutz selbst muss erhalten bleiben")
+                self.assertIn("kein Befund", puffer.getvalue())
         finally:
             preflight.git_prozess_aktiv = echt
+
+
+class TestVerwaisteLocks(unittest.TestCase):
+    """SWR-217 (platform/T-0073): geräumt wird nach ALTER, nicht nach Prozessliste.
+
+    Gemessen an 77 Auto-Abschlüssen des Auftraggebers: kein einziger erreichte je
+    `PREFLIGHT: 0`; 23 brachen an der Lock-Zeile ab, während `repo_status` dasselbe
+    Artefakt im selben Lauf als „kein Befund" führte.
+    """
+
+    def setUp(self):
+        self._echt = preflight.git_prozess_aktiv
+
+    def tearDown(self):
+        preflight.git_prozess_aktiv = self._echt
+
+    @staticmethod
+    def _lock(d, alter_s):
+        g = _fake_git(os.path.join(d, "p0"), "index.lock")
+        pfad = os.path.join(g, "index.lock")
+        os.utime(pfad, (time.time() - alter_s, time.time() - alter_s))
+        return pfad
+
+    def test_alter_lock_wird_geraeumt_obwohl_git_laeuft(self):
+        """Der Kernfall des Hosts: git.exe lebt irgendwo, das Artefakt ist Stunden alt."""
+        preflight.git_prozess_aktiv = lambda: True
+        with tempfile.TemporaryDirectory() as d:
+            pfad = self._lock(d, 3600)
+            with contextlib.redirect_stdout(io.StringIO()):
+                befunde = preflight.raeume_locks(d)
+            self.assertEqual(befunde, 0)
+            self.assertFalse(os.path.exists(pfad),
+                             "ein stundenalter Lock gehört keinem laufenden Aufruf")
+
+    def test_frischer_lock_bleibt_solange_git_laeuft(self):
+        """Gegenrichtung: der Schutz für frische Artefakte bleibt bestehen."""
+        preflight.git_prozess_aktiv = lambda: True
+        with tempfile.TemporaryDirectory() as d:
+            pfad = self._lock(d, 1)
+            with contextlib.redirect_stdout(io.StringIO()):
+                befunde = preflight.raeume_locks(d)
+            self.assertEqual(befunde, 0)
+            self.assertTrue(os.path.exists(pfad))
+
+    def test_ohne_git_prozess_bleibt_es_beim_alten_verhalten(self):
+        """⚠ Die Frist darf `--nur-locks` NICHT mitnehmen — sonst wandert die Sperre nur.
+
+        `platform/T-0021`: vor einem Commit wird ein sekundenaltes R7-Residuum
+        weggeräumt, und zwar sofort. Wäre die Frist hier auch gültig, hätte dieser Lauf
+        eine blockierte Stelle gegen eine andere getauscht. Rückbau-Wächter für die
+        Schmalheit des Eingriffs.
+        """
+        preflight.git_prozess_aktiv = lambda: False
+        with tempfile.TemporaryDirectory() as d:
+            pfad = self._lock(d, 1)
+            with contextlib.redirect_stdout(io.StringIO()):
+                befunde = preflight.raeume_locks(d)
+            self.assertEqual(befunde, 0)
+            self.assertFalse(os.path.exists(pfad))
+
+    def test_grenze_beisst_auf_beiden_seiten(self):
+        """Knapp jünger bleibt, knapp älter geht — die Frist ist eine Kante, kein Gefühl."""
+        with tempfile.TemporaryDirectory() as d:
+            pfad = self._lock(d, 0)
+            jetzt = os.path.getmtime(pfad)
+            self.assertFalse(preflight.lock_ist_verwaist(
+                pfad, jetzt=jetzt + preflight.LOCK_GNADENFRIST_S - 1))
+            self.assertTrue(preflight.lock_ist_verwaist(
+                pfad, jetzt=jetzt + preflight.LOCK_GNADENFRIST_S + 1))
+
+    def test_gnadenfrist_liegt_zwischen_aufruf_und_takt(self):
+        """Beide Enden zugesichert, damit die Zahl nicht still in einen Nachbarn rutscht."""
+        self.assertGreater(preflight.LOCK_GNADENFRIST_S, 10,
+                           "unter 10 s käme ein echter Index-Schreibvorgang in Reichweite")
+        self.assertLess(preflight.LOCK_GNADENFRIST_S, 15 * 60,
+                        "ab dem 15-Minuten-Takt würde kein Lock je verwaisen")
+
+    def test_unlesbares_mtime_gilt_als_frisch(self):
+        """Nichtwissen darf nicht in Richtung Löschen entscheiden."""
+        self.assertFalse(preflight.lock_ist_verwaist(
+            os.path.join(tempfile.gettempdir(), "gibt-es-nicht", "index.lock")))
+
+    def test_keep_locks_ist_kein_befund(self):
+        """Ein befolgter Auftrag des Aufrufers ist keine Störung des Hauses."""
+        with tempfile.TemporaryDirectory() as d:
+            self._lock(d, 3600)
+            puffer = io.StringIO()
+            with contextlib.redirect_stdout(puffer):
+                befunde = preflight.raeume_locks(d, keep_locks=True)
+            self.assertEqual(befunde, 0)
+            self.assertIn("kein Befund", puffer.getvalue())
+
+    def test_echter_fehlschlag_bleibt_befund(self):
+        """Was weder gelöscht noch weggeräumt werden kann, blockiert wirklich — und zählt.
+
+        Rückbau-Wächter: fiele diese Zusicherung, wäre der Zähler wirkungslos geworden
+        statt geschärft, und SWR-166 stünde auf der anderen Seite wieder da.
+        """
+        preflight.git_prozess_aktiv = lambda: False
+        echt = preflight.entferne_artefakte
+        preflight.entferne_artefakte = lambda p: ([], [], list(p))
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                self._lock(d, 3600)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(preflight.raeume_locks(d), 1)
+        finally:
+            preflight.entferne_artefakte = echt
+
+
+class TestTestCacheAusserhalbDesMounts(unittest.TestCase):
+    """SWR-218: die Teststrecke darf keine ältere Fassung messen als die im Repo.
+
+    ⚠⚠ Dieser Befund entstand, als der Lauf seine eigenen Mutationsproben nachmaß:
+    sechs Zahlen waren bereits notiert, als auffiel, dass sie aus einem veralteten
+    `__pycache__` stammten. Eine Probe ändert EIN Zeichen und behält die Größe —
+    genau die Bearbeitung, die Pythons `mtime`+`size`-Prüfung nicht unterscheidet.
+    """
+
+    def test_umgebung_leitet_den_cache_aus_dem_repo_heraus(self):
+        """Die Variable ist gesetzt und zeigt nicht in den Mount."""
+        env = preflight.test_cache_umgebung({})
+        ziel = env.get("PYTHONPYCACHEPREFIX", "")
+        self.assertTrue(ziel, "ohne die Variable landet der Cache neben der Quelle")
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(preflight.__file__)))
+        self.assertFalse(os.path.abspath(ziel).startswith(repo + os.sep),
+                         "ein Cache IM Repo ist auf diesem Mount nicht löschbar (R7)")
+
+    def test_unit_tests_benutzt_diese_umgebung(self):
+        """Rückbau-Wächter: die Funktion darf nicht wieder auf die nackte Umgebung fallen."""
+        gesehen = {}
+
+        def fake_run(cmd, **kw):
+            gesehen.update(kw.get("env") or {})
+            return types.SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        echt = preflight.subprocess.run
+        preflight.subprocess.run = fake_run
+        try:
+            preflight.unit_tests(".")
+        finally:
+            preflight.subprocess.run = echt
+        self.assertIn("PYTHONPYCACHEPREFIX", gesehen)
+
+    def test_veralteter_cache_wuerde_eine_andere_fassung_messen(self):
+        """Der Nachweis am echten Mechanismus statt als Behauptung.
+
+        Ein `.pyc`, dessen Kopf zur Quelle passt und dessen Bytecode eine ANDERE
+        Fassung trägt, wird ohne Umleitung geladen — mit Umleitung nicht.
+        """
+        import importlib.util
+        import py_compile
+        with tempfile.TemporaryDirectory() as d:
+            quelle = os.path.join(d, "mut.py")
+            with open(quelle, "w", encoding="utf-8") as fh:
+                fh.write("WERT = 0\n")          # die „Probe"
+            py_compile.compile(quelle, doraise=True)
+            with open(quelle, "w", encoding="utf-8") as fh:
+                fh.write("WERT = 1\n")          # zurückgenommen, GLEICHE Größe
+            pyc = importlib.util.cache_from_source(quelle)
+            self.assertTrue(os.path.exists(pyc))
+            # Die Quelle auf genau die mtime zurückstellen, die im .pyc-Kopf steht —
+            # der Zustand, den `cp` innerhalb derselben Sekunde von allein herstellt.
+            quell_mtime = _pyc_quell_mtime(pyc)
+            os.utime(quelle, (quell_mtime, quell_mtime))
+            sys.path.insert(0, d)
+            try:
+                import mut
+                self.assertEqual(mut.WERT, 0,
+                                 "genau diese Verwechslung hat sechs Messungen gekostet")
+            finally:
+                sys.path.remove(d)
+                sys.modules.pop("mut", None)
+
+
+def _pyc_quell_mtime(pyc):
+    """Die Quell-mtime, gegen die ein .pyc validiert wird (Kopf-Bytes 4..8)."""
+    import struct
+    with open(pyc, "rb") as fh:
+        return struct.unpack("<4sIII", fh.read(16))[2]
 
 
 class TestPreflightGesamt(unittest.TestCase):

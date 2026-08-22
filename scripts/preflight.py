@@ -654,12 +654,39 @@ def board_check(projekt_repo):
     return out.returncode == 0, (out.stdout + out.stderr).strip()
 
 
+def test_cache_umgebung(env=None):
+    """Umgebung für die Teststrecke — mit Bytecode-Cache AUSSERHALB des Mounts. SWR-218.
+
+    ⚠⚠ **Gefunden, als dieser Lauf sich selbst prüfte, und es hat sechs eigene
+    Messungen ungültig gemacht, bevor sie berichtet wurden.** Python hält ein
+    `__pycache__/*.pyc` für gültig, wenn `mtime` **und** `size` der Quelle zum Kopf
+    des Cachefiles passen. Eine Mutationsprobe ändert `befunde += 1` zu
+    `befunde += 0` — **gleiche Größe** — und die Rücknahme innerhalb derselben
+    `mtime`-Sekunde erzeugt genau diese Lage: der Kopf passt, der Bytecode ist der
+    der Probe. Auf diesem Mount lässt sich der veraltete Cache zudem nicht löschen
+    (R7, `Operation not permitted`) — er ist also nicht reparierbar, nur umgehbar.
+
+    > **Eine Zusicherung, die eine andere Fassung misst als die im Repo, sieht
+    > genauso grün aus wie eine, die stimmt.**
+
+    Gemessen am 2026-08-22: dieselbe Strecke meldete aus der Quelle `OK` und aus dem
+    veralteten Cache `FAILED (1)` — bei byte-identischer Datei.
+
+    ⚠ Der Cache wird umgeleitet und nicht abgeschaltet: `PYTHONDONTWRITEBYTECODE`
+    verhindert nur das SCHREIBEN, gelesen würde der alte Stand weiterhin. Genau
+    dieser Halbfix hat den Befund hier zuerst verdeckt.
+    """
+    neu = konsole.kind_umgebung(env)
+    neu["PYTHONPYCACHEPREFIX"] = os.path.join(tempfile.gettempdir(), "genesis-pycache")
+    return neu
+
+
 def unit_tests(platform_repo):
     """Unit-Tests wie in CI (python -m unittest discover tests). (ok, letzte Zeilen)."""
     out = subprocess.run([sys.executable, "-m", "unittest", "discover", "tests"],
                          capture_output=True,
                              text=True, encoding="utf-8", errors="replace",
-                         env=konsole.kind_umgebung(), cwd=platform_repo)
+                         env=test_cache_umgebung(), cwd=platform_repo)
     tail = "\n".join((out.stdout + out.stderr).strip().splitlines()[-3:])
     return out.returncode == 0, tail
 
@@ -730,9 +757,12 @@ def raeume_locks(root, keep_locks=False, still=False):
     Dass es ein Falschbefund war, steht in demselben Protokoll: alle 7 betroffenen
     Repos meldeten in derselben Sekunde `sauber`. Die Sperre hat nichts gesperrt.
 
-    ⚠ Die Schutzwirkung wird dabei nicht schwächer, sondern in einem Punkt STÄRKER:
-    bisher wurde bei unauffälliger Prozessliste JEDER Lock entfernt, auch ein fünf
-    Millisekunden alter. Jetzt ist ein frisches Artefakt in BEIDEN Fällen unantastbar.
+    ⚠ **Der Eingriff ist bewusst schmal:** die Gnadenfrist greift nur in dem Zweig,
+    in dem bisher die Geräte-Frage band. Ist kein Git-Prozess zu sehen, bleibt alles
+    beim Alten — sonst verlöre `--nur-locks` seinen einzigen Zweck (`platform/T-0021`:
+    ein sekundenaltes R7-Residuum vor einem Commit wegräumen). **Eine Frist, die
+    diesen Weg mitnähme, hätte nur die blockierte Stelle getauscht.**
+
     Befund bleibt allein, was weder gelöscht noch weggeräumt werden konnte (`kaputt`) —
     das ist der Fall, der Commits wirklich blockiert und eine Handlung kennt.
     """
@@ -753,18 +783,23 @@ def raeume_locks(root, keep_locks=False, still=False):
             for p in locks:
                 print(f"    {p}")
             continue
-        frisch = [p for p in locks if not lock_ist_verwaist(p)]
-        verwaist = [p for p in locks if lock_ist_verwaist(p)]
-        if frisch and not still:
-            git_laeuft = git_prozess_aktiv()
-            print(f"[{name}] {len(frisch)} Lock-Artefakt(e) jünger als "
-                  f"{LOCK_GNADENFRIST_S} s — nicht angefasst"
-                  f"{' (und ein Git-Prozess läuft)' if git_laeuft else ''}; kein Befund:")
-            for p in frisch:
-                print(f"    {os.path.relpath(p, repo)}")
-        if not verwaist:
+        # ⚠ Die Gnadenfrist greift GENAU DA, wo bisher die Geräte-Frage band, und
+        # nirgends sonst. Läuft kein Git, bleibt es beim alten Verhalten — `--nur-locks`
+        # vor einem Commit muss ein Sekunden altes R7-Residuum weiterhin sofort
+        # wegräumen können (platform/T-0021, in Produktion mehrfach gebraucht).
+        # Eine Frist, die diesen Weg mitnimmt, tauschte nur die blockierte Stelle.
+        if git_prozess_aktiv():
+            frisch = [p for p in locks if not lock_ist_verwaist(p)]
+            locks = [p for p in locks if lock_ist_verwaist(p)]
+            if frisch and not still:
+                print(f"[{name}] {len(frisch)} Lock-Artefakt(e) jünger als "
+                      f"{LOCK_GNADENFRIST_S} s und ein Git-Prozess läuft — nicht "
+                      f"angefasst; kein Befund:")
+                for p in frisch:
+                    print(f"    {os.path.relpath(p, repo)}")
+        if not locks:
             continue
-        entfernt, geparkt, kaputt = entferne_artefakte(verwaist)
+        entfernt, geparkt, kaputt = entferne_artefakte(locks)
         if not still:
             for p in entfernt:
                 print(f"[{name}] Lock-Artefakt entfernt: {os.path.relpath(p, repo)}")
