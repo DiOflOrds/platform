@@ -16,17 +16,12 @@ Stand: 2026-08-22 · Tickets: 75 · davon wiederkehrend: 1
 | [T-0075](tickets/T-0075.md) | Die Betriebsschicht dieses Hauses liegt in KEINEM Repo — 27 Dateien, 88 kB, darunter der Waechter und der Auto-Abschluss | problem | einmalig | cm | Team | hoch | 39 | — |
 | [T-0072](tickets/T-0072.md) | start_genesis: EIN Startpunkt fuer alle notwendigen Skripte (Mission Control, Waechter, Takt-Aufgaben) | task | einmalig | dev | Team | mittel | 37 | — |
 
-## in_progress (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0069](tickets/T-0069.md) | Zwei Zusicherungen messen, ob auf dem Rechner gerade ein anderer Git-Prozess läuft — grün in der Sandbox, rot auf dem Host, und beide Male sagt der Code nichts dazu | problem | einmalig | prob | Team | mittel | 35 | — |
-
-## in_review (1)
+## in_review (2)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0074](tickets/T-0074.md) | Die Teststrecke ist lokal grün und die CI von platform und projects ist ROT — niemand hat das bisher als Aufgabe geführt | problem | einmalig | dev | Team | hoch | 39 | — |
+| [T-0069](tickets/T-0069.md) | Zwei Zusicherungen messen, ob auf dem Rechner gerade ein anderer Git-Prozess läuft — grün in der Sandbox, rot auf dem Host, und beide Male sagt der Code nichts dazu | problem | einmalig | prob | Team | mittel | 35 | — |
 
 ## done (65)
 
