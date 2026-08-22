@@ -1,9 +1,9 @@
 # Board (generiert von platform/scripts/board.py — nicht von Hand editieren)
 
-Stand: 2026-08-22 · Tickets: 70 · davon wiederkehrend: 1
+Stand: 2026-08-22 · Tickets: 72 · davon wiederkehrend: 1
 
 
-## open (6)
+## open (8)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
@@ -13,6 +13,8 @@ Stand: 2026-08-22 · Tickets: 70 · davon wiederkehrend: 1
 | [T-0066](tickets/T-0066.md) | Der Ollama-Takt hat NICHTS ZU TUN: zwei Register beantworten die Frage 'wer darf auf Ollama' verschieden | problem | einmalig | pl | Team | hoch | 35 | — |
 | [T-0067](tickets/T-0067.md) | Der Befund war seit dem 20.08. maschinell benannt und wurde drei Sprints nicht gelesen — wer liest die Blocker-Liste? | problem | einmalig | coach | Team | hoch | 35 | — |
 | [T-0070](tickets/T-0070.md) | Acht Lehren ohne Vertreter — sechs davon aus Sprint 35, der im selben Bericht 1551 Tests als Verifikation führte | problem | einmalig | coach | Team | hoch | 35 | — |
+| [T-0071](tickets/T-0071.md) | Alle Script-Aufrufe in Mission Control - und der Waechter live sichtbar (laeuft / laeuft nicht / Stand veraltet) | task | einmalig | dev | Team | hoch | 37 | — |
+| [T-0072](tickets/T-0072.md) | start_genesis: EIN Startpunkt fuer alle notwendigen Skripte (Mission Control, Waechter, Takt-Aufgaben) | task | einmalig | dev | Team | mittel | 37 | — |
 
 ## in_review (2)
 
