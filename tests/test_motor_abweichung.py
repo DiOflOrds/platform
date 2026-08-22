@@ -87,8 +87,11 @@ class TestMotorAbweichungen(unittest.TestCase):
         Entscheidung nachzulesen statt die Zahl stillschweigend anzupassen
         (Verfallsprüfung nach der `SWR-211`-Lehre).
         """
-        if not os.path.isdir(os.path.join(_WURZEL, "process", "roles")):
-            self.skipTest("Organisationswurzel liegt hier nicht vor")
+        # ⚠ Nach dem Sprintregister fragen, nicht nach `process/` — die CI von
+        # `platform` checkt `process` mit aus, und eine halbe Organisation liefert
+        # eine halbe Besetzungsmenge (grün hier, rot beim Auftraggeber).
+        if not os.path.isfile(os.path.join(_WURZEL, "pm", "management", "sprints.jsonl")):
+            self.skipTest("vollständige Arbeitskopie liegt hier nicht vor")
         abw = organisation.motor_abweichungen(_WURZEL)
         self.assertEqual(list(abw), ["PROB"],
                          "Ändert sich das, ist pm/B061 neu zu lesen — nicht der Test")

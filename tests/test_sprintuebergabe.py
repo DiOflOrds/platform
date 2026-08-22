@@ -29,7 +29,20 @@ WURZEL = os.path.normpath(os.path.join(_HIER, "..", ".."))
 
 
 def _echte_organisation():
-    return os.path.isdir(os.path.join(WURZEL, "process", "roles"))
+    """Die VOLLSTÄNDIGE Arbeitskopie, nicht nur `process/`.
+
+    ⚠⚠ Der erste Entwurf fragte `process/roles` — und **die CI von `platform` checkt
+    `process` mit aus** (Katalog-Check). Damit lief die Zusicherung dort gegen eine
+    halbe Organisation ohne `pm/`, fand keine Sprintsicht und wurde rot: **grün hier,
+    rot beim Auftraggeber** — dieselbe Familie wie `platform/T-0069`.
+
+    > **Ein Wächter, der die Anwesenheit der falschen Datei prüft, misst nicht, ob er
+    > arbeiten kann.**
+
+    Gefragt wird deshalb nach dem Sprintregister — genau der Eingabe, ohne die
+    `sprintsicht` nichts liefert.
+    """
+    return os.path.isfile(os.path.join(WURZEL, "pm", "management", "sprints.jsonl"))
 
 
 class SprintUebergabeIstGruen(unittest.TestCase):
