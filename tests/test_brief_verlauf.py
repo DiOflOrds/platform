@@ -36,6 +36,11 @@ Der Schreibpfad.
 """
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
 class ZerlegungTest(unittest.TestCase):
 
     def test_bestandsbrief_hat_genau_zwei_beitraege(self):
@@ -87,6 +92,7 @@ class ZerlegungTest(unittest.TestCase):
         self.assertEqual(datum, "2026-08-17")
 
 
+@bestandswaechter.am_bestand("pm/management/briefkasten", "platform/management/briefkasten")
 class BestandTest(unittest.TestCase):
     """⚠ Die Gegenprobe an allen echten Briefen — sie ist der eigentliche Beweis.
 

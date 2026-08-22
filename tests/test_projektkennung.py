@@ -56,6 +56,11 @@ def _welt(tmp, registry, ordner=()):
         os.makedirs(os.path.join(tmp, "projects", o), exist_ok=True)
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
 class KollisionenWerdenGefunden(unittest.TestCase):
 
     def test_registry_gegen_ordner(self):
@@ -141,6 +146,7 @@ class KollisionenWerdenGefunden(unittest.TestCase):
             self.assertEqual(organisation.projektkennung_kollisionen(tmp), {})
 
 
+@bestandswaechter.am_bestand("projects/p10", "projects/p11", "pm/tickets")
 class AltbestandInBeideRichtungen(unittest.TestCase):
     """⚠⚠ Die Lehre aus `SWR-211`, hier von Anfang an eingebaut."""
 

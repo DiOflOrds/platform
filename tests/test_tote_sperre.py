@@ -55,6 +55,11 @@ def _t(tid, status="open", blocked_by="[]"):
             "_datei": f"{tid}.md"}
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
 class ToteSperreWirdGemeldet(unittest.TestCase):
     """SWR-204, Richtung 1: der Verweis auf ein geschlossenes Ticket ist ein Befund."""
 
@@ -192,6 +197,7 @@ class AusnahmeIstEineAufzaehlung(unittest.TestCase):
                          f"unerwartete Ausnahmebedingung: {quellen}")
 
 
+@bestandswaechter.am_bestand("pm/tickets", "p0/tickets", "team-termine/tickets")
 class BestandIstSauber(unittest.TestCase):
     """SWR-204 am ECHTEN Bestand — nicht in einer Vorrichtung."""
 

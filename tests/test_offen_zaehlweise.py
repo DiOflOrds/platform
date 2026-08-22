@@ -33,6 +33,12 @@ from backend import aggregation, sprint  # noqa: E402
 ORGA = os.path.dirname(WURZEL)
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
+@bestandswaechter.am_bestand("pm/tickets", "team-termine/tickets")
 class ZaehlweiseIstEine(unittest.TestCase):
     """Alle Erzeuger von „offene Tickets" geben dieselbe Zahl — am ECHTEN Bestand."""
 

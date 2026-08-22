@@ -126,11 +126,19 @@ def abgenommene_baselines(wurzel):
     return raus
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
+@bestandswaechter.am_bestand("pm/tickets", "p1/tickets", "p2/tickets")
 class JedeAbnahmeHatIhrenTag(unittest.TestCase):
 
-    def setUp(self):
-        if not os.path.isdir(os.path.join(HAUS, "process")):
-            self.skipTest("kein Organisationskontext (einzeln ausgechecktes Repo)")
+    # ⚠ HIER STAND EIN WÄCHTER AUF `process` (bis Sprint 39, platform/T-0074).
+    # Er hat nicht gehalten: die CI von `platform` checkt `process` MIT aus — der
+    # Wächter meldete „Bestand da", während `pm/tickets` und `p1/tickets`, die diese
+    # Klasse wirklich liest, fehlten. Ersetzt durch `am_bestand` oben, das die
+    # tatsächliche Eingabe nennt (SWR-221). Zwei Wächter für eine Frage wären B033.
 
     def test_grundmenge_ist_nicht_leer(self):
         """SWR-128: ohne abgenommene Baselines prüft der Block darunter nichts."""

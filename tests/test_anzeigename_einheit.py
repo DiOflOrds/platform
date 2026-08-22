@@ -62,6 +62,11 @@ def _nach_kennung(daten):
     return {e["einheit"]: e for e in daten["einheiten"]}
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
 class AnzeigenameTest(unittest.TestCase):
     """Die Rangfolge Team-Registry > Steckbrief > Ordnername, jede Stufe einzeln."""
 
@@ -105,6 +110,11 @@ class AnzeigenameTest(unittest.TestCase):
         self.assertEqual([e["einheit"] for e in daten["einheiten"]], ["p9"])
 
 
+@bestandswaechter.am_bestand(
+    "p9/steckbrief.yaml",
+    "p0/steckbrief.yaml",
+    "p1/steckbrief.yaml",
+    "p8/steckbrief.yaml")
 class EchterBestandTest(unittest.TestCase):
     """Am Bestand dieses Hauses — die Anweisung des Auftraggebers, nachgemessen."""
 

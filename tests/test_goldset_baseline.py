@@ -31,6 +31,12 @@ def fall(**kw):
     return f
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
+@bestandswaechter.am_bestand("promt-team/management/goldset.jsonl", "promt-team/tickets")
 class MessungTest(unittest.TestCase):
     """Verifiziert: SWR-149."""
 
@@ -171,6 +177,7 @@ class BerichtTest(unittest.TestCase):
                 os.path.join(d, *gb.BERICHT.split("/"))))
 
 
+@bestandswaechter.am_bestand("promt-team/management/goldset.jsonl", "promt-team/tickets")
 class BestandTest(unittest.TestCase):
     """Verifiziert: SWR-149 — das wirkliche Goldset, nicht eine Attrappe."""
 

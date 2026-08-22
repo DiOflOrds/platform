@@ -36,6 +36,11 @@ def _text(pfad):
         return f.read()
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
 class EinBauplatzTest(unittest.TestCase):
     """Verifiziert: SWR-150."""
 
@@ -78,6 +83,7 @@ class EinBauplatzTest(unittest.TestCase):
         self.assertIn("Regeln.ticketRoute(", app)
 
 
+@bestandswaechter.am_bestand("pm/tickets", "p0/tickets", "team-dashboard/tickets")
 class BestandTest(unittest.TestCase):
     """Verifiziert: SWR-150 — die Kollision ist gemessen, nicht angenommen."""
 

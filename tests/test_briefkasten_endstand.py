@@ -28,6 +28,14 @@ ORGA = os.path.dirname(WURZEL)
 import kennzahlen  # noqa: E402
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
+@bestandswaechter.am_bestand(
+    "pm/management/briefkasten",
+    "projects/p11/management/briefkasten")
 class BriefkastenDiscovery(unittest.TestCase):
 
     def test_das_werkzeug_reicht_weiter_als_die_oberste_ebene(self):

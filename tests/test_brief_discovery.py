@@ -49,6 +49,11 @@ import kennzahlen  # noqa: E402
 ORGA = os.path.dirname(WURZEL)
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
 class EineDiscoveryFuerBriefe(unittest.TestCase):
     """SWR-206 Richtung 1: es gibt genau EINEN Weg zu den Briefen."""
 
@@ -158,6 +163,10 @@ class EineDiscoveryFuerBriefe(unittest.TestCase):
                                        "board", "brief_offen"))
 
 
+@bestandswaechter.am_bestand(
+    "pm/management/briefkasten",
+    "platform/management/briefkasten",
+    "projects/p11/management/briefkasten")
 class AussageUeberDasFenster(unittest.TestCase):
     """SWR-206 Richtung 2: „keiner eingegangen" wird gemessen statt behauptet."""
 

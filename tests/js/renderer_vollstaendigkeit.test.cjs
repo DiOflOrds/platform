@@ -21,6 +21,19 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { ladeRenderer, WURZEL } = require("./_app_laden.cjs");
+const bestandswaechter = require("./_bestand.cjs");
+
+// SWR-223 (platform/T-0074): die Eingabe dieses Nachweises, benannt statt vorausgesetzt.
+// ⚠ Es sind GENAU die Orte, die `bestand()` unten liest — eine Liste, die woanders
+// hinzeigt als die Messung, wäre der Fehler, gegen den SWR-221 gebaut ist.
+const EINGABE = [
+  "pm/management/briefkasten",
+  "platform/management/briefkasten",
+  "team-dashboard/management/briefkasten",
+  "team-mail/management/briefkasten",
+  "promt-team/management/briefkasten",
+  "p0/management/briefkasten",
+];
 
 /** Die Zeichen, die SWR-099 als **Markup** ausnimmt — und sonst keine. */
 const MARKUP = /[#*`|\-\[\]()>_\s]/g;
@@ -74,12 +87,14 @@ function nutztext(s, quelle) {
   return text.replace(MARKUP, "");
 }
 
-test("Der Bestand ist nicht leer — sonst prueft der Nachweis nichts", () => {
+test("Der Bestand ist nicht leer — sonst prueft der Nachweis nichts",
+     { skip: bestandswaechter.grund(...EINGABE) }, () => {
   assert.ok(bestand().length >= 20,
             "weniger als 20 Briefe gefunden: " + bestand().length);
 });
 
-test("SWR-099: der Renderer verliert im Bestand kein Nutzzeichen", () => {
+test("SWR-099: der Renderer verliert im Bestand kein Nutzzeichen",
+     { skip: bestandswaechter.grund(...EINGABE) }, () => {
   const mdRender = ladeRenderer();
   const verluste = [];
   bestand().forEach((datei) => {

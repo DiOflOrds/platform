@@ -56,6 +56,11 @@ def _feldzeilen(pfad):
         return [z.split("#", 1)[0].strip() for z in f if z.split("#", 1)[0].strip()]
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
 class DieKlasseEntscheidetDenOrt(unittest.TestCase):
 
     def setUp(self):
@@ -178,6 +183,7 @@ class DasOrganigrammErFINDETKeineKlasse(unittest.TestCase):
         self.assertEqual("intern", eintrag["datenklasse"])
 
 
+@bestandswaechter.am_bestand("team-mail/.kein-remote", "promt-team/.kein-remote")
 class AmEchtenBestandGemessen(unittest.TestCase):
     """⚠ Eine Zusicherung, die den ECHTEN Bestand liest (`SWR-189`-Bauform).
 
@@ -186,8 +192,11 @@ class AmEchtenBestandGemessen(unittest.TestCase):
     """
 
     def test_jede_einheit_mit_kein_remote_ist_sensibel(self):
-        if not os.path.isdir(os.path.join(HAUS, "process")):
-            self.skipTest("kein Organisationskontext (einzeln ausgechecktes Repo)")
+        # ⚠ HIER STAND EIN WÄCHTER AUF `process` (bis Sprint 39, platform/T-0074).
+        # Er hat nicht gehalten: die CI von `platform` checkt `process` MIT aus. Die
+        # Eingabe dieser Zusicherung sind die Einheiten MIT `.kein-remote` —
+        # `team-mail` und `promt-team` —, und die fehlen dort. Genannt wird jetzt,
+        # was gelesen wird (SWR-221, `am_bestand` über der Klasse).
         daten = organigramm.sammle(HAUS)
         klasse = {e["einheit"]: e["datenklasse"] for e in daten["einheiten"]}
         ohne_remote = [n for n, p in organigramm.entdecke_einheiten(HAUS).items()

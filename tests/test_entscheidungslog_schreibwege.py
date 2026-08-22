@@ -149,6 +149,14 @@ def _code_schreiber():
     return gefunden
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
+@bestandswaechter.am_bestand(
+    "pm/management/decisions/decision-log.md",
+    "p0/management/decisions/decision-log.md")
 class GrundmengeTest(unittest.TestCase):
     """SWR-128-Familie: eine kaputte Entdeckung darf nicht grün aussehen."""
 
@@ -167,6 +175,9 @@ class GrundmengeTest(unittest.TestCase):
                                 "Discovery ist kaputt, nicht der Bestand")
 
 
+@bestandswaechter.am_bestand(
+    "pm/management/decisions/decision-log.md",
+    "p0/management/decisions/decision-log.md")
 class SchreibwegeTest(unittest.TestCase):
     """⚠⚠ Die Zusicherung, die drei Sprints lang gefehlt hat."""
 

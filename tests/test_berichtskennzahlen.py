@@ -42,6 +42,15 @@ def _plantext():
         return f.read()
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
+@bestandswaechter.am_bestand(
+    "pm/management/sprints.jsonl",
+    "pm/management/sprint-aktuell.md",
+    "p9/requirements")
 class MessungTest(unittest.TestCase):
     """Die Quelle selbst — und die Gegenprobe gegen eine Messung, die nichts misst."""
 
@@ -133,6 +142,7 @@ class BlockTest(unittest.TestCase):
         self.assertEqual(kennzahlen.lies_block("nur Fließtext"), ({}, ""))
 
 
+@bestandswaechter.am_bestand("pm/management/sprint-aktuell.md", "pm/management/sprints.jsonl")
 class SprintplanTest(unittest.TestCase):
     """⚠⚠ Die eigentliche Zusicherung: der Bericht dieses Hauses gegen die Messung.
 

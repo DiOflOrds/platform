@@ -39,6 +39,12 @@ from backend import briefkasten  # noqa: E402
 _WURZEL = os.path.dirname(_PLATFORM)
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
+@bestandswaechter.am_bestand("pm/management/briefkasten", "platform/management/briefkasten")
 class ZerlegerBehaeltDieUhrzeit(unittest.TestCase):
     """Die Ebene unter der Kennzahl — ohne sie ist die Kennzahl blind."""
 
@@ -133,6 +139,7 @@ class ZerlegerBehaeltDieUhrzeit(unittest.TestCase):
                            "nicht 'mehr als 90 Prozent von'")
 
 
+@bestandswaechter.am_bestand("pm/management/briefkasten", "platform/management/briefkasten")
 class PostImLauf(unittest.TestCase):
     """`kennzahlen.zaehle_post_im_lauf` am echten Bestand.
 

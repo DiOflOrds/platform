@@ -31,6 +31,11 @@ def log(*ids):
     return KOPF + "".join(f"| {i} | 2026-08-21 | Beschluss |\n" for i in ids)
 
 
+# SWR-221 (platform/T-0074): der Wächter dieser Zusicherungen fragt ihre EIGENE Eingabe.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bestandswaechter  # noqa: E402
+
+
 class SynthetischeWurzel(unittest.TestCase):
 
     def setUp(self):
@@ -235,6 +240,9 @@ class TautologieTest(unittest.TestCase):
             shutil.rmtree(root, ignore_errors=True)
 
 
+@bestandswaechter.am_bestand(
+    "pm/management/decisions/decision-log.md",
+    "p0/management/decisions/decision-log.md")
 class EchterBestandTest(unittest.TestCase):
     """⚠⚠ Die Sperrklinke am **echten** Bestand — die Bauform von `SWR-194`.
 
