@@ -162,6 +162,42 @@ class HerkunftTest(unittest.TestCase):
                 m = goldset.pruefe_fall(fall(herkunft=h))
                 self.assertTrue(any("repo-relativ" in x for x in m), m)
 
+    def test_auch_in_WINDOWS_schreibweise_abgelehnt(self):
+        """Dieselbe Schranke, in der Schreibweise des anderen Betriebssystems.
+
+        ⚠ Warum diese Zusicherung getrennt steht (T-0068, Sprint 36): die Reparatur hat
+        `goldset._maengel_herkunft_form` um drei Formen erweitert — fuehrender Backslash,
+        Laufwerksbuchstabe und `..` in Backslash-Schreibweise. **Keine davon hatte eine
+        Zusicherung.** Der Nachbartest prueft `/etc/passwd` und `../geheim.md`; beide
+        waeren auch ohne die Erweiterung gruen gewesen, sobald `os.path.isabs` wieder
+        anschlaegt. Damit haette der Bestand drei ungeprueft gebaute Codepfade getragen
+        — genau die Lage, aus der `T-0068` entstanden ist.
+
+        Und der Punkt der DoD 3: diese Faelle sind **Zeichenketten**, keine Aufrufe an
+        `os.path`. Sie stellen deshalb auf jedem Laeufer dieselbe Frage — unter Linux wie
+        unter Windows, wo `os.path.isabs("/etc/passwd")` seit Python 3.13 `False` sagt.
+        """
+        for h in (["\\etc\\passwd"], ["C:/geheim.md"], ["C:\\geheim.md"],
+                  ["..\\geheim.md"], ["unterordner\\..\\..\\geheim.md"]):
+            with self.subTest(h=h):
+                m = goldset.pruefe_fall(fall(herkunft=h))
+                self.assertTrue(any("repo-relativ" in x for x in m),
+                                "nicht abgewiesen: %r -> %r" % (h, m))
+
+    def test_gegenprobe_ein_echter_repo_relativer_pfad_bleibt_zulaessig(self):
+        """Die Gegenprobe aus DoD 2: die Schranke darf nicht ALLES abweisen.
+
+        Ohne sie ist `test_absoluter_pfad_und_aufstieg_werden_abgelehnt` mit einer
+        Pruefung erfuellbar, die stumpf `True` zurueckgibt — die Zusicherung wuerde dann
+        das Gegenteil dessen belegen, was sie behauptet.
+        """
+        for h in (["docs/historie.md"], ["platform/backend/goldset.py"],
+                  ["a/b/c.md::ein Suchtext"]):
+            with self.subTest(h=h):
+                m = goldset.pruefe_fall(fall(herkunft=h))
+                self.assertFalse([x for x in m if "repo-relativ" in x],
+                                 "faelschlich abgewiesen: %r -> %r" % (h, m))
+
     def test_fehlende_datei_wird_gemeldet(self):
         """Verifiziert: SWR-149."""
         with tempfile.TemporaryDirectory() as d:
