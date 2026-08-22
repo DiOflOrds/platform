@@ -2,11 +2,14 @@
 """P8-Tests SWR-062/064/065: Ollama-Verdichtung (injiziert), Takt-Fälligkeit, Zustellung.
 Hermetisch (gb-02): Temp-Basis, injizierte Funktionen, kein Netz/IMAP/SMTP.
 Übersprungen, wenn team-mail lokal nicht vorliegt (Datenklasse sensibel — nicht in CI)."""
+import ast
 import datetime
+import inspect
 import os
 import shutil
 import sys
 import tempfile
+import textwrap
 import unittest
 
 _WURZEL = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -148,30 +151,117 @@ class MailAutopilotTest(unittest.TestCase):
         self.assertEqual(len(zeilen), 1)
         self.assertTrue(zeilen[0].endswith("2026-08-16-woche-digest.md"))
 
-    def test_lauf_takt_schreibt_und_stellt_zu(self):
-        """SWR-062/065: Lauf schreibt Digest-Datei mit Takt-Namen und stellt genau einmal zu."""
+    def _lauf(self, cfg, heute):
+        return self.md.lauf_takt(
+            1, cfg, basis=self.basis,
+            hole=lambda c, t: [{"von": "a", "betreff": "b", "zeit": "z", "link": ""}],
+            verdichter=lambda m, c, n: "## Auf einen Blick\nEine Mail.",
+            heute=heute)
+
+    def test_lauf_takt_schreibt_und_legt_in_den_ausgang(self):
+        """SWR-062/065/219: Lauf schreibt den Digest und legt die FERTIGE Mail in `ausgang/`.
+
+        ⚠ Diese Zusicherung stand bis Sprint 38 auf der anderen Seite: sie verlangte, dass
+        `lauf_takt` **sendet**. Der Auftraggeber hat in `N-0005` das Gegenteil aufgetragen
+        (*„Gesendet wird nichts"*), und `team-mail/T-0006` baut genau bis zum Ausgang.
+        """
         heute = datetime.date(2026, 8, 16)
         cfg = {"takte": [1], "konten": [], "abschnitt_rechnungen": True,
-               "zustellung_mail": True, "ollama_modell": "test"}
+               "zustellung_mail": True, "ollama_modell": "test",
+               "zustellung_an": "dimitri.john83@gmail.com"}
+        pfad = self._lauf(cfg, heute)
+        self.assertTrue(pfad.endswith("2026-08-16-tag-digest.md"))
+        inhalt = open(pfad, encoding="utf-8").read()
+        self.assertIn("## Auf einen Blick", inhalt)
+        self.assertIn(self.md.AUSGANG_VERMERK, inhalt)
+        self.assertNotIn(self.md.VERMERK, inhalt, "nichts darf als zugestellt gelten")
+        eml = os.path.join(self.basis, self.md.AUSGANG, "2026-08-16-tag-digest.eml")
+        self.assertTrue(os.path.exists(eml))
+        mail = open(eml, encoding="utf-8").read()
+        self.assertIn("To: dimitri.john83@gmail.com", mail)
+        self.assertIn("NICHT GESENDET", mail)
+        self.assertIn("## Auf einen Blick", mail)
+        # idempotent — ein zweiter Lauf legt keine zweite Mail
+        self.assertEqual(self.md.lege_in_ausgang(pfad, cfg, basis=self.basis, heute=heute),
+                         "bereits im Ausgang")
+        self.assertFalse(self.md.faellig(1, self.basis, heute))
+
+    def test_kein_versandweg_aus_dem_lauf(self):
+        """⚠⚠ Die Zusicherung, die beim versehentlichen Scharfschalten ROT wird (T-0006 DoD).
+
+        Sie prüft nicht den Text der Funktion, sondern spannt einen Draht: jeder Versuch,
+        aus einem vollständigen Takt heraus `mailer.sende` **oder** `sende_digest` zu
+        erreichen, schlägt hier auf. Der Versandweg selbst bleibt gebaut — er wird nur
+        aus dem Betrieb nicht mehr gerufen.
+        """
+        gerufen = []
+        echt = self.md.sende_digest
+        self.md.sende_digest = lambda *a, **k: gerufen.append("sende_digest")
+        try:
+            cfg = {"takte": [1], "konten": [], "abschnitt_rechnungen": True,
+                   "zustellung_mail": True, "ollama_modell": "test",
+                   "zustellung_an": "dimitri.john83@gmail.com"}
+            self._lauf(cfg, datetime.date(2026, 8, 17))
+        finally:
+            self.md.sende_digest = echt
+        self.assertEqual(gerufen, [], "aus dem Betrieb darf kein Versand ausgehen")
+        # ⚠ Über den AST und nicht über den Text: der erste Entwurf prüfte den Quelltext
+        # und wurde von einem KOMMENTAR rot, der `sende_digest` bloss ERWÄHNT. Eine
+        # Zusicherung, die auf Prosa anschlägt, misst nicht die Regel (SWR-216-Lehre).
+        baum = ast.parse(textwrap.dedent(inspect.getsource(self.md.lauf_takt)))
+        gerufene = {k.func.id for k in ast.walk(baum)
+                    if isinstance(k, ast.Call) and isinstance(k.func, ast.Name)}
+        self.assertNotIn("sende_digest", gerufene)
+        self.assertNotIn("sende", gerufene)
+        argumente = {a.arg for a in baum.body[0].args.args}
+        self.assertNotIn("sende", argumente,
+                         "ein Parameter, der den Versand scharfschaltet, ist keine Sperre")
+
+    def test_ohne_entscheidung_kein_empfaenger_und_keine_mail(self):
+        """SWR-219: fehlt `zustellung_an`, entsteht KEINE Mail — kein erfundener Default.
+
+        Ein Vorgabeempfänger wäre bei einer Handlung mit Außenwirkung die teuerste Art,
+        „ich weiß es nicht" zu sagen (`SWR-208`).
+        """
+        heute = datetime.date(2026, 8, 18)
+        cfg = {"takte": [1], "konten": [], "abschnitt_rechnungen": True,
+               "zustellung_mail": True, "ollama_modell": "test", "zustellung_an": ""}
+        self._lauf(cfg, heute)
+        self.assertFalse(os.path.isdir(os.path.join(self.basis, self.md.AUSGANG)))
+
+    def test_empfaenger_steht_nicht_im_quelltext(self):
+        """DoD: „Empfänger aus der Entscheidung, nicht aus dem Code."""
+        quelle = inspect.getsource(self.md)
+        self.assertNotIn("dimitri.john83", quelle)
+        self.assertNotIn("geraldine.john90", quelle)
+
+    def test_versandweg_ist_weiterhin_gebaut(self):
+        """Gegenrichtung: gesperrt heißt nicht abgerissen — `sende_digest` funktioniert.
+
+        Sonst wäre die Sperre eine Löschung, und nach der Entscheidung des Auftraggebers
+        müsste jemand den Weg neu bauen statt ihn zu rufen.
+        """
+        heute = datetime.date(2026, 8, 19)
+        cfg = {"takte": [1], "konten": [], "abschnitt_rechnungen": True,
+               "zustellung_mail": False, "ollama_modell": "test"}
+        pfad = self._lauf(cfg, heute)
         gesendet = []
 
         def sende(betreff, text):
             gesendet.append(betreff)
             return True, "ok"
-        pfad = self.md.lauf_takt(
-            1, cfg, basis=self.basis,
-            hole=lambda c, t: [{"von": "a", "betreff": "b", "zeit": "z", "link": ""}],
-            verdichter=lambda m, c, n: "## Auf einen Blick\nEine Mail.",
-            sende=sende, heute=heute)
-        self.assertTrue(pfad.endswith("2026-08-16-tag-digest.md"))
-        inhalt = open(pfad, encoding="utf-8").read()
-        self.assertIn("## Auf einen Blick", inhalt)
-        self.assertIn(self.md.VERMERK, inhalt)
+        self.assertEqual(self.md.sende_digest(pfad, basis=self.basis, sende=sende), "zugestellt")
         self.assertEqual(len(gesendet), 1)
+        self.assertTrue(gesendet[0].startswith("[team-mail] 2026-08-19"))
         self.assertEqual(self.md.sende_digest(pfad, basis=self.basis, sende=sende),
                          "bereits zugestellt")  # idempotent
         self.assertEqual(len(gesendet), 1)
-        self.assertFalse(self.md.faellig(1, self.basis, heute))
+
+    def test_betreff_hat_nur_eine_quelle(self):
+        """B033: Ausgang und Versand bilden denselben Betreff — aus derselben Funktion."""
+        self.assertNotIn('f"[team-mail]', inspect.getsource(self.md.sende_digest))
+        self.assertIn("mail_betreff", inspect.getsource(self.md.sende_digest))
+        self.assertIn("mail_betreff", inspect.getsource(self.md.lege_in_ausgang))
 
 
 if __name__ == "__main__":

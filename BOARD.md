@@ -14,19 +14,14 @@ Stand: 2026-08-22 · Tickets: 73 · davon wiederkehrend: 1
 | [T-0071](tickets/T-0071.md) | Alle Script-Aufrufe in Mission Control - und der Waechter live sichtbar (laeuft / laeuft nicht / Stand veraltet) | task | einmalig | dev | Team | hoch | 37 | — |
 | [T-0072](tickets/T-0072.md) | start_genesis: EIN Startpunkt fuer alle notwendigen Skripte (Mission Control, Waechter, Takt-Aufgaben) | task | einmalig | dev | Team | mittel | 37 | — |
 
-## in_progress (1)
-
-| ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
-|---|---|---|---|---|---|---|---|---|
-| [T-0073](tickets/T-0073.md) | Sandbox und Host sind sich uneinig, ob eine Datei existiert — 7 index.lock blockieren den Auto-Abschluss, und aus der Sandbox sind sie unsichtbar | problem | einmalig | dev | Team | hoch | 38 | — |
-
-## in_review (4)
+## in_review (5)
 
 | ID | Titel | Typ | Takt | Rolle | Verantwortlich | Prio | Sprint | blockiert durch |
 |---|---|---|---|---|---|---|---|---|
 | [T-0055](tickets/T-0055.md) | Wächter über die regelmäßigen Skripte — wer prüft, ob sie überhaupt gelaufen sind? (Brief N-0008) | problem | einmalig | dev | Team | hoch | 32 | — |
 | [T-0066](tickets/T-0066.md) | Der Ollama-Takt hat NICHTS ZU TUN: zwei Register beantworten die Frage 'wer darf auf Ollama' verschieden | problem | einmalig | pl | Team | hoch | 35 | — |
 | [T-0068](tickets/T-0068.md) | Der Schutz gegen Belege außerhalb des Bestands ist auf dem Rechner des Auftraggebers AUS — os.path.isabs beantwortet auf Windows eine andere Frage | problem | einmalig | dev | Team | hoch | 35 | — |
+| [T-0073](tickets/T-0073.md) | Sandbox und Host sind sich uneinig, ob eine Datei existiert — 7 index.lock blockieren den Auto-Abschluss, und aus der Sandbox sind sie unsichtbar | problem | einmalig | dev | Team | hoch | 38 | — |
 | [T-0069](tickets/T-0069.md) | Zwei Zusicherungen messen, ob auf dem Rechner gerade ein anderer Git-Prozess läuft — grün in der Sandbox, rot auf dem Host, und beide Male sagt der Code nichts dazu | problem | einmalig | prob | Team | mittel | 35 | — |
 
 ## done (62)
