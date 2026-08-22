@@ -106,17 +106,38 @@ def _zellen_text(zelle):
 def plan_tabelle(text):
     """Die Plantabelle aus dem Text schneiden (rein, ohne IO).
 
-    Gesucht wird die **erste** Tabelle **nach** der Sprint-Plan-Überschrift. Alles davor
-    wird bewusst ignoriert: die Datei beginnt mit dem Kurzblock „Das Wichtigste" (B050),
-    und der darf eine Tabelle enthalten, ohne dass sie als Plan gilt. Fehlt die
-    Überschrift, ist das Ergebnis leer — die Sicht sagt dann, dass sie keinen Plan
-    gefunden hat, statt ersatzweise irgendeine Tabelle der Datei zu zeigen.
+    ⚠⚠ **SWR-226 (Sprint 39): die Tabelle wird an ihren SPALTEN erkannt, nicht an ihrer
+    STELLE.** Bis Sprint 39 galt „die **erste** Tabelle nach der Sprint-Plan-Überschrift" —
+    und genau daran ist dieses Haus **zweimal** hängengeblieben:
+
+    * **Sprint 37:** eine Befund-Tabelle stand vor der Plantabelle. `plan_drift` meldete
+      **0**, weil keine einzige Planzeile geparst wurde. Aufgefallen ist es nur an
+      `nicht_geplant: 39`.
+    * **Sprint 39:** derselbe Fehler, derselbe Autor-Typ, dieselbe Datei — obwohl die
+      Lehre aus Sprint 37 im Bericht stand. Wieder gefunden von `nicht_geplant: 33`.
+
+    > **Eine Lehre, die zweimal denselben Fehler nicht verhindert hat, ist keine Lehre,
+    > sondern eine Notiz. Der Vertreter ist diese Funktion.**
+
+    Gesucht wird deshalb ab der Überschrift die erste Tabelle, deren Kopfzeile **sowohl**
+    eine „Aufgabe"- **als auch** eine „Fällig"-Spalte trägt — die beiden Spalten, ohne die
+    eine Planzeile nichts aussagen kann. Tabellen davor werden übersprungen, statt den
+    Plan zu ersetzen.
+
+    ⚠ Findet sich **keine** solche Tabelle, ist das Ergebnis `None` und **nicht** die
+    erste beliebige: die Sicht sagt dann, dass sie keinen Plan gefunden hat. Ein
+    stillschweigender Rückfall auf „irgendeine Tabelle" wäre wieder genau der Zustand, in
+    dem eine Prüfung grün meldet, weil sie nichts gelesen hat.
     """
     m = PLAN_KOPF.search(text or "")
     if not m:
         return None
-    tabellen = aggregation.parse_md_tabellen(text[m.end():])
-    return tabellen[0] if tabellen else None
+    for tabelle in aggregation.parse_md_tabellen(text[m.end():]):
+        spalten = (tabelle or {}).get("spalten") or []
+        if (_spalte(spalten, "aufgabe") is not None
+                and _spalte(spalten, "fällig", "faellig") is not None):
+            return tabelle
+    return None
 
 
 def _spalte(spalten, *namen):

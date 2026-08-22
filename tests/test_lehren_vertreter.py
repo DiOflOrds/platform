@@ -69,7 +69,15 @@ OHNE_VERTRETER_BASIS = frozenset({
     "L-2026-08-17l", "L-2026-08-17m", "L-2026-08-17n", "L-2026-08-17p",
     "L-2026-08-17q", "L-2026-08-17r", "L-2026-08-17s", "L-2026-08-17t",
     "L-2026-08-17u", "L-2026-08-17v", "L-2026-08-17w", "L-2026-08-17x",
-    "L-2026-08-17y", "L-2026-08-17z", "L-2026-08-20bh", "L-2026-08-20bi",
+    # ⚠ `L-2026-08-17y` ist in **Sprint 39** aus dieser Menge ausgeschieden — sie hat
+    # einen Vertreter bekommen. Die Lehre lautet *„wer Code ändert, sieht den Vertrag
+    # nicht — der Wächter IST die Lösung und nicht der Notausgang"*; ihr Vertreter ist
+    # `SWR-226` (`test_plantabelle_erkennung`), der genau dieselbe Begründung für die
+    # Plantabelle trägt: die Reihenfolge einer Tabelle ist eine Eigenschaft des
+    # Schreibens, und der Schreibende sieht den Parser nicht.
+    # ⚠⚠ Gebucht statt nebenbei getan — die Sperrklinke hat den Gewinn im selben Lauf
+    # gemeldet, in dem er entstand, und diese Zeile ist ihre Antwort.
+    "L-2026-08-17z", "L-2026-08-20bh", "L-2026-08-20bi",
     "L-2026-08-20bj", "L-2026-08-20bk", "L-2026-08-20bl", "L-2026-08-20bm",
     "L-2026-08-20bn", "L-2026-08-20bo", "L-2026-08-20bp", "L-2026-08-20bq",
     "L-2026-08-20br", "L-2026-08-20bs", "L-2026-08-20bt", "L-2026-08-20bu",
