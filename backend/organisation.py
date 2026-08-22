@@ -530,3 +530,46 @@ def _offene_tickets(root):
         gesehen.add(t["ref"])
         eindeutig.append(t)
     return sorted(eindeutig, key=lambda t: t["ref"])
+
+
+# ---------------------------------------------------------------------------
+# SWR-216 (pm/T-0085): Projektkennungen — zwei Quellen, eine Zahl.
+# ---------------------------------------------------------------------------
+
+def projektkennung_kollisionen(root):
+    """SWR-216: welche p-Nummer wird von mehr als einer Identität beansprucht?
+
+    **Die Vorgeschichte macht den Zuschnitt.** `pm/T-0085` hat in Sprint 35 gemessen, dass
+    die Projektnummer **keinen Leser** hat: 47 Zugriffe auf ein Feld `projekt` im
+    Quelltext meinen ausnahmslos den **Einheitennamen**, das `projekt:`-Feld aus
+    `process/teams/registry.yaml` liest weder Python noch JS, und `organigramm.json` führt
+    null p-Nummern. Die Identität ist der Ordner-/Reponame (`SWR-175`, `p9/D003`); die
+    Nummer ist eine **Beschriftung in Berichten**.
+
+    > **Deshalb ist die Kollision auch nicht zu reparieren, sondern nur zu bewachen:
+    > Umnummerieren macht Berichte rückwirkend falsch, die der Auftraggeber gelesen hat —
+    > für eine Beschriftung, die kein Programm liest** (`pm/B060`).
+
+    ⚠ **Beide Quellen zählen, und das ist der Punkt.** Eine Kennung entsteht auf zwei
+    Wegen: als Feld `projekt:` in der Registry **und** als Ordnername unter `projects/`.
+    `projects/p13` steht in keiner Registry-Zeile — eine Prüfung, die nur die Registry
+    liest, fände die Dopplung nie, und genau so ist sie entstanden.
+
+    Rückgabe: `{kennung: [quelle, …]}` **nur** für Kennungen mit mehr als einer Quelle.
+    Jede Quelle ist benannt (`registry:<kuerzel> (repo …)` / `ordner:projects/<p>`) —
+    eine Zahl ohne Namen wäre B038.
+    """
+    quellen = {}
+    daten = _lade_yaml(os.path.join(root, "process", "teams", "registry.yaml")) or {}
+    for kuerzel, eintrag in (daten.get("teams") or {}).items():
+        kennung = str(((eintrag or {}).get("projekt") or "")).strip().lower()
+        if kennung:
+            quellen.setdefault(kennung, []).append(
+                f"registry:{kuerzel} (repo {(eintrag or {}).get('repo')})")
+    projekte = os.path.join(root, "projects")
+    if os.path.isdir(projekte):
+        for name in sorted(os.listdir(projekte)):
+            if (os.path.isdir(os.path.join(projekte, name))
+                    and re.fullmatch(r"p\d+", name)):
+                quellen.setdefault(name, []).append(f"ordner:projects/{name}")
+    return {k: sorted(v) for k, v in sorted(quellen.items()) if len(v) > 1}
