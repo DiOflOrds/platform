@@ -70,6 +70,14 @@
   /* SWR-210 (Brief team-dashboard/N-0004): das 2x2-Raster der Design-Vorlage —
      IN/Reaktion oben, Rechnung/SPAM unten. Zwei Spalten, weil die Vorlage zwei hat;
      auf schmalen Schirmen bleiben es zwei, sonst waere es wieder eine Liste. */
+  /* ⚠⚠ URSACHE 2 aus team-dashboard/T-0007 (Brief p0/N-0002), gefunden im Code:
+     `.widget dl` ist ein Grid mit `auto 1fr`. Das Raster hing als DRITTES Kind darin und
+     landete damit in der SCHMALEN ersten Spalte der naechsten Zeile — daher die
+     ueberlappenden Spalten und der in Fingerbreite gequetschte Text im Screenshot.
+     `grid-column: 1 / -1` gibt ihm die volle Breite. Ein Raster, das seine Zeile nicht
+     kennt, ist kein Rasterfehler des Rasters, sondern seines Platzes. */
+  .widget dd.raster-zeile { grid-column:1 / -1; }
+  .widget .weitere-takte { margin:.4rem 0 0; font-size:.78rem; }
   .widget .widget-raster { display:grid; grid-template-columns:1fr 1fr; gap:.3rem;
             margin:.35rem 0 .1rem; }
   .widget .wkachel { border:1px solid var(--rand); border-radius:.4rem;

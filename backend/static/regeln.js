@@ -581,6 +581,70 @@ var Regeln = (function () {
     });
   }
 
+  /** SWR-224 (team-dashboard/T-0007, Brief p0/N-0002): WELCHER Eintrag wird gezeigt?
+   *
+   * ⚠⚠ **Der Vertrag v2.9 sagt es, und bis heute hat der Renderer nicht gefragt.**
+   * `widgetKarte` lief ueber `w.eintraege` und zeichnete JEDEN — bei `team-mail` sind das
+   * drei Takte mit je vier Kacheln, also **12 Kacheln in einem Raster, das fuer EINE
+   * Zeitreihe ausgelegt ist**. Genau der Befund des Auftraggebers: *„das ist viel zu gross
+   * und hat noch alte inhalte"*.
+   *
+   * > **Ein Vertrag, der eine Obergrenze nennt, und ein Renderer, der sie nicht liest,
+   * > sind zwei Aussagen ueber dieselbe Kachel — und sichtbar ist die des Renderers.**
+   *
+   * ⚠ Gesucht wird ueber `sicht_takt` und NICHT „der erste Eintrag": die Reihenfolge der
+   * Liste ist keine Zusage des Vertrags, `sicht_takt` ist eine. Nennt `sicht_takt` einen
+   * Takt, den es nicht gibt (vertragswidrig), wird NICHTS gezeigt statt irgendetwas —
+   * eine Kachel, die bei kaputter Eingabe den falschen Zeitraum zeigt, ist schlimmer als
+   * eine, die leer bleibt: die eine faellt auf, die andere nicht.
+   */
+  function widgetSichtEintrag(w) {
+    w = w || {};
+    var eintraege = w.eintraege || [];
+    if (!eintraege.length) return null;
+    for (var i = 0; i < eintraege.length; i += 1) {
+      if (eintraege[i] && eintraege[i].takt === w.sicht_takt) return eintraege[i];
+    }
+    return null;
+  }
+
+  /** Die uebrigen Takte — umschaltbar, nicht gleichzeitig sichtbar (Vertrag v2.9).
+   *
+   * ⚠ Sie verschwinden NICHT aus dem Payload und nicht aus der Ansicht: der Leser soll
+   * sehen, DASS es sie gibt. Ein stiller Wegfall waere derselbe Fehler wie ein stiller
+   * gesperrter Inhalt (`SWR-053`-Begruendung im Vertrag).
+   */
+  function widgetWeitereTakte(w) {
+    w = w || {};
+    return (w.eintraege || []).filter(function (e) {
+      return e && e.takt && e.takt !== w.sicht_takt;
+    }).map(function (e) { return TAKT_TITEL[e.takt] || e.takt; });
+  }
+
+  /** SWR-225 (Vertrag v2.9, „GRUND EINMAL"): der Grund, der fuer MEHRERE Kacheln gilt.
+   *
+   * Gemessen am 2026-08-22: der SPAM-Satz *„Rubrik 'Braucht Blick oder Reaktion' fehlt in
+   * diesem Digest"* stand **dreimal wortgleich** in einer Kachel.
+   *
+   * > **Ein Satz, der sich je Kachel wiederholt, macht aus einer Begruendung eine Tapete.**
+   *
+   * ⚠ Gehoben wird nur ein Grund, den **mehr als eine** Kachel traegt. Ein Grund, der
+   * genau einer Kachel gehoert, bleibt AN ihr — sonst wuesste niemand mehr, welche Kachel
+   * er erklaert, und aus einer Begruendung wuerde eine Fussnote ohne Bezug.
+   */
+  function widgetGemeinsamerGrund(eintrag) {
+    eintrag = eintrag || {};
+    var zaehler = {}, kacheln = eintrag.kacheln || [], i, g;
+    for (i = 0; i < kacheln.length; i += 1) {
+      g = (kacheln[i] && kacheln[i].grund) || "";
+      if (g) zaehler[g] = (zaehler[g] || 0) + 1;
+    }
+    for (g in zaehler) {
+      if (Object.prototype.hasOwnProperty.call(zaehler, g) && zaehler[g] > 1) return g;
+    }
+    return "";
+  }
+
   /** Ist dieses Widget vollstaendig genug, um angezeigt zu werden?
    *
    * ⚠ **`auftrag` ist Pflicht.** Der Wunsch lautete: *„jedes widget soll eine beschreibung
@@ -733,6 +797,9 @@ var Regeln = (function () {
   }
 
   return { widgetZeile: widgetZeile, widgetRaster: widgetRaster,
+           widgetSichtEintrag: widgetSichtEintrag,
+           widgetWeitereTakte: widgetWeitereTakte,
+           widgetGemeinsamerGrund: widgetGemeinsamerGrund,
            widgetVollstaendig: widgetVollstaendig,
            widgetMaengel: widgetMaengel, TOUCH_MIN_PX: TOUCH_MIN_PX,
            feldText: feldText,

@@ -1956,7 +1956,16 @@ function widgetKarte(w) {
   // zu sehen ist, und nur dort nachprüfbar, wo das Gezeigte steht.
   karte.appendChild(el("p", { "class": "auftrag" }, w.auftrag));
   var dl = el("dl", {});
-  (w.eintraege || []).forEach(function (e) {
+  // SWR-224 (T-0007, Brief p0/N-0002): GENAU EIN Eintrag wird gezeichnet — der, den der
+  // Vertrag v2.9 in `sicht_takt` nennt.
+  //
+  // ⚠⚠ Hier stand `(w.eintraege || []).forEach(...)`. Bei `team-mail` sind das drei Takte
+  // mit je vier Kacheln: **12 Kacheln in einem Raster für EINE Zeitreihe**, rund vier
+  // Kachelhöhen hoch. Der Vertrag trägt die Obergrenze seit v2.9; gelesen hat sie niemand.
+  var sicht = [];
+  var einer = Regeln.widgetSichtEintrag(w);
+  if (einer) sicht.push(einer);
+  sicht.forEach(function (e) {
     var z = Regeln.widgetZeile(e);
     dl.appendChild(el("dt", {}, z.titel));
     var dd = el("dd", z.zustand === "nicht_geliefert" ? { "class": "leer" } : {}, z.text);
@@ -1969,21 +1978,45 @@ function widgetKarte(w) {
     var raster = Regeln.widgetRaster(e);
     if (raster.length) {
       var gitter = el("div", { "class": "widget-raster" });
+      // SWR-225 (Vertrag v2.9 „GRUND EINMAL"): ein Grund, den MEHRERE Kacheln tragen,
+      // steht am Eintrag statt an jeder Kachel — gemessen: 3× wortgleich derselbe Satz.
+      var gemeinsam = Regeln.widgetGemeinsamerGrund(e);
       raster.forEach(function (k) {
         var zelle = el("div", { "class": k.unbekannt ? "wkachel leer" : "wkachel" });
         zelle.appendChild(el("span", { "class": "wk-titel" }, k.beschriftung));
         zelle.appendChild(el("span", { "class": "wk-wert" }, k.text));
         // ⚠ Der Grund steht AN der Kachel und nicht in einer Fußnote: eine Kachel ohne
         // Zahl, der niemand ansieht warum, ist von einem Fehler nicht zu unterscheiden.
-        if (k.grund) zelle.appendChild(el("small", { "class": "grund" }, k.grund));
+        // Ausgenommen der GEMEINSAME Grund — der steht einmal unter dem Raster.
+        if (k.grund && k.grund !== gemeinsam) {
+          zelle.appendChild(el("small", { "class": "grund" }, k.grund));
+        }
         if (k.klappbar) zelle.appendChild(el("small", { "class": "wk-klapp" },
           "Zusammenfassung: tippen (PIN)"));
         gitter.appendChild(zelle);
       });
-      dl.appendChild(el("dd", {}, gitter));
+      // ⚠⚠ URSACHE 2 aus T-0007, gefunden im Code und nicht im Bild: `.widget dl` ist ein
+      // Grid mit `grid-template-columns: auto 1fr`. Ein drittes Kind fällt damit in die
+      // SCHMALE erste Spalte der nächsten Zeile — genau das, was der Screenshot zeigt
+      // („Woche" oben rechts, ihre Karten weit darunter; Monat-Text in fingerbreiten
+      // Spalten). Die Klasse spannt das Raster über BEIDE Spalten.
+      var kasten = el("dd", { "class": "raster-zeile" }, "");
+      kasten.appendChild(gitter);
+      if (gemeinsam) {
+        kasten.appendChild(el("small", { "class": "grund" }, gemeinsam));
+      }
+      dl.appendChild(kasten);
     }
   });
   karte.appendChild(dl);
+  // Die übrigen Takte: genannt, nicht gezeichnet (Vertrag v2.9). ⚠ Ein stiller Wegfall
+  // wäre derselbe Fehler wie ein stiller gesperrter Inhalt — der Leser soll sehen, DASS es
+  // sie gibt, und dass er sie nicht gerade ansieht.
+  var weitere = Regeln.widgetWeitereTakte(w);
+  if (weitere.length) {
+    karte.appendChild(el("p", { "class": "leer weitere-takte" },
+      "Weitere Zeiträume vorhanden: " + weitere.join(", ") + " — im Team sichtbar."));
+  }
   if (w.digests_ohne_takt) {
     // Gezählt und genannt statt einem Takt zugeschlagen (SWR-114/B038).
     karte.appendChild(el("p", { "class": "leer" },
